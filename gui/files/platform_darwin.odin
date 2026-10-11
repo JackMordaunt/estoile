@@ -1,0 +1,131 @@
+#+build darwin
+package leita_files
+
+import "base:intrinsics"
+
+import "core:c"
+import "core:os"
+import "core:strings"
+import NS "core:sys/darwin/Foundation"
+import "core:sys/posix"
+
+foreign import libc "system:System"
+
+SEPARATOR  :: "/"
+SEPARATORS :: "/"
+
+@(private = "file")
+RENAME_EXCL :: 0x00000004
+
+@(private = "file", default_calling_convention = "c")
+foreign libc {
+	renamex_np :: proc(from, to: cstring, flags: c.uint) -> c.int ---
+}
+
+@(private = "file", objc_class = "NSFileManager")
+File_Manager :: struct {
+	using _: NS.Object,
+}
+
+// rename_noreplace renames from to to, failing with Exists rather than replacing
+// whatever is at to: renamex_np(2)'s RENAME_EXCL makes the check and the rename one
+// step, so nothing can slip in between.
+rename_noreplace :: proc(from, to: string) -> Error {
+	f := strings.clone_to_cstring(from, context.temp_allocator)
+	t := strings.clone_to_cstring(to, context.temp_allocator)
+	if renamex_np(f, t, RENAME_EXCL) != 0 {
+		return errno_error(posix.errno())
+	}
+	return .None
+}
+
+// trash moves path to the Trash through NSFileManager, as the Finder does.
+trash :: proc(path: string) -> Error {
+	_, err := trash_to(path, context.temp_allocator)
+	return err
+}
+
+// trash_to is trash, saying where in the Trash the entry went, which need not be
+// under its old name.
+@(private)
+trash_to :: proc(path: string, allocator := context.allocator) -> (to: string, err: Error) {
+	NS.scoped_autoreleasepool()
+	str := NS.String.alloc()->initWithOdinString(path)
+	defer str->release()
+	url := NS.URL.alloc()->initFileURLWithPath(str)
+	defer url->release()
+	fm := intrinsics.objc_send(^File_Manager, File_Manager, "defaultManager")
+	landed: ^NS.URL
+	failure: ^NS.Error
+	ok := intrinsics.objc_send(
+		NS.BOOL,
+		fm,
+		"trashItemAtURL:resultingItemURL:error:",
+		url,
+		&landed,
+		&failure,
+	)
+	switch {
+	case ok && landed != nil:
+		return strings.clone_from_cstring(landed->fileSystemRepresentation(), allocator), .None
+	case ok:
+		return "", .None
+	case failure == nil:
+		return "", .Other
+	}
+	return "", cocoa_error(failure->code())
+}
+
+// reveal asks the Finder to show path selected.
+@(private)
+reveal :: proc(path: string) {
+	run({"open", "-R", path})
+}
+
+// cocoa_error maps the NSCocoaErrorDomain codes NSFileManager reports.
+@(private = "file")
+cocoa_error :: proc(code: NS.Integer) -> Error {
+	switch code {
+	case 4, 260:
+		// NSFileNoSuchFileError, NSFileReadNoSuchFileError
+		return .Missing
+	case 257, 513:
+		// NSFileReadNoPermissionError, NSFileWriteNoPermissionError
+		return .Denied
+	case 516:
+		// NSFileWriteFileExistsError
+		return .Exists
+	case 3328:
+		// NSFeatureUnsupportedError: the volume has no Trash
+		return .Unsupported
+	}
+	return .Other
+}
+
+@(private = "file")
+errno_error :: proc(errno: posix.Errno) -> Error {
+	#partial switch errno {
+	case .EEXIST, .ENOTEMPTY:
+		return .Exists
+	case .ENOENT:
+		return .Missing
+	case .EACCES, .EPERM:
+		return .Denied
+	case .EXDEV:
+		return .Cross_Device
+	case .ENOTSUP, .EINVAL:
+		return .Unsupported
+	}
+	return .Other
+}
+
+// documents is ~/Documents, where the Finder keeps them; "" when there is no
+// home to find it in.
+@(private)
+documents :: proc(allocator := context.allocator) -> string {
+	home := os.get_env("HOME", context.temp_allocator)
+	if home == "" {
+		return ""
+	}
+	return strings.concatenate({home, "/Documents"}, allocator)
+}

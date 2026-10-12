@@ -241,11 +241,13 @@ Model :: struct {
 	settings_open:    bool,
 	settings_dialog:  Settings_Dialog,
 	// The Monitoring dialog (monitor.odin): whether it is open, the place typed
-	// to watch, the change count when one was sent until the host answers, and
-	// whether it has answered since the dialog opened.
+	// to watch, the change count when one was sent until the host answers,
+	// what the switch was set to by the change in flight, if that is what it
+	// was, and whether the host has answered since the dialog opened.
 	monitor_open:     bool,
 	watch_text:       ui.Text_State,
 	monitor_sent:     Maybe(u32),
+	monitor_want:     Maybe(bool),
 	monitor_answered: bool,
 	// The alerts editor (monitor.odin): whether it is open, under which place,
 	// its fields, and whether they last failed to read.

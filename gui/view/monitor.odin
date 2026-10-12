@@ -53,6 +53,7 @@ monitor_dialog :: proc(gtx: ^ui.Ctx, m: ^Model) {
 	}
 	if sent, ok := m.monitor_sent.?; ok && r.changed != sent {
 		m.monitor_sent = nil
+		m.monitor_want = nil
 		m.monitor_answered = true
 		if r.problem == "" {
 			ui.text_set(&m.watch_text, "")
@@ -78,15 +79,20 @@ monitor_dialog :: proc(gtx: ^ui.Ctx, m: ^Model) {
 					color = primer.color(.Fg_Color_Muted),
 				)
 			}
-			on := r.on
+			// The switch shows what it was set to until the host answers, and
+			// takes no flip meanwhile: otherwise it would fall back to the
+			// host's value the frame after a click and leap again at the
+			// answer, with the scheduler being written between.
+			on := m.monitor_want.? or_else r.on
 			if primer.toggle_switch(
 				gtx,
 				&on,
 				name = tr(.Scheduled_Scans),
 				label_on = tr(.On),
 				label_off = tr(.Off),
-				state = .Disabled if waiting || (locked && !r.on) else .Live,
-			) {
+				state = .Disabled if locked && !r.on else .Live,
+			) && !waiting {
+				m.monitor_want = on
 				send_monitor(gtx, m, r, command.Monitoring{on = on})
 			}
 		}

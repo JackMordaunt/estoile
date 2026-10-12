@@ -231,7 +231,9 @@ a_name_that_matches_ranks_above_a_path_that_does :: proc(t: ^testing.T) {
 	scratch := new(Scratch)
 	defer free(scratch)
 	f := describe(&s, s.top[3].node, scratch, context.temp_allocator)
-	testing.expect_value(t, f.path, "/top/main/notes.txt")
+	// Joined with scan.SEPARATOR below the top, which keeps its own spelling.
+	S :: scan.SEPARATOR
+	testing.expect_value(t, f.path, "/top" + S + "main" + S + "notes.txt")
 	testing.expect_value(t, f.path[f.name_at:], "notes.txt")
 	testing.expect_value(t, len(f.spans), 1)
 	testing.expect_value(t, f.path[f.spans[0].from:f.spans[0].to], "main")

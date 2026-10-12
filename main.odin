@@ -25,7 +25,6 @@ import "ntfs"
 import "report"
 import "scan"
 import "survey"
-import "synth"
 import "version"
 import "walk"
 
@@ -289,7 +288,7 @@ scan_and_say :: proc(opt: Options, kept := "", licensee := "", locked := false) 
 	k := keep_scan(kept, &t, &roll, engine.engine)
 	say_kept(k, survey.total(&roll, t.root) if t.root < roll.seen else 0, quiet)
 
-	space := volume_space(&f, engine.engine, target)
+	space := report.space_of(&f)
 	thresholds_set := opt.warn_used > 0 || opt.fail_used > 0 || min_free > 0
 	th, _, known := report.threshold_of(
 		space,
@@ -336,29 +335,6 @@ scan_and_say :: proc(opt: Options, kept := "", licensee := "", locked := false) 
 		return code
 	}
 	return exit_code(th.verdict)
-}
-
-// volume_space is what the scanned volume holds and has free, when the engine
-// that scanned it knows: the MFT reads it from the boot sector, synth makes it
-// up for its made-up day, and a walk asks the filesystem it is mounted on.
-volume_space :: proc(
-	f: ^survey.Fill,
-	engine: scan.Engine,
-	target: scan.Target,
-) -> Maybe(report.Space) {
-	#partial switch engine {
-	case .Mft:
-		return mft_space(&f.table)
-	case .Synthetic:
-		cfg, _ := synth.from_env()
-		total, free := synth.space(cfg.day)
-		return report.Space{total, free}
-	case .Walk:
-		if total, free, ok := scan.space(scan.location(target, context.temp_allocator)); ok {
-			return report.Space{total, free}
-		}
-	}
-	return nil
 }
 
 // exit_code is what a verdict reads back as, for a script to test.
@@ -452,16 +428,6 @@ write_report :: proc(
 	fmt.println()
 	fmt.printfln("report     %s, %s", path, report.FORMAT_NAMES[format])
 	return 0
-}
-
-// What an NTFS volume holds and has free, from its boot sector and $Bitmap.
-mft_space :: proc(m: ^ntfs.Mft) -> Maybe(report.Space) {
-	total := m.boot.total_sectors * u64(m.boot.bytes_per_sector)
-	used := m.stats.allocated_clusters * u64(m.boot.bytes_per_cluster)
-	if total == 0 || used == 0 || used > total {
-		return nil
-	}
-	return report.Space{total = total, free = total - used}
 }
 
 // Say what went wrong, if anything did.

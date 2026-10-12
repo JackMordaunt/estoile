@@ -13,6 +13,7 @@ import "core:time"
 import "jm:ui"
 import bl "jm:ui/blend2d"
 
+import "../../scan"
 import "../command"
 import "../msg"
 import "../query"
@@ -135,7 +136,12 @@ a_search_answers_ranked_hits_with_what_matched :: proc(t: ^testing.T) {
 	testing.expect_value(t, r.total, 4)
 	if len(r.hits) == 4 {
 		notes := r.hits[3]
-		testing.expect_value(t, notes.path, fmt.tprintf("%s/main/notes.txt", root))
+		// The tree spells a path with scan.SEPARATOR throughout, the root's own
+		// separators included, where the fixture joined with a slash.
+		S :: scan.SEPARATOR
+		want := fmt.tprintf("%s%smain%snotes.txt", root, S, S)
+		want, _ = strings.replace_all(want, "/", S, context.temp_allocator)
+		testing.expect_value(t, notes.path, want)
 		testing.expect_value(t, len(notes.marks), 1)
 		testing.expect_value(t, notes.path[notes.marks[0].from:notes.marks[0].to], "main")
 		testing.expect(t, r.hits[0].directory)

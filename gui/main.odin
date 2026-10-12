@@ -3,6 +3,7 @@ Leita: see what is using the disk, as the scan finds it.
 
 	Leita                  scan the home directory
 	Leita PATH             scan a directory, drive or image
+	Leita monitor ...      monitoring's command line, as leita monitor
 
 The window is jm:ui in Primer. Its pieces are gui's packages:
 
@@ -22,6 +23,7 @@ import "core:os"
 import "jm:ui/shell"
 
 import "../history"
+import "../monitor"
 import "../version"
 import "app"
 @(require) import "leaks"
@@ -37,6 +39,14 @@ main :: proc() {
 		context.allocator = debug.allocator(&da)
 	}
 	context.assertion_failure_proc = trace.assertion_failure_proc
+
+	// Leita monitor ... is monitoring's command line, as leita monitor is, so the
+	// scheduler can run whichever binary turned monitoring on.
+	if len(os.args) > 1 && os.args[1] == "monitor" {
+		code := monitor.run_command_line(os.args[2:])
+		free_all(context.temp_allocator)
+		os.exit(code)
+	}
 
 	path :=
 		os.args[1] if len(os.args) > 1 else (os.user_home_dir(context.temp_allocator) or_else "/")

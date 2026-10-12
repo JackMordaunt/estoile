@@ -48,6 +48,28 @@ stands out on its own.
 Comparing scans comes with a licence too, with the same 30-day trial. leita
 keeps every scan either way, so your history is all there when you add one.
 
+## Scheduled scans
+
+Have leita scan the places you care about every hour, day or week while it is
+closed, so change tracking has a steady record. Open **Monitoring** (the pulse
+in the toolbar), add a place, and turn on **Scheduled scans**. Each scan runs
+gently, at low priority, and is kept like any other.
+
+leita keeps nothing running: it hands one hourly entry to your system's own
+scheduler (a systemd user timer on Linux, a Task Scheduler task on Windows, a
+launchd agent on macOS), which starts `leita monitor run`, scans whatever is
+due and exits. Turning monitoring off removes that entry; nothing runs unless
+you turn it on. The same is there from the terminal:
+
+```sh
+leita monitor add ~/Projects --every daily
+leita monitor on
+leita monitor list
+leita monitor off
+```
+
+Scheduled scans come with a licence, with the same 30-day trial.
+
 ## Free up space, safely
 
 Reclaim finds the space you can get back without losing anything: build
@@ -110,8 +132,8 @@ with the verdict in its `thresholds` member (`report/SCHEMA.md`).
 **Scanning, the charts and Reclaim are free for personal use.** That covers
 your own computer, your own studies, and unpaid hobby or open-source work.
 
-**Reports and change tracking need a licence.** Both work for 30 days from
-the first time you run leita, so you can try them first. To add a licence,
+**Reports, change tracking and scheduled scans need a licence.** They work
+for 30 days from the first time you run leita, so you can try them first. To add a licence,
 click the key in the toolbar and paste the licence key from your receipt.
 
 **Organisations need a commercial licence for any use.** This applies to

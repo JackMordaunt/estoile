@@ -4,6 +4,7 @@ leita: find out what is using the disk.
 Usage:
 	leita [drive-or-image] [flags]     -h lists the flags
 	leita ~/src --report usage.html    the same, written up as a report too
+	leita monitor -h                   scheduled scans of the places watched
 
 Reads the volume's MFT directly and prints the largest files and directories. Reading
 a live volume needs an elevated prompt.
@@ -21,6 +22,7 @@ import "history"
 import "human"
 @(require) import "jm:debug"
 import "licence"
+import "monitor"
 import "ntfs"
 import "report"
 import "scan"
@@ -91,6 +93,11 @@ run :: proc() -> int {
 	defer free_all(context.temp_allocator)
 
 	context.assertion_failure_proc = trace.assertion_failure_proc
+
+	// leita monitor ... is monitoring's own command line (package monitor).
+	if len(os.args) > 1 && os.args[1] == "monitor" {
+		return monitor.run_command_line(os.args[2:])
+	}
 
 	opt: Options
 	if err := flags.parse(&opt, os.args[1:], .Unix); err != nil {

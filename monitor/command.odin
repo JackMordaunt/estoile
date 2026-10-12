@@ -7,8 +7,11 @@ import "core:os"
 import "core:strings"
 import "core:time"
 
+import "jm:sh"
 import "jm:timefmt"
 
+import "../alert"
+import "../gui/msg"
 import "../history"
 import "../human"
 import "../licence"
@@ -26,26 +29,37 @@ USAGE :: `Usage: leita monitor [command]
 Monitoring scans the places you watch on a schedule, gently, while leita is
 closed, and keeps each scan so change tracking has a steady record. It runs
 only while turned on, through the system's scheduler; nothing stays running.
+A limit crossed raises an alert, once, as a desktop notification and in list.
 
   run [--all]        scan each watched place that is due, then exit; what the
                      scheduler runs every hour, and the default command
-  list               whether monitoring is on, and each place's last run
-  add PATH [--every hourly|daily|weekly]
-                     watch PATH, daily unless --every says
+  list               whether monitoring is on, each place's last run and
+                     its alerts
+  add PATH [--every hourly|daily|weekly] [limits]
+                     watch PATH, daily unless --every says, or change how
+                     it is watched; each limit is off unless given:
+      --warn-used N    alert once the disk is N percent used
+      --fail-used N    alert harder once it is N percent used
+      --min-free SIZE  alert once less than SIZE is free, e.g. 20GiB
+      --full-within N  alert once the disk is forecast full within N days
+      --growth         alert when PATH grows far faster than it has been
   remove PATH        stop watching PATH
   on                 turn monitoring on: hand it to the system's scheduler
   off                turn monitoring off: remove it from the scheduler
 `
 
 // Context is what the command line works with: where its files are, the
-// scheduler, the command the scheduler is to run, and whether the paid
-// features are unlocked.
+// scheduler, the command the scheduler is to run, whether the paid features
+// are unlocked, and how an alert is shown on the desktop, nil for not at all.
 Context :: struct {
 	paths:    Paths,
 	host:     schedule.Host,
 	argv:     []string, // what the scheduler runs: this binary, monitor, run
 	unlocked: bool,
 	now:      time.Time,
+	notify:   alert.Runner,
+	user:     rawptr, // notify's own
+	desktop:  alert.System,
 }
 
 // LOCKED says why a paid command was refused.
@@ -69,13 +83,28 @@ dispatch :: proc(c: Context, args: []string, w: io.Writer) -> int {
 			fmt.wprintln(w, LOCKED)
 			return EXIT_FAILED
 		}
-		return run({paths = c.paths, now = c.now, all = f.all}, w)
+		return run(
+			{
+				paths = c.paths,
+				now = c.now,
+				all = f.all,
+				notify = c.notify,
+				user = c.user,
+				desktop = c.desktop,
+			},
+			w,
+		)
 	case "list":
 		return list(c, w)
 	case "add":
 		Add_Flags :: struct {
-			path:  string `args:"pos=0,required" usage:"The directory or drive to watch."`,
-			every: string `usage:"How often to scan it: hourly, daily or weekly."`,
+			path:        string `args:"pos=0,required" usage:"The directory or drive to watch."`,
+			every:       string `usage:"How often to scan it: hourly, daily or weekly."`,
+			warn_used:   int `usage:"Alert once its disk is this percent used, e.g. 80."`,
+			fail_used:   int `usage:"Alert harder once its disk is this percent used, e.g. 95."`,
+			min_free:    string `usage:"Alert once its disk has less than this free, e.g. 20GiB."`,
+			full_within: int `usage:"Alert once its disk is forecast to be full within this many days."`,
+			growth:      bool `usage:"Alert when it grows far faster than it has been."`,
 		}
 		f := Add_Flags {
 			every = "daily",
@@ -92,7 +121,38 @@ dispatch :: proc(c: Context, args: []string, w: io.Writer) -> int {
 			fmt.wprintfln(w, "error: --every is hourly, daily or weekly, not %q", f.every)
 			return EXIT_FAILED
 		}
-		return add(c, f.path, every, w)
+		limits := settings.Limits {
+			warn_used   = f.warn_used,
+			fail_used   = f.fail_used,
+			full_within = f.full_within,
+			growth      = f.growth,
+		}
+		for v, name in ([2]int{f.warn_used, f.fail_used}) {
+			if v < 0 || v > 100 {
+				fmt.wprintfln(
+					w,
+					"error: --%s is a percent, 0 to 100, not %d",
+					"warn-used" if name == 0 else "fail-used",
+					v,
+				)
+				return EXIT_FAILED
+			}
+		}
+		if f.full_within < 0 {
+			fmt.wprintfln(w, "error: --full-within is days, not %d", f.full_within)
+			return EXIT_FAILED
+		}
+		if f.min_free != "" {
+			if limits.min_free, ok = human.parse_bytes(f.min_free); !ok {
+				fmt.wprintfln(
+					w,
+					"error: cannot read --min-free %q: a size such as 20GiB",
+					f.min_free,
+				)
+				return EXIT_FAILED
+			}
+		}
+		return add(c, f.path, every, limits, w)
 	case "remove":
 		Remove_Flags :: struct {
 			path: string `args:"pos=0,required" usage:"The place to stop watching."`,
@@ -157,7 +217,13 @@ place_of :: proc(path: string) -> string {
 }
 
 @(private)
-add :: proc(c: Context, path: string, every: settings.Frequency, w: io.Writer) -> int {
+add :: proc(
+	c: Context,
+	path: string,
+	every: settings.Frequency,
+	limits: settings.Limits,
+	w: io.Writer,
+) -> int {
 	st: settings.Store
 	if !open_settings(c, &st, w) {
 		return EXIT_FAILED
@@ -170,7 +236,7 @@ add :: proc(c: Context, path: string, every: settings.Frequency, w: io.Writer) -
 	}
 	if err := settings.watch(
 		&st,
-		{place = place, every = every, added = time.to_unix_seconds(c.now)},
+		{place = place, every = every, added = time.to_unix_seconds(c.now), limits = limits},
 	); err != nil {
 		fmt.wprintfln(w, "error: cannot watch %s: %s", place, history.describe(err))
 		return EXIT_FAILED
@@ -275,8 +341,13 @@ list :: proc(c: Context, w: io.Writer) -> int {
 		fmt.wprintln(w, "no place is watched; leita monitor add PATH watches one")
 		return 0
 	}
+	english := new(msg.Strings, context.temp_allocator)
+	msg.init(english, .English)
 	for watch in watches {
 		fmt.wprintfln(w, "%s  %s", watch.place, settings.FREQUENCY_NAMES[watch.every])
+		if limits := limits_text(watch.limits); limits != "" {
+			fmt.wprintfln(w, "  alerts on %s", limits)
+		}
 		last, ok := settings.last_run(&st, watch.place, context.temp_allocator)
 		switch {
 		case !ok:
@@ -292,8 +363,45 @@ list :: proc(c: Context, w: io.Writer) -> int {
 				how_read(last),
 			)
 		}
+		raised, _ := settings.alerts(&st, watch.place, LIST_ALERTS, context.temp_allocator)
+		for r in raised {
+			if a, known := alert_of(r); known {
+				fmt.wprintfln(
+					w,
+					"  %s  alert: %s",
+					when_(r.raised),
+					alert.say(english, a, r.place, r.problem),
+				)
+			}
+		}
 	}
 	return 0
+}
+
+// LIST_ALERTS is how many of a place's newest alerts list shows.
+LIST_ALERTS :: 5
+
+// limits_text says what a place is checked against, in a line, "" for nothing,
+// in the temp allocator.
+@(private)
+limits_text :: proc(l: settings.Limits) -> string {
+	parts := make([dynamic]string, context.temp_allocator)
+	if l.warn_used > 0 {
+		append(&parts, fmt.tprintf("%d%% used", l.warn_used))
+	}
+	if l.fail_used > 0 {
+		append(&parts, fmt.tprintf("%d%% used (fail)", l.fail_used))
+	}
+	if l.min_free > 0 {
+		append(&parts, fmt.tprintf("under %s free", human.bytes(l.min_free)))
+	}
+	if l.full_within > 0 {
+		append(&parts, fmt.tprintf("full within %d days", l.full_within))
+	}
+	if l.growth {
+		append(&parts, "unusual growth")
+	}
+	return strings.join(parts[:], ", ", context.temp_allocator)
 }
 
 // when_ is a run's start on the local clock, in the temp allocator.
@@ -329,6 +437,18 @@ run_command_line :: proc(args: []string) -> int {
 		argv     = {exe, "monitor", "run"},
 		unlocked = licence.unlocked(licensee != "", first),
 		now      = time.now(),
+		notify   = show,
+		desktop  = alert.SYSTEM,
 	}
 	return dispatch(c, args, os.to_writer(os.stdout))
 }
+
+// show runs a notification's command for real, and says whether it ran.
+@(private)
+show :: proc(argv: []string, _: rawptr) -> bool {
+	return sh.exec(argv, {timeout = NOTIFY_TIMEOUT}, context.temp_allocator).ok
+}
+
+// NOTIFY_TIMEOUT is how long a notification's command may take: one that hangs
+// must not hold up the scans after it.
+NOTIFY_TIMEOUT :: 20 * time.Second

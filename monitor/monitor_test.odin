@@ -21,6 +21,14 @@ Bench :: struct {
 	c:        Context,
 	commands: [dynamic]string,
 	out:      strings.Builder,
+	shown:    [dynamic]string, // each notification's body
+}
+
+@(private = "file")
+record_notification :: proc(argv: []string, user: rawptr) -> bool {
+	b := (^Bench)(user)
+	append(&b.shown, strings.clone(argv[len(argv) - 1], context.temp_allocator))
+	return true
 }
 
 @(private = "file")
@@ -48,6 +56,7 @@ bench_open :: proc(t: ^testing.T, b: ^Bench) {
 	testing.expect(t, os.write_entire_file(join(b.place, "photos", "big.raw"), body) == nil)
 	kept := join(dir, "data", "history.db")
 	b.commands = make([dynamic]string, context.temp_allocator)
+	b.shown = make([dynamic]string, context.temp_allocator)
 	b.out = strings.builder_make(context.temp_allocator)
 	host := schedule.Host {
 		run    = record_command,
@@ -64,6 +73,9 @@ bench_open :: proc(t: ^testing.T, b: ^Bench) {
 		),
 		unlocked = true,
 		now      = time.unix(1_800_000_000, 0),
+		notify   = record_notification,
+		user     = b,
+		desktop  = .Freedesktop,
 	}
 }
 
@@ -261,4 +273,87 @@ a_run_holds_a_lock_another_run_stands_aside_for :: proc(t: ^testing.T) {
 	unlock(&l)
 	_, taken = lock(fmt.tprintf("%s/missing/%s", dir, LOCK_FILE))
 	testing.expect_value(t, taken, Lock_Result.Failed)
+}
+
+// An alert is raised, said and shown the run it first fires, not again while
+// it keeps firing, and again once it has gone and come back. A place that
+// cannot be scanned raises one alert however many runs it fails.
+@(test)
+an_alert_is_raised_once_until_it_goes_and_comes_back :: proc(t: ^testing.T) {
+	b: Bench
+	bench_open(t, &b)
+	defer os.remove_all(b.dir)
+	// 1% used fires on the disks these tests run on, this machine's and CI's
+	// runners', which hold far more than that.
+	_, _ = run_monitor(&b, "add", b.place, "--warn-used", "1")
+	_, _ = run_monitor(&b, "on")
+
+	_, out := run_monitor(&b, "run")
+	testing.expect(t, strings.contains(out, "used, past the warning at 1%."), out)
+	testing.expect_value(t, len(b.shown), 1)
+	if len(b.shown) == 1 {
+		testing.expect(t, strings.contains(b.shown[0], "past the warning at 1%"), b.shown[0])
+	}
+	_, out = run_monitor(&b, "run", "--all")
+	testing.expect(t, !strings.contains(out, "alert:"), out)
+	testing.expect_value(t, len(b.shown), 1)
+
+	_, _ = run_monitor(&b, "add", b.place) // no limits now
+	_, _ = run_monitor(&b, "run", "--all")
+	_, _ = run_monitor(&b, "add", b.place, "--warn-used", "1")
+	_, out = run_monitor(&b, "run", "--all")
+	testing.expect(t, strings.contains(out, "alert:"), out)
+	testing.expect_value(t, len(b.shown), 2)
+
+	_, out = run_monitor(&b, "list")
+	testing.expect(t, strings.contains(out, "alerts on 1% used"), out)
+	testing.expect_value(t, strings.count(out, "alert: The disk under"), 2)
+
+	testing.expect(t, os.remove_all(b.place) == nil)
+	_, out = run_monitor(&b, "run", "--all")
+	testing.expect(t, strings.contains(out, "alert: The scan of"), out)
+	_, out = run_monitor(&b, "run", "--all")
+	testing.expect(t, !strings.contains(out, "alert:"), out)
+	testing.expect_value(t, len(b.shown), 3)
+}
+
+@(test)
+limits_are_checked_as_they_are_given :: proc(t: ^testing.T) {
+	b: Bench
+	bench_open(t, &b)
+	defer os.remove_all(b.dir)
+	bad := [][]string {
+		{"add", b.place, "--warn-used", "101"},
+		{"add", b.place, "--fail-used", "-1"},
+		{"add", b.place, "--min-free", "lots"},
+		{"add", b.place, "--full-within", "-3"},
+	}
+	for args in bad {
+		code, out := run_monitor(&b, ..args)
+		testing.expectf(t, code == EXIT_FAILED, "%v: %s", args, out)
+	}
+	code, out := run_monitor(
+		&b,
+		"add",
+		b.place,
+		"--warn-used",
+		"80",
+		"--fail-used",
+		"95",
+		"--min-free",
+		"20GiB",
+		"--full-within",
+		"14",
+		"--growth",
+	)
+	testing.expect_value(t, code, 0)
+	_, out = run_monitor(&b, "list")
+	testing.expect(
+		t,
+		strings.contains(
+			out,
+			"alerts on 80% used, 95% used (fail), under 20.0 GiB free, full within 14 days, unusual growth",
+		),
+		out,
+	)
 }

@@ -18,12 +18,16 @@ import "core:os"
 import "core:strings"
 import "core:time"
 
+import "jm:i18n"
 import "jm:sqlite3"
 
+import "../alert"
+import "../gui/msg"
 import "../history"
 import "../human"
 import "../licence"
 import "../settings"
+import "../version"
 
 // Paths are the files a run reads and writes.
 Paths :: struct {
@@ -63,11 +67,15 @@ due :: proc(every: settings.Frequency, last, now: i64) -> bool {
 	return last == 0 || now - last >= PERIODS[every] - SLACK
 }
 
-// Options are what a run is asked to do.
+// Options are what a run is asked to do, and how it tells the person of an
+// alert: through notify on desktop, nil for not at all.
 Options :: struct {
-	paths: Paths,
-	now:   time.Time,
-	all:   bool, // scan every watched place, due or not
+	paths:   Paths,
+	now:     time.Time,
+	all:     bool, // scan every watched place, due or not
+	notify:  alert.Runner,
+	user:    rawptr, // notify's own
+	desktop: alert.System,
 }
 
 // EXIT_FAILED is what a run exits with when a place could not be scanned or
@@ -109,13 +117,22 @@ run :: proc(opt: Options, w: io.Writer) -> int {
 		return EXIT_FAILED
 	}
 	now := time.to_unix_seconds(opt.now)
+	words := words_of(&st)
 	code := 0
 	for watch in watches {
 		last, has_last := settings.last_run(&st, watch.place, context.temp_allocator)
 		if !opt.all && !due(watch.every, last.started if has_last else 0, now) {
 			continue
 		}
-		r := scan_one(opt, watch)
+		r, alerts := scan_one(opt, watch)
+		// What was wrong last run is not news; what is wrong now and was not
+		// is raised, once, until it goes and comes back.
+		before := alert.conditions_of(last.firing) if has_last else {}
+		firing := alert.conditions(alerts)
+		if r.problem != "" {
+			firing = before + {.Scan_Failed}
+		}
+		r.firing = alert.keys(firing)
 		if _, rerr := settings.record(&st, r); rerr != nil {
 			fmt.wprintfln(
 				w,
@@ -128,24 +145,32 @@ run :: proc(opt: Options, w: io.Writer) -> int {
 		if r.problem != "" {
 			fmt.wprintfln(w, "%s: failed: %s", watch.place, r.problem)
 			code = EXIT_FAILED
-			continue
+		} else {
+			fmt.wprintfln(
+				w,
+				"%s: %s in %.1f s, %s",
+				watch.place,
+				human.bytes(r.bytes),
+				r.seconds,
+				how_read(r),
+			)
 		}
-		fmt.wprintfln(
-			w,
-			"%s: %s in %.1f s, %s",
-			watch.place,
-			human.bytes(r.bytes),
-			r.seconds,
-			how_read(r),
-		)
+		for a in alerts {
+			if a.kind not_in before {
+				raise(&st, opt, words, w, watch.place, a, r)
+			}
+		}
+		if r.problem != "" && .Scan_Failed not_in before {
+			raise(&st, opt, words, w, watch.place, {kind = .Scan_Failed}, r)
+		}
 	}
 	return code
 }
 
 // scan_one scans the watched place and keeps the scan in history, and says how
-// it went.
+// it went and what its limits find wrong, in the temp allocator.
 @(private)
-scan_one :: proc(opt: Options, watch: settings.Watch) -> (r: settings.Run) {
+scan_one :: proc(opt: Options, watch: settings.Watch) -> (r: settings.Run, alerts: []alert.Alert) {
 	r.place = watch.place
 	r.started = time.to_unix_seconds(opt.now)
 	s, problem := survey_place(
@@ -164,26 +189,103 @@ scan_one :: proc(opt: Options, watch: settings.Watch) -> (r: settings.Run) {
 	if sp, ok := s.space.?; ok {
 		r.disk_total, r.disk_free = sp.total, sp.free
 	}
-	r.problem = keep(opt.paths.history, s)
+	snapshots: []history.Snapshot
+	snapshots, r.problem = keep(opt.paths.history, s)
+	if r.problem == "" {
+		alerts = alert.check(rules_of(watch.limits), snapshots)
+	}
 	return
 }
 
-// keep keeps the scan in the history store at path, and says why it could not,
-// or "".
+// rules_of is a watch's limits as alert checks them.
 @(private)
-keep :: proc(path: string, s: ^Place_Scan) -> string {
+rules_of :: proc(l: settings.Limits) -> alert.Rules {
+	return {
+		warn_used = l.warn_used,
+		fail_used = l.fail_used,
+		min_free = l.min_free,
+		full_within = l.full_within,
+		growth = l.growth,
+	}
+}
+
+// keep keeps the scan in the history store at path, and returns every scan
+// kept of the place, newest first, this one among them, or says why it could
+// not, in the temp allocator.
+@(private)
+keep :: proc(path: string, s: ^Place_Scan) -> (snapshots: []history.Snapshot, problem: string) {
 	// The store makes its errors in the allocator it was opened in.
 	context.allocator = context.temp_allocator
 	hs: history.Store
 	if err := history.open(&hs, path); err != nil {
-		return fmt.tprintf("cannot open %s: %s", path, history.describe(err))
+		return nil, fmt.tprintf("cannot open %s: %s", path, history.describe(err))
 	}
 	defer history.close(&hs)
-	if _, err := history.keep(&hs, s.place, &s.tree, &s.roll, s.top, s.tree.nodes_done);
-	   err != nil {
-		return fmt.tprintf("cannot keep the scan: %s", history.describe(err))
+	disk: history.Disk
+	if sp, ok := s.space.?; ok {
+		disk = {sp.total, sp.free}
 	}
-	return ""
+	if _, err := history.keep(&hs, s.place, &s.tree, &s.roll, s.top, s.tree.nodes_done, disk);
+	   err != nil {
+		return nil, fmt.tprintf("cannot keep the scan: %s", history.describe(err))
+	}
+	snapshots, _ = history.list(&hs, s.place)
+	return snapshots, ""
+}
+
+/*
+raise keeps a, found on place by run r, in the alert log, says it on w, and
+shows it as a desktop notification in the person's language. A log that
+cannot be written is said on w and does not stop the notification.
+*/
+@(private)
+raise :: proc(
+	st: ^settings.Store,
+	opt: Options,
+	words: ^msg.Strings,
+	w: io.Writer,
+	place: string,
+	a: alert.Alert,
+	r: settings.Run,
+) {
+	said := alert.say(words, a, place, r.problem)
+	fmt.wprintfln(w, "%s: alert: %s", place, said)
+	kept := settings.Raised {
+		place        = place,
+		raised       = r.started,
+		kind         = alert.CONDITION_KEYS[a.kind],
+		used_percent = a.used_percent,
+		free         = a.free,
+		total        = a.total,
+		days         = a.days,
+		grew         = a.grew,
+		limit        = a.limit,
+		problem      = r.problem,
+	}
+	if err := settings.raise(st, kept); err != nil {
+		fmt.wprintfln(w, "error: cannot keep the alert: %s", history.describe(err))
+	}
+	if opt.notify != nil && !alert.notify(opt.desktop, version.NAME, said, opt.notify, opt.user) {
+		fmt.wprintln(w, "note: no desktop notification could be shown")
+	}
+}
+
+/*
+words_of is what the monitor says, in the language the person chose in the
+window, else the system's, in the temp allocator: two whole message tables,
+kept off the stack.
+*/
+@(private)
+words_of :: proc(st: ^settings.Store) -> ^msg.Strings {
+	words := new(msg.Strings, context.temp_allocator)
+	locale := msg.system_locale()
+	if tag, ok := settings.get(st, settings.LANGUAGE, context.temp_allocator); ok {
+		if chosen, found := i18n.locale_match(tag); found && msg.offered(chosen) {
+			locale = chosen
+		}
+	}
+	msg.init(words, locale)
+	return words
 }
 
 // how_read says how a run read its place: updated from the last tree, or
@@ -215,4 +317,16 @@ forget :: proc(
 		os.remove(history.baseline_path(paths.history, place, context.temp_allocator))
 	}
 	return
+}
+
+// alert_of is an alert as the log kept it, and whether its kind is one this
+// build knows.
+alert_of :: proc(r: settings.Raised) -> (a: alert.Alert, known: bool) {
+	a.kind = alert.condition_of(r.kind) or_return
+	a.used_percent = r.used_percent
+	a.free, a.total = r.free, r.total
+	a.days = r.days
+	a.grew = r.grew
+	a.limit = r.limit
+	return a, true
 }

@@ -68,7 +68,18 @@ leita monitor list
 leita monitor off
 ```
 
-Scheduled scans come with a licence, with the same 30-day trial.
+Each watched place can raise an alert: when its disk passes a percent used or
+falls under a free space you set, when it is forecast to fill within some
+days, from the scans kept so far, or when the place grows far faster than it
+has been. An alert shows once, as a desktop notification and in Monitoring,
+the scan it first appears, and again only after it has cleared:
+
+```sh
+leita monitor add D: --warn-used 80 --fail-used 95 --min-free 20GiB --full-within 14 --growth
+```
+
+Scheduled scans and their alerts come with a licence, with the same 30-day
+trial.
 
 ## Free up space, safely
 

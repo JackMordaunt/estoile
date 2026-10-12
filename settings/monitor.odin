@@ -84,11 +84,11 @@ Run :: struct {
 	updated:    bool,
 	why:        string, // why it was read whole, "" for no reason given
 	problem:    string,
-	firing:     string, // what was wrong after it, alert.Kind keys joined by ","
+	firing:     string, // what was wrong after it, alert.Condition keys joined by ","
 }
 
 // Raised is an alert, kept the run it first fired: on which place and when,
-// its alert.Kind key, and what it measured, each 0 where it does not apply:
+// its alert.Condition key, and what it measured, each 0 where it does not apply:
 // the percent used, the disk's free and total bytes, the days a forecast says
 // are left, the bytes grown since the last scan, and the limit crossed.
 Raised :: struct {

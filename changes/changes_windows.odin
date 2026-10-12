@@ -36,7 +36,7 @@ administrator and changes the machine.
 // A cursor for `place` as it is now, to take before scanning it whole. Not ok where
 // the volume keeps no journal, or cannot be asked.
 now :: proc(place: string) -> (c: Cursor, ok: bool) {
-	v, opened := open_volume(place)
+	v, opened := open_volume(as_directory(place))
 	if !opened {
 		return {}, false
 	}
@@ -73,7 +73,7 @@ since :: proc(
 	if c.source != .Usn {
 		return rescan("no change journal cursor was kept for this place"), {}, .None
 	}
-	v, opened := open_volume(place)
+	v, opened := open_volume(as_directory(place))
 	if !opened {
 		return rescan("the place's volume could not be opened to read its journal"), {}, .None
 	}
@@ -111,7 +111,7 @@ since :: proc(
 	if len(parents) == 0 {
 		return changed, next, .None
 	}
-	hint, canonical, hint_ok := open_place(place)
+	hint, canonical, hint_ok := open_place(as_directory(place))
 	if !hint_ok {
 		change_set_destroy(&changed)
 		return rescan("the place could not be opened"), {}, .None
@@ -137,6 +137,19 @@ since :: proc(
 		append(&changed.shallow, spelt)
 	}
 	return changed, next, .None
+}
+
+/*
+`place` as a path that names a directory: a whole volume's place is its drive, C:,
+which on its own names the current directory on that drive rather than its root
+(Microsoft, "Naming Files, Paths, and Namespaces": a drive-relative path).
+*/
+@(private = "file")
+as_directory :: proc(place: string) -> string {
+	if len(place) == 2 && place[1] == ':' {
+		return strings.concatenate({place, `\`}, context.temp_allocator)
+	}
+	return place
 }
 
 // What the journal said of itself: USN_JOURNAL_DATA_V0, as far as it matters here.

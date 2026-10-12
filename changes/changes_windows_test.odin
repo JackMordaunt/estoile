@@ -94,3 +94,27 @@ test_a_journal_cursor_that_cannot_be_trusted_rescans :: proc(t: ^testing.T) {
 		testing.expectf(t, set.rescan && set.why != "", "%v: no rescan", bad)
 	}
 }
+
+// A whole volume's place is its drive, C:, which must be read as its root, not as
+// the current directory on it: a change in the temp directory is named under it.
+@(test)
+test_a_drive_place_is_its_root :: proc(t: ^testing.T) {
+	root := fresh(t, "usn_drive")
+	defer os.remove_all(root)
+	drive := root[:2]
+	c, ok := now(drive)
+	if !testing.expect(t, ok, "no cursor for the drive") {
+		return
+	}
+	put(t, fmt.tprintf(`%s\new.txt`, root), 100)
+	set, _, err := since(drive, c)
+	defer change_set_destroy(&set)
+	testing.expect_value(t, err, Error.None)
+	testing.expectf(t, !set.rescan, "rescan: %s", set.why)
+	named := false
+	for p in set.shallow {
+		rest, inside := under(drive, p)
+		named ||= inside && strings.has_suffix(rest, `leita_changes_usn_drive`)
+	}
+	testing.expectf(t, named, "the temp directory is not named: %v", set.shallow)
+}

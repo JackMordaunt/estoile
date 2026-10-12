@@ -50,6 +50,7 @@ import "../../licence"
 import "../../ntfs"
 import "../../reclaim"
 import "../../scan"
+import "../../settings"
 import "../../survey"
 import "../../synth"
 import "../../walk"
@@ -72,6 +73,7 @@ Query :: union {
 	query.Reclaim,
 	query.History,
 	query.Licence,
+	query.Settings,
 }
 
 // Need_Event is a need appearing or going, as the main thread hands it on.
@@ -131,6 +133,8 @@ Desk :: struct {
 	snapshot:        i64,
 	compared:        query.Snapshot,
 	was:             map[u32]u64,
+	// What the person chose, kept between runs (settings.odin); nil when not.
+	settings:        ^settings.Store,
 	// Where reports are exported to when the window names no file, and where
 	// its save dialog opens: files.reports_folder unless init was given one, ""
 	// for neither; and each one saved, by the notice that said so (export.odin).
@@ -200,6 +204,7 @@ init :: proc(
 	}
 	msg.init(h.desk.words, .English)
 	history_open(&h.desk, kept)
+	settings_open(&h.desk, licence.path_beside(kept, context.temp_allocator, settings.FILE))
 	licence_open(
 		&h.desk,
 		licence.path_beside(kept, context.temp_allocator),
@@ -269,6 +274,7 @@ stop :: proc(h: ^Host) {
 	}
 	delete(h.desk.saved)
 	history_close(&h.desk)
+	settings_close(&h.desk)
 	licence_close(&h.desk)
 	ui.inbox_destroy(&h.inbox)
 }
@@ -293,6 +299,8 @@ on_need :: proc(user: rawptr, need: ui.Need, added: bool) {
 		q, _ = ui.need_as(need, query.History)
 	case ui.need_is(need, query.Licence):
 		q = query.Licence{}
+	case ui.need_is(need, query.Settings):
+		q = query.Settings{}
 	case:
 		return
 	}
@@ -412,7 +420,10 @@ desk_step :: proc(d: ^Desk, v: Desk_In) {
 			answer_all(d)
 		case command.Language:
 			set_language(d, c)
+			remember_language(d, c)
 			answer_all(d)
+		case command.Theme:
+			remember_theme(d, c)
 		case command.Locate, command.Trash, command.Rename, command.Clean, command.Empty_Trash:
 			act(d, &e)
 			if d.scan != nil {
@@ -591,6 +602,8 @@ answer :: proc(d: ^Desk, key: ui.Need_Key, q: Query) {
 		put(d, key, history_answer(d, q))
 	case query.Licence:
 		put(d, key, licence_answer(d))
+	case query.Settings:
+		put(d, key, settings_answer(d))
 	}
 }
 

@@ -248,3 +248,19 @@ Licence_Result :: struct {
 	offered:    u32,
 	problem:    string,
 }
+
+// Settings is what the person chose in an earlier run, for the window to open
+// as they left it.
+Settings :: struct {}
+
+// Theme_Choice is the theme chosen, or Unset to follow the window's default.
+Theme_Choice :: enum u8 {
+	Unset,
+	Light,
+	Dark,
+}
+
+Settings_Result :: struct {
+	language: string, // a BCP 47 tag, as i18n.locale_tag gives it; "" when none was chosen
+	theme:    Theme_Choice,
+}

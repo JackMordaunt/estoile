@@ -13,8 +13,8 @@ import "../msg"
 The window's language. The toolbar's globe opens a menu of the languages leita
 offers, each by its own name, since a reader looks for theirs that way; a choice
 switches the whole window from the next frame. The window opens in the system's
-language (msg.system_locale), and a choice lasts until leita closes: the view
-keeps nothing between runs.
+language (msg.system_locale), or the one the person picked in an earlier run,
+which the host keeps (settings.odin).
 
 Every string the view draws comes through tr and trf, which read the language
 in use this frame on this thread, as primer.use's scheme is read: view sets it
@@ -84,6 +84,12 @@ language_button :: proc(gtx: ^ui.Ctx, m: ^Model) {
 			selected = locale == m.locale,
 		) {
 			set_language(m, locale)
+			// Picked, so the host keeps it for the next run.
+			ui.command(
+				gtx,
+				command.Command(command.Language{locale = u8(m.locale), chosen = true}),
+			)
+			m.locale_told = m.locale
 		}
 	}
 }

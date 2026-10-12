@@ -20,6 +20,7 @@ import "core:time"
 
 import "jm:debug"
 import "jm:http/loopback"
+import "jm:i18n"
 import "jm:sqlite3"
 import "jm:stream"
 
@@ -30,6 +31,7 @@ import "jm:ui/primer"
 import "jm:ui/render"
 
 import "../../licence"
+import "../../settings"
 import "../command"
 import "../msg"
 import "../query"
@@ -2423,4 +2425,65 @@ the_language_menu_switches_the_window_and_the_host :: proc(t: ^testing.T) {
 	testing.expect(t, ui.probe_click_top(&r.p, msg.tr(de, .Add_Licence)))
 	hand_on(&r)
 	testing.expect(t, settle(&r, msg.tr(de, .Not_A_Key)), "and so does the host")
+}
+
+@(test)
+the_language_and_theme_chosen_are_there_the_next_run :: proc(t: ^testing.T) {
+	root := fixture(t, "settings")
+	defer os.remove_all(root)
+	kept := fmt.tprintf("%s-kept/history.db", root)
+	defer os.remove_all(fmt.tprintf("%s-kept", root))
+	de := new(msg.Strings)
+	defer free(de)
+	msg.init(de, .German)
+
+	{
+		r: Rig
+		rig_open(&r, root, kept)
+		defer rig_close(&r)
+		testing.expect(t, settle(&r, "Done"))
+		testing.expect(t, !r.m.dark, "light until chosen")
+		ui.probe_advance(&r.p, 10, 1.0 / 60)
+		testing.expect(t, ui.probe_click(&r.p, "Language"))
+		ui.probe_advance(&r.p, 20, 1.0 / 60)
+		testing.expect(t, ui.probe_click(&r.p, "Deutsch"))
+		press_and_hand_on(&r)
+		testing.expect(t, settle(&r, msg.tr(de, .Done)))
+		ui.probe_advance(&r.p, 10, 1.0 / 60)
+		testing.expect(t, ui.probe_click(&r.p, msg.tr(de, .Theme_Dark)))
+		press_and_hand_on(&r)
+		testing.expect(t, r.m.dark)
+		testing.expect(
+			t,
+			settings_hold(kept, settings.THEME, "dark"),
+			"the host writes the choice at once",
+		)
+	}
+
+	r: Rig
+	rig_open(&r, root, kept)
+	defer rig_close(&r)
+	testing.expect(t, settle(&r, msg.tr(de, .Done)), "the next run opens in German")
+	testing.expect(t, r.m.dark, "and dark")
+	testing.expect_value(t, r.m.locale, i18n.Locale.German)
+}
+
+// settings_hold waits for the settings beside kept to hold value under key, as
+// another connection sees them.
+@(private = "file")
+settings_hold :: proc(kept, key, value: string) -> bool {
+	st: settings.Store
+	if settings.open(&st, licence.path_beside(kept, context.temp_allocator, settings.FILE)) !=
+	   nil {
+		return false
+	}
+	defer settings.close(&st)
+	deadline := time.tick_now()._nsec + i64(10 * time.Second)
+	for time.tick_now()._nsec < deadline {
+		if v, ok := settings.get(&st, key, context.temp_allocator); ok && v == value {
+			return true
+		}
+		time.sleep(5 * time.Millisecond)
+	}
+	return false
 }

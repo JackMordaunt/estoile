@@ -215,6 +215,8 @@ Model :: struct {
 	strings:          ^msg.Strings,
 	language_open:    bool,
 	locale_told:      Maybe(i18n.Locale),
+	// What the person chose in an earlier run has been put in use (settings.odin).
+	settings_read:    bool,
 }
 
 // model_init readies m to show path in locale, English unless the caller says.
@@ -253,6 +255,7 @@ model_destroy :: proc(m: ^Model) {
 
 view :: proc(gtx: ^ui.Ctx, user: rawptr) {
 	m := (^Model)(user)
+	recall_settings(gtx, m)
 	theme: primer.Theme = m.dark ? .Dark : .Light
 	m.scheme = primer.theme_scheme(theme)
 	primer.use(&m.scheme, theme)
@@ -437,6 +440,7 @@ toolbar :: proc(gtx: ^ui.Ctx, m: ^Model, prog: ^query.Progress_Result) {
 		.Invisible,
 	) {
 		m.dark = !m.dark
+		ui.command(gtx, command.Command(command.Theme{dark = m.dark}))
 	}
 }
 

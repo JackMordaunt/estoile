@@ -40,6 +40,7 @@ Command :: union {
 	Reveal,
 	Add_Licence,
 	Language,
+	Theme,
 }
 
 // Scan reads what is at path, calling off any scan still running.
@@ -139,7 +140,14 @@ Add_Licence :: struct {
 
 // Language is the language the window is in, an i18n.Locale's value, which
 // this package does not import: the host words its notices and answers in it
-// from now on.
+// from now on. chosen says the person picked it, so it is remembered for the
+// next run; the language the window opens in is only followed.
 Language :: struct {
 	locale: u8,
+	chosen: bool,
+}
+
+// Theme is the theme the person chose, remembered for the next run.
+Theme :: struct {
+	dark: bool,
 }

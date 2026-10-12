@@ -123,7 +123,10 @@ an_older_store_gains_the_columns_it_lacks :: proc(t: ^testing.T) {
 					seconds REAL NOT NULL, bytes INTEGER NOT NULL, disk_total INTEGER NOT NULL,
 					disk_free INTEGER NOT NULL, problem TEXT NOT NULL);
 				INSERT INTO run(place, started, seconds, bytes, disk_total, disk_free, problem)
-					VALUES ('/srv', 5, 1.0, 7, 0, 0, '');`,
+					VALUES ('/srv', 5, 1.0, 7, 0, 0, '');
+				CREATE TABLE watch(place TEXT PRIMARY KEY, every TEXT NOT NULL,
+					added INTEGER NOT NULL) WITHOUT ROWID;
+				INSERT INTO watch(place, every, added) VALUES ('/srv', 'weekly', 3);`,
 			) ==
 			nil,
 		)
@@ -138,6 +141,11 @@ an_older_store_gains_the_columns_it_lacks :: proc(t: ^testing.T) {
 		testing.expect_value(t, rs[0].bytes, 7)
 		testing.expect(t, !rs[0].updated)
 		testing.expect_value(t, rs[0].why, "")
+		testing.expect_value(t, rs[0].firing, "")
+		ws, _ := watches(&st, context.temp_allocator)
+		testing.expect_value(t, len(ws), 1)
+		testing.expect_value(t, ws[0].every, Frequency.Weekly)
+		testing.expect_value(t, ws[0].limits, Limits{})
 		close(&st)
 	}
 	st: Store
@@ -147,4 +155,62 @@ an_older_store_gains_the_columns_it_lacks :: proc(t: ^testing.T) {
 	testing.expect(t, err == nil)
 	last, _ := last_run(&st, "/srv", context.temp_allocator)
 	testing.expect(t, last.updated)
+}
+
+@(test)
+a_watch_keeps_its_limits_and_a_run_what_was_firing :: proc(t: ^testing.T) {
+	st: Store
+	testing.expect(t, open(&st, ":memory:") == nil)
+	defer close(&st)
+
+	limits := Limits {
+		warn_used   = 80,
+		fail_used   = 95,
+		min_free    = 20 << 30,
+		full_within = 14,
+		growth      = true,
+	}
+	testing.expect(t, watch(&st, {place = "/srv", every = .Daily, limits = limits}) == nil)
+	ws, _ := watches(&st, context.temp_allocator)
+	testing.expect_value(t, ws[0].limits, limits)
+	testing.expect(t, watch(&st, {place = "/srv", every = .Daily}) == nil)
+	ws, _ = watches(&st, context.temp_allocator)
+	testing.expect_value(t, ws[0].limits, Limits{})
+
+	_, err := record(&st, {place = "/srv", started = 1, firing = "warn_used,filling"})
+	testing.expect(t, err == nil)
+	last, _ := last_run(&st, "/srv", context.temp_allocator)
+	testing.expect_value(t, last.firing, "warn_used,filling")
+}
+
+@(test)
+alerts_are_kept_newest_first_up_to_a_limit :: proc(t: ^testing.T) {
+	st: Store
+	testing.expect(t, open(&st, ":memory:") == nil)
+	defer close(&st)
+
+	for i in 0 ..< RAISED_KEPT + 3 {
+		place := "/srv" if i % 2 == 0 else "/home"
+		a := Raised {
+			place        = place,
+			raised       = i64(i),
+			kind         = "warn_used",
+			used_percent = 81.5,
+			free         = 3,
+			total        = 10,
+			limit        = 80,
+		}
+		testing.expect(t, raise(&st, a) == nil)
+	}
+	all, err := alerts(&st, allocator = context.temp_allocator)
+	testing.expect(t, err == nil)
+	testing.expect_value(t, len(all), RAISED_KEPT)
+	testing.expect_value(t, all[0].raised, i64(RAISED_KEPT + 2))
+	testing.expect_value(t, all[0].used_percent, 81.5)
+	testing.expect_value(t, all[0].limit, 80)
+	srv, _ := alerts(&st, "/srv", 5, context.temp_allocator)
+	testing.expect_value(t, len(srv), 5)
+	for a in srv {
+		testing.expect_value(t, a.place, "/srv")
+	}
 }

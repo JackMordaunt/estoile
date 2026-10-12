@@ -10,6 +10,10 @@ is scanned, whether monitoring is on at all, and how each scan the monitor ran
 went. The window and the command line share these through settings.db, so a
 place added in one is watched by the other's next run.
 
+Each place watched carries the limits its scans are checked against (Limits),
+each run what was wrong after it (firing), and the alerts raised, each the
+first run something went wrong, are kept in a log of their own (Raised).
+
 Monitoring is off until the person turns it on: MONITOR unset reads as off, and
 no place is watched until one is added.
 */
@@ -44,11 +48,25 @@ frequency_named :: proc(name: string) -> (Frequency, bool) {
 	return .Daily, false
 }
 
-// Watch is one place the monitor scans.
+// Watch is one place the monitor scans, and the limits each scan is checked
+// against.
 Watch :: struct {
-	place: string, // as the person gave it
-	every: Frequency,
-	added: i64, // Unix seconds
+	place:  string, // as the person gave it
+	every:  Frequency,
+	added:  i64, // Unix seconds
+	limits: Limits,
+}
+
+// Limits are what a scan of a watched place is checked against, each off at
+// zero (or false): report.threshold_of's three, then how many days ahead the
+// disk may be forecast to fill, and whether to say when the place grows much
+// faster than it has been.
+Limits :: struct {
+	warn_used:   int, // percent used
+	fail_used:   int, // percent used
+	min_free:    u64, // bytes
+	full_within: int, // days
+	growth:      bool,
 }
 
 // Run is one scan of a watched place the monitor ran: when it started, how
@@ -66,7 +84,29 @@ Run :: struct {
 	updated:    bool,
 	why:        string, // why it was read whole, "" for no reason given
 	problem:    string,
+	firing:     string, // what was wrong after it, alert.Kind keys joined by ","
 }
+
+// Raised is an alert, kept the run it first fired: on which place and when,
+// its alert.Kind key, and what it measured, each 0 where it does not apply:
+// the percent used, the disk's free and total bytes, the days a forecast says
+// are left, the bytes grown since the last scan, and the limit crossed.
+Raised :: struct {
+	id:           i64,
+	place:        string,
+	raised:       i64, // Unix seconds
+	kind:         string,
+	used_percent: f64,
+	free:         u64,
+	total:        u64,
+	days:         f64,
+	grew:         u64,
+	limit:        f64,
+	problem:      string, // why a scan failed
+}
+
+// RAISED_KEPT is how many alerts are kept, newest first, of every place.
+RAISED_KEPT :: 200
 
 // RUNS_KEPT is how many runs of each place are kept, newest first.
 RUNS_KEPT :: 50
@@ -86,7 +126,19 @@ MONITOR_SCHEMA :: `
 		disk_total INTEGER NOT NULL,
 		disk_free INTEGER NOT NULL,
 		problem TEXT NOT NULL);
-	CREATE INDEX IF NOT EXISTS run_place ON run(place, started);`
+	CREATE INDEX IF NOT EXISTS run_place ON run(place, started);
+	CREATE TABLE IF NOT EXISTS raised(
+		id INTEGER PRIMARY KEY,
+		place TEXT NOT NULL,
+		raised INTEGER NOT NULL,
+		kind TEXT NOT NULL,
+		used_percent REAL NOT NULL,
+		free INTEGER NOT NULL,
+		total INTEGER NOT NULL,
+		days REAL NOT NULL,
+		grew INTEGER NOT NULL,
+		limit_crossed REAL NOT NULL,
+		problem TEXT NOT NULL);`
 
 // monitoring is whether the person turned monitoring on.
 monitoring :: proc(st: ^Store) -> bool {
@@ -103,20 +155,30 @@ set_monitoring :: proc(st: ^Store, on: bool) -> sqlite3.Error {
 watch :: proc(st: ^Store, w: Watch) -> sqlite3.Error {
 	return sqlite3.exec_args(
 		st.db,
-		`INSERT INTO watch(place, every, added) VALUES (?, ?, ?)
-			ON CONFLICT(place) DO UPDATE SET every = excluded.every`,
+		`INSERT INTO watch(place, every, added, warn_used, fail_used, min_free, full_within, growth)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(place) DO UPDATE SET every = excluded.every,
+				warn_used = excluded.warn_used, fail_used = excluded.fail_used,
+				min_free = excluded.min_free, full_within = excluded.full_within,
+				growth = excluded.growth`,
 		w.place,
 		FREQUENCY_NAMES[w.every],
 		w.added,
+		i64(w.limits.warn_used),
+		i64(w.limits.fail_used),
+		i64(w.limits.min_free),
+		i64(w.limits.full_within),
+		w.limits.growth,
 	)
 }
 
-// unwatch stops watching place and forgets its runs, and says whether it was
-// watched.
+// unwatch stops watching place and forgets its runs and alerts, and says
+// whether it was watched.
 unwatch :: proc(st: ^Store, place: string) -> (found: bool, err: sqlite3.Error) {
 	sqlite3.exec_args(st.db, "DELETE FROM watch WHERE place = ?", place) or_return
 	found = sqlite3.changes(st.db) > 0
 	sqlite3.exec_args(st.db, "DELETE FROM run WHERE place = ?", place) or_return
+	sqlite3.exec_args(st.db, "DELETE FROM raised WHERE place = ?", place) or_return
 	return
 }
 
@@ -124,7 +186,8 @@ unwatch :: proc(st: ^Store, place: string) -> (found: bool, err: sqlite3.Error) 
 watches :: proc(st: ^Store, allocator := context.allocator) -> (out: []Watch, err: sqlite3.Error) {
 	rows := sqlite3.query(
 		st.db,
-		"SELECT place, every, added FROM watch ORDER BY added, place",
+		`SELECT place, every, added, warn_used, fail_used, min_free, full_within, growth
+			FROM watch ORDER BY added, place`,
 		allocator = context.temp_allocator,
 	) or_return
 	found := make([dynamic]Watch, allocator)
@@ -136,6 +199,13 @@ watches :: proc(st: ^Store, allocator := context.allocator) -> (out: []Watch, er
 				place = strings.clone(sqlite3.text(rows, 0), allocator),
 				every = every,
 				added = sqlite3.integer(rows, 2),
+				limits = {
+					warn_used = int(sqlite3.integer(rows, 3)),
+					fail_used = int(sqlite3.integer(rows, 4)),
+					min_free = u64(sqlite3.integer(rows, 5)),
+					full_within = int(sqlite3.integer(rows, 6)),
+					growth = sqlite3.boolean(rows, 7),
+				},
 			},
 		)
 	}
@@ -159,8 +229,8 @@ watches_destroy :: proc(ws: []Watch, allocator := context.allocator) {
 record :: proc(st: ^Store, r: Run) -> (id: i64, err: sqlite3.Error) {
 	sqlite3.exec_args(
 		st.db,
-		`INSERT INTO run(place, started, seconds, bytes, disk_total, disk_free, updated, why, problem)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO run(place, started, seconds, bytes, disk_total, disk_free, updated, why, problem, firing)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		r.place,
 		r.started,
 		r.seconds,
@@ -170,6 +240,7 @@ record :: proc(st: ^Store, r: Run) -> (id: i64, err: sqlite3.Error) {
 		r.updated,
 		r.why,
 		r.problem,
+		r.firing,
 	) or_return
 	id = sqlite3.last_id(st.db)
 	sqlite3.exec_args(
@@ -195,7 +266,7 @@ runs :: proc(
 ) {
 	rows := sqlite3.query(
 		st.db,
-		`SELECT id, place, started, seconds, bytes, disk_total, disk_free, updated, why, problem
+		`SELECT id, place, started, seconds, bytes, disk_total, disk_free, updated, why, problem, firing
 			FROM run WHERE place = ? ORDER BY started DESC, id DESC LIMIT ?`,
 		place,
 		i64(limit),
@@ -216,6 +287,7 @@ runs :: proc(
 				updated = sqlite3.boolean(rows, 7),
 				why = strings.clone(sqlite3.text(rows, 8), allocator),
 				problem = strings.clone(sqlite3.text(rows, 9), allocator),
+				firing = strings.clone(sqlite3.text(rows, 10), allocator),
 			},
 		)
 	}
@@ -232,6 +304,7 @@ runs_destroy :: proc(rs: []Run, allocator := context.allocator) {
 		delete(r.place, allocator)
 		delete(r.why, allocator)
 		delete(r.problem, allocator)
+		delete(r.firing, allocator)
 	}
 	delete(rs, allocator)
 }
@@ -246,5 +319,89 @@ last_run :: proc(st: ^Store, place: string, allocator := context.allocator) -> (
 	r.place = strings.clone(r.place, allocator)
 	r.why = strings.clone(r.why, allocator)
 	r.problem = strings.clone(r.problem, allocator)
+	r.firing = strings.clone(r.firing, allocator)
 	return r, true
+}
+
+// raise keeps a as raised, and forgets the oldest past RAISED_KEPT.
+raise :: proc(st: ^Store, a: Raised) -> sqlite3.Error {
+	sqlite3.exec_args(
+		st.db,
+		`INSERT INTO raised(place, raised, kind, used_percent, free, total, days, grew,
+				limit_crossed, problem)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		a.place,
+		a.raised,
+		a.kind,
+		a.used_percent,
+		i64(a.free),
+		i64(a.total),
+		a.days,
+		i64(a.grew),
+		a.limit,
+		a.problem,
+	) or_return
+	return sqlite3.exec_args(
+		st.db,
+		`DELETE FROM raised WHERE id NOT IN
+			(SELECT id FROM raised ORDER BY raised DESC, id DESC LIMIT ?)`,
+		i64(RAISED_KEPT),
+	)
+}
+
+// alerts is the alerts raised, newest first, at most limit, of place or of
+// every place for "", in allocator.
+alerts :: proc(
+	st: ^Store,
+	place := "",
+	limit := RAISED_KEPT,
+	allocator := context.allocator,
+) -> (
+	out: []Raised,
+	err: sqlite3.Error,
+) {
+	rows := sqlite3.query(
+		st.db,
+		`SELECT id, place, raised, kind, used_percent, free, total, days, grew, limit_crossed,
+				problem
+			FROM raised WHERE ? = '' OR place = ? ORDER BY raised DESC, id DESC LIMIT ?`,
+		place,
+		place,
+		i64(limit),
+		allocator = context.temp_allocator,
+	) or_return
+	found := make([dynamic]Raised, allocator)
+	for sqlite3.next(&rows) {
+		append(
+			&found,
+			Raised {
+				id = sqlite3.integer(rows, 0),
+				place = strings.clone(sqlite3.text(rows, 1), allocator),
+				raised = sqlite3.integer(rows, 2),
+				kind = strings.clone(sqlite3.text(rows, 3), allocator),
+				used_percent = sqlite3.real(rows, 4),
+				free = u64(sqlite3.integer(rows, 5)),
+				total = u64(sqlite3.integer(rows, 6)),
+				days = sqlite3.real(rows, 7),
+				grew = u64(sqlite3.integer(rows, 8)),
+				limit = sqlite3.real(rows, 9),
+				problem = strings.clone(sqlite3.text(rows, 10), allocator),
+			},
+		)
+	}
+	if err = sqlite3.finish(&rows); err != nil {
+		alerts_destroy(found[:], allocator)
+		return nil, err
+	}
+	return found[:], nil
+}
+
+// alerts_destroy frees what alerts returned.
+alerts_destroy :: proc(rs: []Raised, allocator := context.allocator) {
+	for r in rs {
+		delete(r.place, allocator)
+		delete(r.kind, allocator)
+		delete(r.problem, allocator)
+	}
+	delete(rs, allocator)
 }

@@ -5,6 +5,8 @@ import "core:os"
 import "core:path/filepath"
 import "core:testing"
 
+import "jm:sqlite3"
+
 @(test)
 monitoring_is_off_until_turned_on :: proc(t: ^testing.T) {
 	st: Store
@@ -99,4 +101,50 @@ a_store_opened_again_keeps_its_watches :: proc(t: ^testing.T) {
 		testing.expect_value(t, w.place, fmt.tprintf("/p%d", i))
 		testing.expect_value(t, w.every, Frequency.Hourly)
 	}
+}
+
+// A store made before a column was added gains it when opened, keeping its
+// rows, which read as the column's default; opening it again changes nothing.
+@(test)
+an_older_store_gains_the_columns_it_lacks :: proc(t: ^testing.T) {
+	dir, derr := os.make_directory_temp("", "leita-settings-*", context.temp_allocator)
+	testing.expect(t, derr == nil)
+	defer os.remove_all(dir)
+	path, _ := filepath.join({dir, FILE}, context.temp_allocator)
+	{
+		db, err := sqlite3.open(path, {}, context.temp_allocator)
+		testing.expect(t, err == nil)
+		testing.expect(
+			t,
+			sqlite3.exec(
+				db,
+				`CREATE TABLE run(
+					id INTEGER PRIMARY KEY, place TEXT NOT NULL, started INTEGER NOT NULL,
+					seconds REAL NOT NULL, bytes INTEGER NOT NULL, disk_total INTEGER NOT NULL,
+					disk_free INTEGER NOT NULL, problem TEXT NOT NULL);
+				INSERT INTO run(place, started, seconds, bytes, disk_total, disk_free, problem)
+					VALUES ('/srv', 5, 1.0, 7, 0, 0, '');`,
+			) ==
+			nil,
+		)
+		sqlite3.close(&db)
+	}
+	for _ in 0 ..< 2 {
+		st: Store
+		testing.expect(t, open(&st, path) == nil)
+		rs, err := runs(&st, "/srv", allocator = context.temp_allocator)
+		testing.expect(t, err == nil)
+		testing.expect_value(t, len(rs), 1)
+		testing.expect_value(t, rs[0].bytes, 7)
+		testing.expect(t, !rs[0].updated)
+		testing.expect_value(t, rs[0].why, "")
+		close(&st)
+	}
+	st: Store
+	testing.expect(t, open(&st, path) == nil)
+	defer close(&st)
+	_, err := record(&st, {place = "/srv", started = 6, updated = true, why = ""})
+	testing.expect(t, err == nil)
+	last, _ := last_run(&st, "/srv", context.temp_allocator)
+	testing.expect(t, last.updated)
 }

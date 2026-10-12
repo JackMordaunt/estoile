@@ -52,7 +52,8 @@ Watch :: struct {
 }
 
 // Run is one scan of a watched place the monitor ran: when it started, how
-// long it took, what the place held and the disk it was on then, and why it
+// long it took, what the place held and the disk it was on then, whether it
+// was updated from the place's last tree or read whole and why, and why it
 // failed, "" when it did not.
 Run :: struct {
 	id:         i64,
@@ -62,6 +63,8 @@ Run :: struct {
 	bytes:      u64,
 	disk_total: u64,
 	disk_free:  u64,
+	updated:    bool,
+	why:        string, // why it was read whole, "" for no reason given
 	problem:    string,
 }
 
@@ -156,14 +159,16 @@ watches_destroy :: proc(ws: []Watch, allocator := context.allocator) {
 record :: proc(st: ^Store, r: Run) -> (id: i64, err: sqlite3.Error) {
 	sqlite3.exec_args(
 		st.db,
-		`INSERT INTO run(place, started, seconds, bytes, disk_total, disk_free, problem)
-			VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO run(place, started, seconds, bytes, disk_total, disk_free, updated, why, problem)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		r.place,
 		r.started,
 		r.seconds,
 		i64(r.bytes),
 		i64(r.disk_total),
 		i64(r.disk_free),
+		r.updated,
+		r.why,
 		r.problem,
 	) or_return
 	id = sqlite3.last_id(st.db)
@@ -190,7 +195,7 @@ runs :: proc(
 ) {
 	rows := sqlite3.query(
 		st.db,
-		`SELECT id, place, started, seconds, bytes, disk_total, disk_free, problem
+		`SELECT id, place, started, seconds, bytes, disk_total, disk_free, updated, why, problem
 			FROM run WHERE place = ? ORDER BY started DESC, id DESC LIMIT ?`,
 		place,
 		i64(limit),
@@ -208,7 +213,9 @@ runs :: proc(
 				bytes = u64(sqlite3.integer(rows, 4)),
 				disk_total = u64(sqlite3.integer(rows, 5)),
 				disk_free = u64(sqlite3.integer(rows, 6)),
-				problem = strings.clone(sqlite3.text(rows, 7), allocator),
+				updated = sqlite3.boolean(rows, 7),
+				why = strings.clone(sqlite3.text(rows, 8), allocator),
+				problem = strings.clone(sqlite3.text(rows, 9), allocator),
 			},
 		)
 	}
@@ -223,6 +230,7 @@ runs :: proc(
 runs_destroy :: proc(rs: []Run, allocator := context.allocator) {
 	for r in rs {
 		delete(r.place, allocator)
+		delete(r.why, allocator)
 		delete(r.problem, allocator)
 	}
 	delete(rs, allocator)
@@ -236,6 +244,7 @@ last_run :: proc(st: ^Store, place: string, allocator := context.allocator) -> (
 	}
 	r := rs[0]
 	r.place = strings.clone(r.place, allocator)
+	r.why = strings.clone(r.why, allocator)
 	r.problem = strings.clone(r.problem, allocator)
 	return r, true
 }

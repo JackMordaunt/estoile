@@ -57,6 +57,10 @@ open :: proc(st: ^Store, path: string) -> sqlite3.Error {
 			return err
 		}
 	}
+	if err := migrate(db); err != nil {
+		sqlite3.close(&db)
+		return err
+	}
 	st.db = db
 	return nil
 }
@@ -101,4 +105,43 @@ set :: proc(st: ^Store, key, value: string) -> sqlite3.Error {
 		key,
 		value,
 	)
+}
+
+// Column is a column added to a table after the table was first made, and the
+// statement that adds it.
+@(private)
+Column :: struct {
+	table, name, add: string,
+}
+
+/*
+ADDED is every column added since its table was first made. A store made
+before gains each it lacks when it is opened, keeping all it holds; a row from
+before reads as the column's default. Asking first makes opening a store any
+number of times the same as opening it once.
+*/
+@(private)
+ADDED := [?]Column {
+	{"run", "updated", "ALTER TABLE run ADD COLUMN updated INTEGER NOT NULL DEFAULT 0"},
+	{"run", "why", "ALTER TABLE run ADD COLUMN why TEXT NOT NULL DEFAULT ''"},
+}
+
+// migrate adds each column in ADDED its table does not have yet.
+@(private)
+migrate :: proc(db: sqlite3.Db) -> sqlite3.Error {
+	for column in ADDED {
+		rows := sqlite3.query(
+			db,
+			"SELECT 1 FROM pragma_table_info(?) WHERE name = ?",
+			column.table,
+			column.name,
+			allocator = context.temp_allocator,
+		) or_return
+		has := sqlite3.next(&rows)
+		sqlite3.finish(&rows) or_return
+		if !has {
+			sqlite3.exec(db, column.add) or_return
+		}
+	}
+	return nil
 }

@@ -1,0 +1,7 @@
+# leita, English: the source language. Every other locale translates this
+# file's keys. A line is `key = text`; `key.one = text` is one plural form, and
+# a bare key is the `other` form. {0} to {9} are arguments, {{ a literal brace.
+# The product's name is never written here: it comes in as an argument.
+
+# Toolbar
+language = Language

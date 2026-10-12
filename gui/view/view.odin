@@ -14,6 +14,7 @@ import "core:fmt"
 import "core:os"
 import "core:strings"
 
+import "jm:i18n"
 import "jm:ui"
 import "jm:ui/design"
 import "jm:ui/ops"
@@ -24,6 +25,7 @@ import "../../human"
 import "../../version"
 import "../command"
 import mark "../mark"
+import "../msg"
 import "../query"
 
 // SIDE_WIDTH is the side column's width until it is dragged: the open directory's
@@ -176,10 +178,19 @@ Model :: struct {
 	trial_seen:       bool, // the trial banner was dismissed, until leita next starts
 	buy_url:          string,
 	about_open:       bool, // the About dialog (about.odin)
+	// The language in use and its text, and whether the menu of languages is
+	// open (language.odin).
+	locale:           i18n.Locale,
+	strings:          ^msg.Strings,
+	language_open:    bool,
 }
 
-model_init :: proc(m: ^Model, path: string) {
+// model_init readies m to show path in locale, English unless the caller says.
+model_init :: proc(m: ^Model, path: string, locale := i18n.Locale.English) {
 	ui.text_set(&m.path, path)
+	m.strings = new(msg.Strings)
+	msg.init(m.strings, locale)
+	m.locale = msg.locale(m.strings)
 	m.dir = query.ROOT
 	m.toasts.allocator = context.allocator
 	m.export_format = .Pdf
@@ -192,6 +203,7 @@ model_destroy :: proc(m: ^Model) {
 	ui.text_destroy(&m.rename)
 	ui.text_destroy(&m.licence_text)
 	delete(m.buy_url)
+	free(m.strings)
 	delete(m.back)
 	delete(m.forward)
 	delete(m.target.name)
@@ -213,6 +225,7 @@ view :: proc(gtx: ^ui.Ctx, user: rawptr) {
 	m.scheme = primer.theme_scheme(theme)
 	primer.use(&m.scheme, theme)
 	primer.use_fonts(FONTS)
+	words = m.strings
 	ops.fill(
 		gtx.scene,
 		ops.Rect{0, 0, gtx.constraints.max.x, gtx.constraints.max.y},
@@ -388,6 +401,7 @@ toolbar :: proc(gtx: ^ui.Ctx, m: ^Model, prog: ^query.Progress_Result) {
 		}
 	}
 	licence_button(gtx, m)
+	language_button(gtx, m)
 	about_button(gtx, m)
 	if primer.icon_button(
 		gtx,

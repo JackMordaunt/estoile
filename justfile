@@ -139,7 +139,7 @@ gui-release: deps
     {{odin}} build gui -o:speed {{flags}} -out:build/release/app/{{gui}}{{exe}}
 
 # The view in a probe over the host on a real directory, the view's own suite,
-# and the platform package's. Not -all-packages, which would run every jm:ui
+# the messages' (every language has every message), and the platform package's. Not -all-packages, which would run every jm:ui
 # suite the window imports too.
 #
 # Run the window's suites under ASan
@@ -148,6 +148,7 @@ gui-test: deps
     {{odin}} test gui/app -debug {{san}} {{flags}} -out:build/test/app/{{gui}}{{exe}}
     {{odin}} test gui/files -debug {{san}} {{flags}} -out:build/test/app/{{gui}}-files{{exe}}
     {{odin}} test gui/view -debug {{san}} {{flags}} -out:build/test/app/{{gui}}-view{{exe}}
+    {{odin}} test gui/msg -debug {{san}} {{flags}} -out:build/test/app/{{gui}}-msg{{exe}}
     {{odin}} test reclaim -debug {{san}} {{flags}} -out:build/test/app/{{gui}}-reclaim{{exe}}
     {{odin}} test history -debug {{san}} {{flags}} -out:build/test/app/{{gui}}-history{{exe}}
     {{odin}} test licence -debug {{san}} {{flags}} -out:build/test/app/{{gui}}-licence{{exe}}

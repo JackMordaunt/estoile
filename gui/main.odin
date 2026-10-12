@@ -25,6 +25,7 @@ import "../history"
 import "../version"
 import "app"
 @(require) import "leaks"
+import "msg"
 import "view"
 
 main :: proc() {
@@ -48,7 +49,7 @@ main :: proc() {
 	app.init(h, path, shell.wake, kept)
 
 	m: view.Model
-	view.model_init(&m, path)
+	view.model_init(&m, path, msg.system_locale())
 	defer view.model_destroy(&m)
 
 	faces := view.fonts()

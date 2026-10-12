@@ -10,6 +10,7 @@ import "core:debug/trace"
 @(require) import "jm:debug"
 import "jm:ui/child"
 
+import "../msg"
 import "../view"
 
 main :: proc() {
@@ -23,7 +24,7 @@ main :: proc() {
 	context.assertion_failure_proc = trace.assertion_failure_proc
 
 	m: view.Model
-	view.model_init(&m, "")
+	view.model_init(&m, "", msg.system_locale())
 	defer view.model_destroy(&m)
 	faces := view.fonts()
 	defer delete(faces)

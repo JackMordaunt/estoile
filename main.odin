@@ -25,12 +25,14 @@ import "report"
 import "scan"
 import "survey"
 import "synth"
+import "version"
 import "walk"
 
 // Largest N files/folders to print.
 TOP_N :: 20
 
-PROGRAM :: "leita"
+// PROGRAM is the command's name in its messages: the product's.
+PROGRAM :: version.NAME
 
 /*
 What the command line can set.

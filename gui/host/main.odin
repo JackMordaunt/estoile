@@ -47,7 +47,7 @@ main :: proc() {
 	app.init(h, path, shell.wake, kept)
 	shell.run_host(
 		{
-			title = "leita " + version.VERSION,
+			title = version.NAME + " " + version.VERSION,
 			width = 1280,
 			height = 820,
 			min_width = 640,

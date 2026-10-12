@@ -94,12 +94,7 @@ licence_dialog :: proc(gtx: ^ui.Ctx, m: ^Model) {
 			primer.inline_message(gtx, m.licence_why, .Warning)
 		}
 		if r.licensed {
-			primer.heading(
-				gtx,
-				fmt.aprintf("Licensed to %s", r.licensee, allocator = gtx.allocator),
-				level = 2,
-				variant = .Small,
-			)
+			primer.heading(gtx, licensed_to(gtx, r), level = 2, variant = .Small)
 			primer.text(
 				gtx,
 				fmt.aprintf(
@@ -118,17 +113,7 @@ licence_dialog :: proc(gtx: ^ui.Ctx, m: ^Model) {
 				"Scanning, the charts and Reclaim are free for personal use. Reports and change tracking need a licence. An organisation needs one for any use once its 30-day evaluation ends.",
 			)
 			if r.trial_left > 0 {
-				primer.text(
-					gtx,
-					fmt.aprintf(
-						"You can try reports and change tracking for %d more %s.",
-						r.trial_left,
-						"day" if r.trial_left == 1 else "days",
-						allocator = gtx.allocator,
-					),
-					.Small,
-					color = primer.color(.Fg_Color_Muted),
-				)
+				primer.text(gtx, trial_left(gtx, r), .Small, color = primer.color(.Fg_Color_Muted))
 			}
 			if ui.row(gtx) {
 				if primer.button(gtx, "Buy a licence", .Primary, trailing = .Link_External) {
@@ -170,6 +155,23 @@ licence_dialog :: proc(gtx: ^ui.Ctx, m: ^Model) {
 	if add && pasted != "" && !r.activating && len(pasted) <= command.MAX_PATH {
 		send_licence(gtx, m, r, pasted, file = false)
 	}
+}
+
+// licensed_to says whose licence leita runs under.
+@(private)
+licensed_to :: proc(gtx: ^ui.Ctx, r: ^query.Licence_Result) -> string {
+	return fmt.aprintf("Licensed to %s", r.licensee, allocator = gtx.allocator)
+}
+
+// trial_left says how long the trial of the paid features has left.
+@(private)
+trial_left :: proc(gtx: ^ui.Ctx, r: ^query.Licence_Result) -> string {
+	return fmt.aprintf(
+		"You can try reports and change tracking for %d more %s.",
+		r.trial_left,
+		"day" if r.trial_left == 1 else "days",
+		allocator = gtx.allocator,
+	)
 }
 
 // send_licence offers text: a licence key, a licence, or the path of a file

@@ -56,7 +56,7 @@ main :: proc() {
 
 	shell.run(
 		{
-			title = "leita " + version.VERSION,
+			title = version.NAME + " " + version.VERSION,
 			width = 1280,
 			height = 820,
 			min_width = 640,

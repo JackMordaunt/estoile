@@ -21,6 +21,7 @@ import "jm:ui/primer"
 import tok "jm:ui/primer/tokens"
 
 import "../../human"
+import "../../version"
 import "../command"
 import mark "../mark"
 import "../query"
@@ -174,6 +175,7 @@ Model :: struct {
 	licence_why:      string, // the paid feature that opened it, "" for none; static //review:ignore odin-destroy-incomplete always a constant, never allocated
 	trial_seen:       bool, // the trial banner was dismissed, until leita next starts
 	buy_url:          string,
+	about_open:       bool, // the About dialog (about.odin)
 }
 
 model_init :: proc(m: ^Model, path: string) {
@@ -262,6 +264,7 @@ view :: proc(gtx: ^ui.Ctx, user: rawptr) {
 	reclaim_dialogs(gtx, m)
 	export_dialog(gtx, m, prog)
 	licence_dialog(gtx, m)
+	about_dialog(gtx, m)
 }
 
 // --- the side column ----------------------------------------------------------
@@ -368,7 +371,7 @@ side :: proc(gtx: ^ui.Ctx, m: ^Model) {
 toolbar :: proc(gtx: ^ui.Ctx, m: ^Model, prog: ^query.Progress_Result) {
 	ui.row(gtx, gap = 8, align = .Center)
 	logo(gtx)
-	title(gtx, "leita")
+	title(gtx, version.NAME)
 	ui.spacer(gtx, 8)
 	ui.flexible(gtx, 1)
 	location(gtx, m, prog)
@@ -385,6 +388,7 @@ toolbar :: proc(gtx: ^ui.Ctx, m: ^Model, prog: ^query.Progress_Result) {
 		}
 	}
 	licence_button(gtx, m)
+	about_button(gtx, m)
 	if primer.icon_button(
 		gtx,
 		m.dark ? .Sun : .Moon,

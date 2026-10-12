@@ -40,6 +40,19 @@ count_pending = {0} 个正在等待上级文件夹
 location = 位置
 location_placeholder = 要扫描的目录、驱动器或映像
 
+# 搜索扫描结果
+search = 搜索
+search_placeholder = 按名称查找文件或文件夹
+search_close = 关闭搜索
+search_matches = {0} 个结果
+search_best = 共 {1} 个结果中的前 {0} 个
+search_none = 没有与“{0}”匹配的项目
+search_scanning = 仍在扫描，可能还会有更多结果
+search_layout = 布局
+layout_list = 列表
+layout_grid = 网格
+search_hit = {0}，{1}，位于 {2}
+
 # Panels
 resize_panels = 调整面板大小
 resize_lists = 调整列表大小

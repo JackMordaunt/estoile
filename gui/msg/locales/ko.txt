@@ -38,6 +38,19 @@ count_pending = {0}개 항목이 상위 항목 대기 중
 location = 위치
 location_placeholder = 스캔할 디렉터리, 드라이브 또는 이미지
 
+# 스캔 결과 검색
+search = 검색
+search_placeholder = 이름으로 파일이나 폴더 찾기
+search_close = 검색 닫기
+search_matches = 결과 {0}개
+search_best = 결과 {1}개 중 상위 {0}개
+search_none = “{0}”와 일치하는 항목이 없습니다
+search_scanning = 아직 스캔 중이라 결과가 더 늘어날 수 있습니다
+search_layout = 보기
+layout_list = 목록
+layout_grid = 격자
+search_hit = {0}, {1}, {2}에 있음
+
 # Panels
 resize_panels = 패널 크기 조절
 resize_lists = 목록 크기 조절

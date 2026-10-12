@@ -45,6 +45,23 @@ count_pending = {0} en attente d’un parent
 location = Emplacement
 location_placeholder = Un dossier, un disque ou une image à analyser
 
+# Rechercher dans l’analyse
+search = Rechercher
+search_placeholder = Trouver un fichier ou un dossier par son nom
+search_close = Fermer la recherche
+search_matches.one = {0} résultat
+search_matches.many = {0} de résultats
+search_matches = {0} résultats
+search_best.one = Le meilleur {0} sur {1} résultats
+search_best.many = Les {0} meilleurs sur {1} résultats
+search_best = Les {0} meilleurs sur {1} résultats
+search_none = Aucun résultat pour « {0} »
+search_scanning = l’analyse continue, d’autres résultats peuvent s’ajouter
+search_layout = Disposition
+layout_list = Liste
+layout_grid = Grille
+search_hit = {0}, {1}, dans {2}
+
 # Panels
 resize_panels = Redimensionner les panneaux
 resize_lists = Redimensionner les listes

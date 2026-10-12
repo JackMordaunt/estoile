@@ -50,6 +50,25 @@ count_pending = {0} waiting on a parent
 location = Location
 location_placeholder = A directory, drive or image to scan
 
+# Searching the scan
+search = Search
+search_placeholder = Find a file or folder by name
+search_close = Close search
+# {0} how many entries matched
+search_matches.one = {0} match
+search_matches = {0} matches
+# {0} how many are shown, the best, {1} how many matched
+search_best.one = The best {0} of {1} matches
+search_best = The best {0} of {1} matches
+# {0} what was typed
+search_none = Nothing matches “{0}”
+search_scanning = still scanning, so more may match
+search_layout = Layout
+layout_list = List
+layout_grid = Grid
+# A result, for a screen reader: {0} its name, {1} its size, {2} the folder it is in
+search_hit = {0}, {1}, in {2}
+
 # Panels
 resize_panels = Resize panels
 resize_lists = Resize lists

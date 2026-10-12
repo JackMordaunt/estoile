@@ -41,6 +41,21 @@ count_pending = {0} warten auf übergeordneten Ordner
 location = Ort
 location_placeholder = Ordner, Laufwerk oder Image zum Scannen
 
+# Den Scan durchsuchen
+search = Suchen
+search_placeholder = Datei oder Ordner nach Namen finden
+search_close = Suche schließen
+search_matches.one = {0} Treffer
+search_matches = {0} Treffer
+search_best.one = Der beste {0} von {1} Treffern
+search_best = Die besten {0} von {1} Treffern
+search_none = Nichts passt zu „{0}“
+search_scanning = der Scan läuft noch, es können weitere Treffer folgen
+search_layout = Ansicht
+layout_list = Liste
+layout_grid = Raster
+search_hit = {0}, {1}, in {2}
+
 # Panels
 resize_panels = Bereichsgröße ändern
 resize_lists = Listengröße ändern

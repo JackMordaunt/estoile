@@ -41,6 +41,19 @@ count_pending = {0} 項目が親フォルダーを待機中
 location = 場所
 location_placeholder = スキャンするディレクトリ、ドライブ、イメージ
 
+# スキャン結果の検索
+search = 検索
+search_placeholder = ファイルやフォルダを名前で探す
+search_close = 検索を閉じる
+search_matches = {0} 件
+search_best = 全 {1} 件中の上位 {0} 件
+search_none = 「{0}」に一致するものはありません
+search_scanning = スキャン中のため、一致する項目がさらに増える可能性があります
+search_layout = 表示
+layout_list = リスト
+layout_grid = グリッド
+search_hit = {0}、{1}、{2} 内
+
 # Panels
 resize_panels = パネルのサイズを変更
 resize_lists = リストのサイズを変更

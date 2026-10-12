@@ -45,6 +45,23 @@ count_pending = {0} a la espera de su carpeta superior
 location = Ubicación
 location_placeholder = Carpeta, unidad o imagen que analizar
 
+# Buscar en el análisis
+search = Buscar
+search_placeholder = Busca un archivo o una carpeta por su nombre
+search_close = Cerrar la búsqueda
+search_matches.one = {0} resultado
+search_matches.many = {0} de resultados
+search_matches = {0} resultados
+search_best.one = El mejor {0} de {1} resultados
+search_best.many = Los {0} mejores de {1} resultados
+search_best = Los {0} mejores de {1} resultados
+search_none = Nada coincide con «{0}»
+search_scanning = el análisis continúa, así que puede haber más resultados
+search_layout = Disposición
+layout_list = Lista
+layout_grid = Cuadrícula
+search_hit = {0}, {1}, en {2}
+
 # Panels
 resize_panels = Cambiar tamaño de los paneles
 resize_lists = Cambiar tamaño de las listas

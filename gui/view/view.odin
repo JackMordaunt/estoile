@@ -112,6 +112,17 @@ Model :: struct {
 	location_follow:  bool,
 	trail:            [dynamic]query.Crumb, // the way to the directory shown, names owned
 	trail_generation: u32,
+	// Searching (search.odin): whether the location bar is the search field,
+	// what it holds, whether it is still to take focus, whether what was found
+	// is laid out as a grid, how far it is scrolled, and the last term answered
+	// in which scan, shown until the one typed is.
+	searching:        bool,
+	search:           ui.Text_State,
+	search_focus:     bool,
+	search_grid:      bool,
+	search_list:      ui.List_State,
+	search_held:      string,
+	search_scan:      u32,
 	dark:             bool,
 	scheme:           primer.Scheme,
 	// The directory shown, as an index into the tree of that generation. Each scan
@@ -236,6 +247,8 @@ model_destroy :: proc(m: ^Model) {
 	ui.text_destroy(&m.path)
 	ui.text_destroy(&m.rename)
 	ui.text_destroy(&m.licence_text)
+	ui.text_destroy(&m.search)
+	delete(m.search_held)
 	delete(m.buy_url)
 	free(m.strings)
 	delete(m.back)
@@ -299,6 +312,11 @@ view :: proc(gtx: ^ui.Ctx, user: rawptr) {
 		return
 	}
 	ui.flexible(gtx, 1)
+	if term := search_term(m); term != "" {
+		search_results(gtx, m, term)
+		dialogs(gtx, m)
+		return
+	}
 	if ui.row(gtx, align = .Fill) {
 		ui.flexible(gtx, 1)
 		rings_panel(gtx, m)
@@ -417,7 +435,14 @@ toolbar :: proc(gtx: ^ui.Ctx, m: ^Model, prog: ^query.Progress_Result) {
 	title(gtx, version.NAME)
 	ui.spacer(gtx, 8)
 	ui.flexible(gtx, 1)
-	location(gtx, m, prog)
+	if m.searching {
+		search_field(gtx, m)
+	} else {
+		location(gtx, m, prog)
+		if prog != nil && prog.generation != 0 {
+			search_button(gtx, m)
+		}
+	}
 	export_button(gtx, m, prog)
 	switch {
 	case prog != nil && prog.state == .Scanning:

@@ -44,6 +44,25 @@ count_pending = {0} ожидают родительскую папку
 location = Расположение
 location_placeholder = Папка, диск или образ для сканирования
 
+# Поиск по сканированию
+search = Поиск
+search_placeholder = Найти файл или папку по имени
+search_close = Закрыть поиск
+search_matches.one = {0} совпадение
+search_matches.few = {0} совпадения
+search_matches.many = {0} совпадений
+search_matches = {0} совпадения
+search_best.one = Лучшее {0} из {1} совпадений
+search_best.few = Лучшие {0} из {1} совпадений
+search_best.many = Лучшие {0} из {1} совпадений
+search_best = Лучшие {0} из {1} совпадений
+search_none = Ничего не найдено по запросу «{0}»
+search_scanning = сканирование ещё идёт, совпадений может стать больше
+search_layout = Вид
+layout_list = Список
+layout_grid = Сетка
+search_hit = {0}, {1}, в папке {2}
+
 # Panels
 resize_panels = Изменить размер панелей
 resize_lists = Изменить размер списков

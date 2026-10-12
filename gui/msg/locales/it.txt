@@ -42,6 +42,23 @@ count_pending = {0} in attesa della cartella superiore
 location = Posizione
 location_placeholder = Una cartella, un'unità o un'immagine da scansionare
 
+# Cercare nella scansione
+search = Cerca
+search_placeholder = Trova un file o una cartella per nome
+search_close = Chiudi la ricerca
+search_matches.one = {0} risultato
+search_matches.many = {0} di risultati
+search_matches = {0} risultati
+search_best.one = Il migliore {0} su {1} risultati
+search_best.many = I {0} migliori su {1} risultati
+search_best = I {0} migliori su {1} risultati
+search_none = Nessun risultato per «{0}»
+search_scanning = la scansione continua, potrebbero esserci altri risultati
+search_layout = Disposizione
+layout_list = Elenco
+layout_grid = Griglia
+search_hit = {0}, {1}, in {2}
+
 # Panels
 resize_panels = Ridimensiona pannelli
 resize_lists = Ridimensiona elenchi

@@ -29,6 +29,7 @@ Menu_From :: enum u8 {
 	Icicle,
 	Contents,
 	Largest,
+	Search,
 }
 
 // Target is the entry a menu or dialog is about, kept past the frame it was
@@ -41,8 +42,11 @@ Target :: struct {
 }
 
 // open makes dir the one shown, in the sunburst and the listing both, and
-// remembers the one it replaces.
+// remembers the one it replaces. A search gives way to it.
 open :: proc(m: ^Model, dir: u32) {
+	if m.searching {
+		close_search(m)
+	}
 	if dir == m.dir {
 		return
 	}
@@ -88,6 +92,7 @@ walk_history :: proc(gtx: ^ui.Ctx, m: ^Model) {
 	ui.key_interest(gtx, nav, .Left, {.Alt})
 	ui.key_interest(gtx, nav, .Right, {.Alt})
 	ui.key_interest(gtx, nav, .L, {.Ctrl})
+	ui.key_interest(gtx, nav, .F, {.Ctrl})
 	for e in ui.events(gtx, nav) {
 		if e.kind != .Key {
 			continue
@@ -99,8 +104,11 @@ walk_history :: proc(gtx: ^ui.Ctx, m: ^Model) {
 			go_forward(m)
 		case .L:
 			if len(m.trail) > 0 {
+				close_search(m)
 				edit_location(m, crumb_path(gtx, m.trail[:]))
 			}
+		case .F:
+			open_search(m)
 		}
 	}
 }

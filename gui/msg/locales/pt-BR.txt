@@ -45,6 +45,23 @@ count_pending = {0} aguardando a pasta superior
 location = Local
 location_placeholder = Uma pasta, unidade ou imagem para analisar
 
+# Pesquisar na análise
+search = Pesquisar
+search_placeholder = Encontre um arquivo ou uma pasta pelo nome
+search_close = Fechar a pesquisa
+search_matches.one = {0} resultado
+search_matches.many = {0} de resultados
+search_matches = {0} resultados
+search_best.one = O melhor {0} de {1} resultados
+search_best.many = Os {0} melhores de {1} resultados
+search_best = Os {0} melhores de {1} resultados
+search_none = Nada corresponde a “{0}”
+search_scanning = a análise continua, então pode haver mais resultados
+search_layout = Layout
+layout_list = Lista
+layout_grid = Grade
+search_hit = {0}, {1}, em {2}
+
 # Panels
 resize_panels = Redimensionar painéis
 resize_lists = Redimensionar listas

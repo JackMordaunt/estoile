@@ -359,3 +359,26 @@ monitor_not_there = {0} is not there to watch.
 monitor_cannot_schedule = Could not add the {0}: {1}
 monitor_cannot_unschedule = Could not remove the {0}: {1}
 monitor_logged_in_only = Scheduled scans run only while {0} is logged in. To run them always: loginctl enable-linger {0}
+
+# Alerts on scheduled scans, worded for a desktop notification and the Monitoring dialog. {0} is the place watched, but in alert_filling, where {0} is a count of days and {1} the place; percents and sizes come in already written.
+alert_warn_used = The disk under {0} is {1} used, past the warning at {2}.
+alert_fail_used = The disk under {0} is {1} used, past the limit of {2}.
+alert_low_free = The disk under {0} has {1} free, under the {2} asked for.
+alert_growth = {0} grew {1} since its last scan, far faster than usual.
+alert_filling.one = At this rate the disk under {1} is full in about {0} day.
+alert_filling = At this rate the disk under {1} is full in about {0} days.
+alert_filling_today = At this rate the disk under {0} is full within a day.
+alert_scan_failed = The scan of {0} failed: {1}
+limits = Alerts
+limits_of = Alerts for {0}
+limits_caption = Leave a box empty to skip it. An alert shows below and as a desktop notification, once, the scan it first appears.
+warn_used_label = Warn at percent used
+fail_used_label = Alert at percent used
+min_free_label = Alert when free space falls under
+full_within_label = Alert when the disk will be full within, in days
+growth_label = Alert when it grows far faster than usual
+limits_invalid = Percents run from 1 to 100, sizes read like 20 GiB, and days are whole numbers.
+save = Save
+recent_alerts = Recent alerts
+alerts_none = No alerts yet.
+alerting = Alert

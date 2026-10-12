@@ -264,3 +264,57 @@ Settings_Result :: struct {
 	language: string, // a BCP 47 tag, as i18n.locale_tag gives it; "" when none was chosen
 	theme:    Theme_Choice,
 }
+
+/*
+Search is the entries anywhere in the scan whose paths hold term: its
+characters in order, not necessarily together, ranked by how well they line up,
+in the manner of fzf (package search). The scan is searched as it stands, part way
+or finished, never scanned again, and answered again as it finds more. Each
+term is a need of its own, so the need going calls off its search.
+*/
+Search :: struct {
+	generation: u32,
+	term:       string,
+}
+
+// Mark is a stretch of a hit's path the term matched, as byte offsets: from up
+// to but not including to.
+Mark :: struct {
+	from, to: u32,
+}
+
+// Hit is one entry a search found.
+Hit :: struct {
+	node:      u32,
+	parent:    u32, // the directory holding it
+	path:      string, // whole, from the top of the filesystem
+	name_at:   u32, // where its own name starts in path
+	marks:     []Mark, // in order, none overlapping
+	bytes:     u64, // on disk; a directory's counts everything under it found so far
+	directory: bool,
+}
+
+Search_Result :: struct {
+	generation: u32,
+	term:       string,
+	hits:       []Hit, // best first, at most SEARCH_LIMIT
+	total:      int, // every entry that matched, not only those sent
+	complete:   bool, // the scan is over and searched to its end
+}
+
+// SEARCH_LIMIT is the most hits a search sends.
+SEARCH_LIMIT :: 500
+
+// Thumb is a picture's thumbnail, fitted into a square px across. The host
+// reads the picture off the disk on a worker, and keeps what it made by the
+// file's path and time, so a picture is decoded once until it changes.
+Thumb :: struct {
+	path: string,
+	px:   int,
+}
+
+// Thumb_Result names an image file the renderer reads, "" when the picture
+// could not be read.
+Thumb_Result :: struct {
+	image: string,
+}

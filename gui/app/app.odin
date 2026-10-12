@@ -16,12 +16,18 @@ The threads, and what crosses between them:
 	          atomics on every total.
 	reader    survey.fill_run, filling the tree. It knows nothing of the window.
 	pool      stream.run on one thread: the ports, the clock and the merge.
+	workers   stream.Workers: each search's passes, cut into chunks, and the
+	          thumbnails (search.odin, thumbs.odin). A search reads the tree as
+	          the reader fills it and never the totals, which are the desk's.
 
 The graph:
 
 	needs ────┐
-	commands ─┼─ merge ─ desk ─▶ inbox
-	clock ────┘
+	commands ─┤
+	clock ────┼─ merge ─ desk ─▶ inbox
+	searched ─┘   (passes back from the workers)
+
+	thumbs ─ debounce_by ─ async_map (workers) ─ deliver ─▶ inbox
 
 A need is answered the moment it appears, from whatever the scan holds then, and
 stays live until the frame stops asking. Each tick of the clock charges what the
@@ -35,6 +41,7 @@ import "base:runtime"
 
 import "core:encoding/cbor"
 import "core:fmt"
+import "core:os"
 import "core:slice"
 import "core:strings"
 import "core:sync"
@@ -50,6 +57,7 @@ import "../../licence"
 import "../../ntfs"
 import "../../reclaim"
 import "../../scan"
+import "../../search"
 import "../../settings"
 import "../../survey"
 import "../../synth"
@@ -74,6 +82,7 @@ Query :: union {
 	query.History,
 	query.Licence,
 	query.Settings,
+	query.Search,
 }
 
 // Need_Event is a need appearing or going, as the main thread hands it on.
@@ -91,6 +100,7 @@ Desk_In :: union {
 	command.Command,
 	Tick,
 	Activated,
+	Finished_Pass,
 }
 
 // Scan is one run of a reader and everything derived from it. It is heap
@@ -158,6 +168,14 @@ Desk :: struct {
 	activations:     ^stream.Port(Activated),
 	activating:      bool, // When leita first ran here, the start of the evaluation (licence.first_use).
 	first_use:       time.Time,
+	// Searching (search.odin): each live Search need's finding, each pass out
+	// on the workers by the finding it is for (nil once halted), the workers,
+	// the port passes come back through, and what describing a hit works in.
+	findings:        map[ui.Need_Key]^Finding,
+	passes:          map[^search.Pass]^Finding,
+	workers:         ^stream.Workers,
+	searched:        ^stream.Port(Finished_Pass),
+	scratch:         ^search.Scratch,
 }
 
 Host :: struct {
@@ -165,6 +183,9 @@ Host :: struct {
 	cmd_port:  stream.Port(command.Command),
 	need_port: stream.Port(Need_Event),
 	act_port:  stream.Port(Activated),
+	searched:  stream.Port(Finished_Pass),
+	thumbs:    Thumbs, // thumbs.odin
+	workers:   ^stream.Workers,
 	inbox:     ui.Inbox,
 	desk:      Desk,
 	pool:      ^thread.Thread,
@@ -192,15 +213,22 @@ init :: proc(
 	reports := "",
 	licence_key: []byte = nil,
 	activate_url := "",
+	thumbs := "",
 ) {
 	allocator := context.allocator
 	ui.inbox_init(&h.inbox, allocator)
+	h.workers = stream.workers_start(worker_count(), allocator)
 	h.desk = {
-		inbox   = &h.inbox,
-		wake    = wake,
-		live    = make(map[ui.Need_Key]Query, allocator),
-		words   = new(msg.Strings, allocator),
-		reports = strings.clone(reports, allocator) if reports != "" else files.reports_folder(allocator),
+		inbox    = &h.inbox,
+		wake     = wake,
+		live     = make(map[ui.Need_Key]Query, allocator),
+		words    = new(msg.Strings, allocator),
+		reports  = strings.clone(reports, allocator) if reports != "" else files.reports_folder(allocator),
+		findings = make(map[ui.Need_Key]^Finding, allocator),
+		passes   = make(map[^search.Pass]^Finding, allocator),
+		workers  = h.workers,
+		searched = &h.searched,
+		scratch  = new(search.Scratch, allocator),
 	}
 	msg.init(h.desk.words, .English)
 	history_open(&h.desk, kept)
@@ -225,6 +253,9 @@ init :: proc(
 	activations: stream.Stream(Activated)
 	activations, h.act_port = stream.port(p, Activated, name = "activations")
 	h.desk.activations = &h.act_port
+	searched: stream.Stream(Finished_Pass)
+	searched, h.searched = stream.port(p, Finished_Pass, cap = 256, name = "searched")
+	thumbs_init(h, thumbs)
 
 	desk_in := stream.merge(
 		[]stream.Stream(Desk_In) {
@@ -232,6 +263,7 @@ init :: proc(
 			stream.transform(commands, command_in),
 			stream.transform(clock, tick_in),
 			stream.transform(activations, activated_in),
+			stream.transform(searched, finished_in),
 		},
 		name = "desk in",
 	)
@@ -255,6 +287,7 @@ data_host :: proc(h: ^Host) -> ui.Data_Host {
 // scan and frees everything.
 stop :: proc(h: ^Host) {
 	licence_stop(&h.desk)
+	thumbs_cancel(h)
 	stream.stop(h.p)
 	thread.join(h.pool)
 	thread.destroy(h.pool)
@@ -262,6 +295,13 @@ stop :: proc(h: ^Host) {
 	sync.sema_post(&h.desk_wake)
 	thread.join(h.desk_main)
 	thread.destroy(h.desk_main)
+	// The desk is gone, so its passes are this thread's to halt, before the
+	// workers stop and the tree they read goes.
+	find_halt(&h.desk)
+	stream.port_close(h.searched)
+	stream.workers_stop(h.workers)
+	find_stop(&h.desk)
+	thumbs_destroy(h)
 	scan_end(&h.desk)
 	stream.destroy(h.p)
 	delete(h.desk.live)
@@ -301,6 +341,11 @@ on_need :: proc(user: rawptr, need: ui.Need, added: bool) {
 		q = query.Licence{}
 	case ui.need_is(need, query.Settings):
 		q = query.Settings{}
+	case ui.need_is(need, query.Search):
+		q, _ = ui.need_as(need, query.Search)
+	case ui.need_is(need, query.Thumb):
+		thumb_follow(h, need, added)
+		return
 	case:
 		return
 	}
@@ -340,6 +385,13 @@ desk_main :: proc(h: ^Host) {
 		stream.drain_pinned(h.p)
 		free_all(context.temp_allocator)
 	}
+}
+
+// worker_count is how many threads search and make thumbnails: all but one of
+// the machine's, so the window and the reader keep one.
+@(private)
+worker_count :: proc() -> int {
+	return clamp(os.get_processor_core_count() - 1, 1, 32)
 }
 
 @(private)
@@ -384,14 +436,21 @@ desk_step :: proc(d: ^Desk, v: Desk_In) {
 	case Need_Event:
 		if !e.added {
 			delete_key(&d.live, e.key)
+			if _, is := e.q.(query.Search); is {
+				find_close(d, e.key)
+			}
 			return
 		}
 		d.live[e.key] = e.q
+		if q, is := e.q.(query.Search); is {
+			find_open(d, e.key, q)
+		}
 		answer(d, e.key, e.q)
 		notify(d)
 	case command.Command:
 		switch &c in e {
 		case command.Scan:
+			find_forget(d)
 			scan_end(d)
 			scan_begin(d, command.text_of(&c.path))
 			answer_all(d)
@@ -425,7 +484,15 @@ desk_step :: proc(d: ^Desk, v: Desk_In) {
 		case command.Theme:
 			remember_theme(d, c)
 		case command.Locate, command.Trash, command.Rename, command.Clean, command.Empty_Trash:
+			// A rename writes a name a search may be reading.
+			_, renaming := c.(command.Rename)
+			if renaming {
+				find_halt(d)
+			}
 			act(d, &e)
+			if renaming {
+				find_restart(d)
+			}
 			if d.scan != nil {
 				measure(d.scan)
 			}
@@ -434,10 +501,13 @@ desk_step :: proc(d: ^Desk, v: Desk_In) {
 	case Activated:
 		take_activation(d, &e)
 		answer_all(d)
+	case Finished_Pass:
+		take_pass(d, e.pass)
 	case Tick:
 		if advance(d) {
 			answer_all(d)
 		}
+		find_tick(d)
 	}
 }
 
@@ -604,6 +674,10 @@ answer :: proc(d: ^Desk, key: ui.Need_Key, q: Query) {
 		put(d, key, licence_answer(d))
 	case query.Settings:
 		put(d, key, settings_answer(d))
+	case query.Search:
+		if r, ready := find_answer(d, key, q); ready {
+			put(d, key, r)
+		}
 	}
 }
 

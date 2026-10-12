@@ -137,6 +137,11 @@ a_long_text_is_scored_on_its_end :: proc(t: ^testing.T) {
 	testing.expect(t, strings.has_suffix(marks, "/[needle].txt"), marks)
 }
 
+// TEST_LIMIT is how many hits the tests' searches keep: fewer than the window's, so
+// trimming to it is exercised by a made-up disk.
+@(private = "file")
+TEST_LIMIT :: 100
+
 // --- the index over a tree ---------------------------------------------------------
 
 /*
@@ -215,7 +220,7 @@ a_name_that_matches_ranks_above_a_path_that_does :: proc(t: ^testing.T) {
 	small_make(t, &sm)
 	defer scan.tree_destroy(&sm.tree)
 	s: Search
-	search_init(&s, &sm.tree, "main")
+	search_init(&s, &sm.tree, "main", TEST_LIMIT)
 	defer search_destroy(&s)
 	testing.expect(t, search_step(&s, scan.slots(&sm.tree), true))
 	// main/ and main.odin by their names; domain.c holds m-a-i-n in its name;
@@ -241,13 +246,13 @@ a_path_term_crosses_separators :: proc(t: ^testing.T) {
 	small_make(t, &sm)
 	defer scan.tree_destroy(&sm.tree)
 	s: Search
-	search_init(&s, &sm.tree, "src/m")
+	search_init(&s, &sm.tree, "src/m", TEST_LIMIT)
 	defer search_destroy(&s)
 	search_step(&s, scan.slots(&sm.tree), true)
 	expect_names(t, &s, {"main.odin", "domain.c"})
 	// The top's own name is not searched: "top" is in every path.
 	search_destroy(&s)
-	search_init(&s, &sm.tree, "top")
+	search_init(&s, &sm.tree, "top", TEST_LIMIT)
 	search_step(&s, scan.slots(&sm.tree), true)
 	testing.expect_value(t, s.total, 0)
 }
@@ -258,7 +263,7 @@ a_pass_takes_only_what_is_new_and_what_was_left :: proc(t: ^testing.T) {
 	small_make(t, &sm, upto = 4) // the first four written; the rest claimed, empty
 	defer scan.tree_destroy(&sm.tree)
 	s: Search
-	search_init(&s, &sm.tree, "ma")
+	search_init(&s, &sm.tree, "ma", TEST_LIMIT)
 	defer search_destroy(&s)
 	testing.expect(t, search_step(&s, scan.slots(&sm.tree), false))
 	expect_names(t, &s, {"main.odin", "domain.c"})
@@ -289,7 +294,7 @@ a_cancelled_pass_changes_nothing :: proc(t: ^testing.T) {
 	small_make(t, &sm)
 	defer scan.tree_destroy(&sm.tree)
 	s: Search
-	search_init(&s, &sm.tree, "main")
+	search_init(&s, &sm.tree, "main", TEST_LIMIT)
 	defer search_destroy(&s)
 	p := pass_begin(&s, scan.slots(&sm.tree), true)
 	done := 0
@@ -330,7 +335,7 @@ passes_during_a_scan_find_what_one_after_it_does :: proc(t: ^testing.T) {
 	})
 
 	live: Search
-	search_init(&live, &tree, "cache")
+	search_init(&live, &tree, "cache", TEST_LIMIT)
 	defer search_destroy(&live)
 	passes := 0
 	for !sync.atomic_load(&r.done) {
@@ -345,7 +350,7 @@ passes_during_a_scan_find_what_one_after_it_does :: proc(t: ^testing.T) {
 	testing.expect(t, passes > 1, "the scan was searched while it ran")
 
 	after: Search
-	search_init(&after, &tree, "cache")
+	search_init(&after, &tree, "cache", TEST_LIMIT)
 	defer search_destroy(&after)
 	search_step(&after, scan.slots(&tree), true)
 	testing.expect(t, after.total > 100)

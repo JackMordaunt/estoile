@@ -27,9 +27,6 @@ What a search keeps between passes is the best `limit` hits and how many there
 were. Nothing here allocates per node.
 */
 
-// LIMIT is how many hits a search keeps when its caller names no limit.
-LIMIT :: 500
-
 // CHUNK is how many nodes a thread takes at a time.
 CHUNK :: 1 << 15
 
@@ -74,11 +71,13 @@ Search :: struct {
 	final:   bool, // a pass over the finished tree has run: there is no more
 }
 
-search_init :: proc(s: ^Search, tree: ^scan.Tree, term: string, limit := LIMIT) {
+// search_init readies s to search tree for term, keeping the best limit hits.
+search_init :: proc(s: ^Search, tree: ^scan.Tree, term: string, limit: int) {
+	assert(limit > 0, "a search that keeps nothing")
 	s^ = {
 		tree    = tree,
 		pattern = pattern_make(term),
-		limit   = limit if limit > 0 else LIMIT,
+		limit   = limit,
 	}
 }
 

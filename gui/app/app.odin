@@ -57,6 +57,7 @@ import "../../licence"
 import "../../ntfs"
 import "../../reclaim"
 import "../../scan"
+import "../../schedule"
 import "../../search"
 import "../../settings"
 import "../../survey"
@@ -83,6 +84,7 @@ Query :: union {
 	query.Licence,
 	query.Settings,
 	query.Search,
+	query.Monitor,
 }
 
 // Need_Event is a need appearing or going, as the main thread hands it on.
@@ -179,6 +181,7 @@ Desk :: struct {
 	open_failures:   ^stream.Port(Open_Failure), // act.odin's open_entry
 	opening:         ^sync.Wait_Group, // the entries open_entry is opening
 	scratch:         ^search.Scratch,
+	monitoring:      Monitoring, // monitor.odin
 }
 
 Host :: struct {
@@ -208,7 +211,9 @@ a frame loop runs a frame on it. kept is the history store's path, "" for none;
 reports the folder reports are exported to, "" for the user's Documents. The
 licence is kept beside the history store and checked against licence_key, nil
 for the key leita was built with. A licence key is exchanged for its licence at
-activate_url, "" for LEITA_ACTIVATE_URL or else ACTIVATE_URL.
+activate_url, "" for LEITA_ACTIVATE_URL or else ACTIVATE_URL. Monitoring is
+handed to scheduler running monitor_argv, nil for the system's scheduler running
+this binary (monitor.odin).
 */
 init :: proc(
 	h: ^Host,
@@ -219,6 +224,8 @@ init :: proc(
 	licence_key: []byte = nil,
 	activate_url := "",
 	thumbs := "",
+	scheduler: ^schedule.Host = nil,
+	monitor_argv: []string = nil,
 ) {
 	allocator := context.allocator
 	ui.inbox_init(&h.inbox, allocator)
@@ -246,6 +253,7 @@ init :: proc(
 		licence_key,
 		activate_url,
 	)
+	monitor_open(&h.desk, scheduler, monitor_argv)
 
 	p := stream.make_pipeline(allocator, cap = 64)
 	h.p = p
@@ -330,6 +338,7 @@ stop :: proc(h: ^Host) {
 	history_close(&h.desk)
 	settings_close(&h.desk)
 	licence_close(&h.desk)
+	monitor_close(&h.desk)
 	ui.inbox_destroy(&h.inbox)
 }
 
@@ -357,6 +366,8 @@ on_need :: proc(user: rawptr, need: ui.Need, added: bool) {
 		q = query.Settings{}
 	case ui.need_is(need, query.Search):
 		q, _ = ui.need_as(need, query.Search)
+	case ui.need_is(need, query.Monitor):
+		q = query.Monitor{}
 	case ui.need_is(need, query.Thumb):
 		thumb_follow(h, need, added)
 		return
@@ -497,6 +508,15 @@ desk_step :: proc(d: ^Desk, v: Desk_In) {
 			answer_all(d)
 		case command.Theme:
 			remember_theme(d, c)
+		case command.Monitoring:
+			set_monitoring(d, c)
+			answer_all(d)
+		case command.Watch:
+			watch(d, &c)
+			answer_all(d)
+		case command.Unwatch:
+			unwatch(d, &c)
+			answer_all(d)
 		case command.Locate,
 		     command.Open,
 		     command.Trash,
@@ -700,6 +720,8 @@ answer :: proc(d: ^Desk, key: ui.Need_Key, q: Query) {
 		if r, ready := find_answer(d, key, q); ready {
 			put(d, key, r)
 		}
+	case query.Monitor:
+		put(d, key, monitor_answer(d))
 	}
 }
 

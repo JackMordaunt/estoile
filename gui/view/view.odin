@@ -236,6 +236,13 @@ Model :: struct {
 	locale_told:      Maybe(i18n.Locale),
 	// What the person chose in an earlier run has been put in use (settings.odin).
 	settings_read:    bool,
+	// The Monitoring dialog (monitor.odin): whether it is open, the place typed
+	// to watch, the change count when one was sent until the host answers, and
+	// whether it has answered since the dialog opened.
+	monitor_open:     bool,
+	watch_text:       ui.Text_State,
+	monitor_sent:     Maybe(u32),
+	monitor_answered: bool,
 }
 
 // model_init readies m to show path in locale, English unless the caller says.
@@ -256,6 +263,7 @@ model_destroy :: proc(m: ^Model) {
 	ui.text_destroy(&m.rename)
 	ui.text_destroy(&m.licence_text)
 	ui.text_destroy(&m.search)
+	ui.text_destroy(&m.watch_text)
 	delete(m.search_held)
 	delete(m.buy_url)
 	free(m.strings)
@@ -323,6 +331,7 @@ view :: proc(gtx: ^ui.Ctx, user: rawptr) {
 	if term := search_term(m); term != "" {
 		search_results(gtx, m, term)
 		dialogs(gtx, m)
+		monitor_dialog(gtx, m)
 		return
 	}
 	if ui.row(gtx, align = .Fill) {
@@ -340,6 +349,7 @@ view :: proc(gtx: ^ui.Ctx, user: rawptr) {
 	export_dialog(gtx, m, prog)
 	licence_dialog(gtx, m)
 	about_dialog(gtx, m)
+	monitor_dialog(gtx, m)
 }
 
 // --- the side column ----------------------------------------------------------
@@ -463,6 +473,7 @@ toolbar :: proc(gtx: ^ui.Ctx, m: ^Model, prog: ^query.Progress_Result) {
 			ui.command(gtx, command.Command(command.Scan{path = command.text_make(prog.target)}))
 		}
 	}
+	monitor_button(gtx, m, prog)
 	licence_button(gtx, m)
 	language_button(gtx, m)
 	about_button(gtx, m)

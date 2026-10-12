@@ -42,6 +42,9 @@ Command :: union {
 	Add_Licence,
 	Language,
 	Theme,
+	Monitoring,
+	Watch,
+	Unwatch,
 }
 
 // Scan reads what is at path, calling off any scan still running.
@@ -157,4 +160,22 @@ Language :: struct {
 // Theme is the theme the person chose, remembered for the next run.
 Theme :: struct {
 	dark: bool,
+}
+
+// Monitoring turns monitoring on, handing it to the system's scheduler, or off,
+// taking it back.
+Monitoring :: struct {
+	on: bool,
+}
+
+// Watch has the monitor scan the place at path every every (query.Frequency's
+// value, which this package does not import), in place of any schedule it had.
+Watch :: struct {
+	path:  Text,
+	every: u8,
+}
+
+// Unwatch stops the monitor scanning the place at path.
+Unwatch :: struct {
+	path: Text,
 }

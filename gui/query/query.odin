@@ -4,7 +4,7 @@ need asks with and the result it is answered with, named Name and Name_Result. T
 view needs these; the host answers them from the scan, again every time the scan
 has moved on, for as long as the need is live. It imports nothing.
 
-Every type here is plain data: it crosses a pipe or a wire as cbor, under its
+Frequency type here is plain data: it crosses a pipe or a wire as cbor, under its
 "leita_query.Name" kind, and ui.need keys a query by its bytes.
 
 A node is an index into one scan's tree, meaningful only within the scan that
@@ -317,4 +317,44 @@ Thumb :: struct {
 // could not be read.
 Thumb_Result :: struct {
 	image: string,
+}
+
+/*
+Monitor is monitoring, a paid feature: whether it is on, the places it watches
+and how each one's last scan went. The host reads it from settings.db, which
+the monitor's runs write while the window is closed, and answers again after
+each change the window asks for (command.Monitoring, Watch, Unwatch).
+*/
+Monitor :: struct {}
+
+// Frequency is how often a watched place is scanned, as settings.Frequency has it.
+Frequency :: enum u8 {
+	Hourly,
+	Daily,
+	Weekly,
+}
+
+// Watched_Place is one place the monitor scans, and how its last scan went:
+// scanned is false until it has run once; problem is why it failed, "" when it
+// did not.
+Watched_Place :: struct {
+	place:   string,
+	every:   Frequency,
+	scanned: bool,
+	started: i64, // Unix seconds
+	seconds: f64,
+	bytes:   u64,
+	problem: string,
+}
+
+Monitor_Result :: struct {
+	on:        bool,
+	scheduler: string, // where the system keeps the schedule, as a person would look for it
+	// Each change asked for moves changed on once it is made or refused;
+	// problem says why it was refused, "" when it was made, and note anything
+	// the person should know of how it will run.
+	changed:   u32,
+	problem:   string,
+	note:      string,
+	watched:   []Watched_Place, // in the order they were added
 }

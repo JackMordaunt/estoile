@@ -32,6 +32,7 @@ import "jm:ui/render"
 
 import "../../licence"
 import "../../scan"
+import "../../schedule"
 import "../../settings"
 import "../command"
 import "../msg"
@@ -65,6 +66,8 @@ rig_open :: proc(
 	licence_key: []byte = nil,
 	activate_url := "",
 	made_up := false,
+	scheduler: ^schedule.Host = nil,
+	monitor_argv: []string = nil,
 ) {
 	if !made_up {
 		env_share()
@@ -77,6 +80,8 @@ rig_open :: proc(
 		reports = reports,
 		licence_key = licence_key,
 		activate_url = activate_url,
+		scheduler = scheduler,
+		monitor_argv = monitor_argv,
 	)
 	r.data = data_host(&r.h)
 	view.model_init(&r.m, path)
@@ -2668,7 +2673,10 @@ a_search_hit_opens_as_the_system_would :: proc(t: ^testing.T) {
 	testing.expect(t, os.make_directory(root) == nil)
 	defer os.remove_all(root)
 	notes := fmt.tprintf("%s/notes.txt", root)
-	testing.expect(t, os.write_entire_file(notes, make([]byte, 4096, context.temp_allocator)) == nil)
+	testing.expect(
+		t,
+		os.write_entire_file(notes, make([]byte, 4096, context.temp_allocator)) == nil,
+	)
 
 	bin := fmt.tprintf("%s-bin", root)
 	os.remove_all(bin)
@@ -2738,4 +2746,106 @@ a_search_hit_opens_as_the_system_would :: proc(t: ^testing.T) {
 	ui.probe_key(&r.p, .Enter)
 	hand_on(&r)
 	testing.expect(t, settle(&r, "Could not open notes.txt"), "a failure is said")
+}
+
+// Schedule_Calls are what the system's scheduler was asked, as a test's scheduler
+// records it on the desk's thread.
+@(private = "file")
+Schedule_Calls :: struct {
+	mutex:    sync.Mutex,
+	commands: [dynamic]string,
+}
+
+@(private = "file")
+schedule_record :: proc(argv: []string, user: rawptr) -> schedule.Outcome {
+	s := (^Schedule_Calls)(user)
+	sync.guard(&s.mutex)
+	append(&s.commands, strings.join(argv, " ", runtime.heap_allocator()))
+	return {ok = true}
+}
+
+// The pulse opens Monitoring, whose field holds the place scanned. Watch watches
+// it daily, the switch hands the monitor to the scheduler, as this binary, and
+// says where; Stop watching and the switch take each back. The dialog is drawn
+// light and dark to build/test.
+@(test)
+monitoring_watches_a_place_and_hands_it_to_the_scheduler :: proc(t: ^testing.T) {
+	root := fixture(t, "monitor")
+	defer os.remove_all(root)
+	data := fmt.tprintf("%s-data", root)
+	os.remove_all(data)
+	defer os.remove_all(data)
+	kept := fmt.tprintf("%s/history.db", data)
+	rec: Schedule_Calls
+	defer {
+		for c in rec.commands {
+			delete(c, runtime.heap_allocator())
+		}
+		delete(rec.commands)
+	}
+	rec.commands = make([dynamic]string, runtime.heap_allocator())
+	host := schedule.Host {
+		run    = schedule_record,
+		user   = &rec,
+		system = .Systemd,
+		units  = fmt.tprintf("%s/units", data),
+	}
+	timer := fmt.tprintf("%s/leita-monitor.timer", host.units)
+
+	r: Rig
+	rig_open(&r, root, kept = kept, scheduler = &host, monitor_argv = {"/usr/bin/leita"})
+	defer rig_close(&r)
+	testing.expect(t, settle(&r, "Done"))
+	ui.probe_advance(&r.p, 10, 1.0 / 60)
+	testing.expect(t, ui.probe_click(&r.p, "Monitoring"), "the toolbar offers monitoring")
+	ui.probe_frame(&r.p)
+	hand_on(&r)
+	testing.expect(t, settle(&r, "No place is watched yet."))
+	testing.expect_value(t, ui.text_string(&r.m.watch_text), root)
+
+	ui.probe_advance(&r.p, 20, 1.0 / 60)
+	testing.expect(t, ui.probe_click_top(&r.p, "Watch"))
+	hand_on(&r)
+	testing.expect(t, settle(&r, "Not scanned yet"), "the place scanned is watched")
+	testing.expect(t, settle(&r, fmt.tprintf("Stop watching %s", root)))
+	testing.expect_value(t, ui.text_string(&r.m.watch_text), "")
+
+	testing.expect(t, ui.probe_click(&r.p, "Off"), "the switch is off")
+	hand_on(&r)
+	testing.expect(t, settle(&r, "Run every hour by the systemd user timer leita-monitor.timer."))
+	testing.expect(t, os.exists(timer), "the timer is written")
+	service, _ := os.read_entire_file(
+		fmt.tprintf("%s/leita-monitor.service", host.units),
+		context.temp_allocator,
+	)
+	testing.expect(
+		t,
+		strings.contains(string(service), "ExecStart=/usr/bin/leita monitor run\n"),
+		string(service),
+	)
+	{
+		sync.guard(&rec.mutex)
+		testing.expect(
+			t,
+			slice.contains(rec.commands[:], "systemctl --user enable --now leita-monitor.timer"),
+		)
+	}
+
+	ui.probe_advance(&r.p, 20, 1.0 / 60)
+	testing.expect(t, render.headless_png(&r.hl, "build/test/monitoring_light.png"))
+	r.m.dark = true
+	ui.probe_advance(&r.p, 20, 1.0 / 60)
+	testing.expect(t, render.headless_png(&r.hl, "build/test/monitoring_dark.png"))
+	r.m.dark = false
+
+	testing.expect(t, ui.probe_click(&r.p, fmt.tprintf("Stop watching %s", root)))
+	hand_on(&r)
+	testing.expect(t, settle(&r, "No place is watched yet."))
+	testing.expect(t, ui.probe_click(&r.p, "On"), "the switch is on")
+	hand_on(&r)
+	testing.expect(
+		t,
+		settle(&r, "Run every hour by the systemd user timer leita-monitor.timer.", false),
+	)
+	testing.expect(t, !os.exists(timer), "turning it off takes the timer away")
 }

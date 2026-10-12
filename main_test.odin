@@ -4,6 +4,7 @@ import "core:encoding/json"
 import "core:fmt"
 import "core:os"
 import "core:path/filepath"
+import "core:reflect"
 import "core:strings"
 import "core:testing"
 import "core:thread"
@@ -13,6 +14,7 @@ import "jm:sqlite3"
 
 import "history"
 import "scan"
+import "term"
 import "version"
 
 // --version names the build and where it runs.
@@ -27,6 +29,45 @@ the_version_says_which_leita_this_is :: proc(t: ^testing.T) {
 	)
 	testing.expectf(t, strings.has_prefix(line, want), "%q does not start %q", line, want)
 	testing.expect_value(t, len(line), len(want) + len("2026-10-09)"))
+}
+
+// USAGE, written by hand, names every flag Options has, as --its-name, and
+// the target as [TARGET]; a flag added to one without the other fails here.
+@(test)
+the_usage_names_every_flag :: proc(t: ^testing.T) {
+	for name in reflect.struct_field_names(Options) {
+		kebab, _ := strings.replace_all(name, "_", "-", context.temp_allocator)
+		flag := fmt.tprintf("--%s ", kebab)
+		if name == "target" {
+			flag = "[TARGET]"
+		}
+		testing.expectf(t, strings.contains(USAGE, flag), "USAGE does not name %s", flag)
+	}
+}
+
+// Styled, the usage carries weight; plain, it is USAGE byte for byte.
+@(test)
+the_usage_is_styled_only_for_a_person :: proc(t: ^testing.T) {
+	b := strings.builder_make(context.temp_allocator)
+	term.write_usage(&b, {}, PROGRAM, USAGE)
+	testing.expect_value(t, strings.to_string(b), USAGE)
+	strings.builder_reset(&b)
+	term.write_usage(&b, {depth = .Three_Bit}, PROGRAM, USAGE)
+	styled := strings.to_string(b)
+	testing.expect(t, strings.contains(styled, "\x1b[1mScan\x1b[0m"), "headings are bold")
+	testing.expect(t, strings.contains(styled, "\x1b[1m--report\x1b[0m"), "flags are bold")
+}
+
+// --color is found before the flags are parsed, in either form, so it
+// governs -h and a bad flag too; the last one given wins.
+@(test)
+color_is_read_before_the_flags :: proc(t: ^testing.T) {
+	word, given := find_color({"--top", "3", "--color=never", "-h"})
+	testing.expect(t, given && word == "never", "--color=WORD")
+	word, given = find_color({"--color", "always", "--color=auto"})
+	testing.expect(t, given && word == "auto", "--color WORD, the last wins")
+	_, given = find_color({"--top", "3", "--color"})
+	testing.expect(t, !given, "--color with no word is left to the parser")
 }
 
 /*

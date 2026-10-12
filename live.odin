@@ -42,14 +42,14 @@ run_live :: proc(f: ^survey.Fill) -> int {
 
 	filler := thread.create_and_start_with_poly_data(f, fill_thread)
 	if filler == nil {
-		fmt.eprintln("error: could not start the reader")
+		say_error("could not start the reader")
 		return 1
 	}
 	defer thread.destroy(filler)
 
 	builder := thread.create_and_start_with_poly_data(&b, build_thread)
 	if builder == nil {
-		fmt.eprintln("error: could not start the builder")
+		say_error("could not start the builder")
 		return 1
 	}
 	defer thread.destroy(builder)

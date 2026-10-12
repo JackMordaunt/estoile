@@ -136,7 +136,10 @@ leita D: --warn-used 80 --fail-used 95 --min-free 20GiB
 A one-line summary goes to standard error (`warn: 83.4% used, at or past
 --warn-used 80%`); nothing is printed for an OK scan beyond the usual summary.
 Add `--report - --format json` to also get the full scan on standard output,
-with the verdict in its `thresholds` member (`report/SCHEMA.md`).
+with the verdict in its `thresholds` member (`report/SCHEMA.md`). What leita
+prints is plain text in a pipe, a log or an agent's hands; only a person at a
+terminal sees it styled, and `--color never` or `LEITA_COLOR=never` keeps it
+plain there too.
 
 ## Licensing
 

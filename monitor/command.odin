@@ -5,6 +5,7 @@ import "core:fmt"
 import "core:io"
 import "core:os"
 import "core:strings"
+import "core:terminal"
 import "core:time"
 
 import "jm:sh"
@@ -17,6 +18,7 @@ import "../human"
 import "../licence"
 import "../schedule"
 import "../settings"
+import "../term"
 
 /*
 The monitor's command line, which both binaries answer as their first argument
@@ -24,34 +26,36 @@ The monitor's command line, which both binaries answer as their first argument
 scheduler's entry runs whichever binary turned monitoring on.
 */
 
-USAGE :: `Usage: leita monitor [command]
+USAGE :: `leita monitor — scan the places you watch on a schedule, while leita is closed.
 
-Monitoring scans the places you watch on a schedule, gently, while leita is
-closed, and keeps each scan so change tracking has a steady record. It runs
-only while turned on, through the system's scheduler; nothing stays running.
-A limit crossed raises an alert, once, as a desktop notification and in list.
+Watch
+  leita monitor add PATH [--every hourly|daily|weekly] [LIMITS]
+                            watch PATH, daily unless --every says, or change how it is
+                            watched; each limit is off unless given:
+      --warn-used N         alert once the disk is N percent used
+      --fail-used N         alert harder once it is N percent used
+      --min-free SIZE       alert once less than SIZE is free, e.g. 20GiB
+      --full-within N       alert once the disk is forecast full within N days
+      --growth              alert when PATH grows far faster than it has been
+  leita monitor remove PATH stop watching PATH
+  leita monitor list        whether monitoring is on, each place's last run and its alerts
+Run
+  leita monitor on          turn monitoring on: hand it to the system's scheduler
+  leita monitor off         turn monitoring off: remove it from the scheduler
+  leita monitor run [--all] scan each watched place that is due, then exit; what the
+                            scheduler runs every hour, and the default command
 
-  run [--all]        scan each watched place that is due, then exit; what the
-                     scheduler runs every hour, and the default command
-  list               whether monitoring is on, each place's last run and
-                     its alerts
-  add PATH [--every hourly|daily|weekly] [limits]
-                     watch PATH, daily unless --every says, or change how
-                     it is watched; each limit is off unless given:
-      --warn-used N    alert once the disk is N percent used
-      --fail-used N    alert harder once it is N percent used
-      --min-free SIZE  alert once less than SIZE is free, e.g. 20GiB
-      --full-within N  alert once the disk is forecast full within N days
-      --growth         alert when PATH grows far faster than it has been
-  remove PATH        stop watching PATH
-  on                 turn monitoring on: hand it to the system's scheduler
-  off                turn monitoring off: remove it from the scheduler
+Monitoring runs only while turned on, through the system's scheduler; nothing stays
+running. Each scan is kept, so change tracking has a steady record, and a limit
+crossed raises an alert, once, as a desktop notification and in list.
 `
 
 // Context is what the command line works with: where its files are, the
 // scheduler, the command the scheduler is to run, whether the paid features
-// are unlocked, and how an alert is shown on the desktop, nil for not at all.
+// are unlocked, how an alert is shown on the desktop, nil for not at all,
+// and what its output may carry, plain unless a person is watching.
 Context :: struct {
+	style:    term.Style,
 	paths:    Paths,
 	host:     schedule.Host,
 	argv:     []string, // what the scheduler runs: this binary, monitor, run
@@ -63,7 +67,7 @@ Context :: struct {
 }
 
 // LOCKED says why a paid command was refused.
-LOCKED :: "error: monitoring needs a licence now the 30-day trial has ended; add one in Leita, the window, under the key in its toolbar"
+LOCKED :: "monitoring needs a licence now the 30-day trial has ended; add one in Leita, the window, under Licence in its settings"
 
 // dispatch carries out the monitor command args names, saying how it went on w,
 // and returns the exit code.
@@ -76,11 +80,11 @@ dispatch :: proc(c: Context, args: []string, w: io.Writer) -> int {
 			all: bool `usage:"Scan every watched place, due or not."`,
 		}
 		f: Run_Flags
-		if code, ok := parse(&f, rest); !ok {
+		if code, ok := parse(c, &f, rest, w); !ok {
 			return code
 		}
 		if !c.unlocked {
-			fmt.wprintln(w, LOCKED)
+			errorf(c, w, LOCKED)
 			return EXIT_FAILED
 		}
 		return run(
@@ -109,16 +113,16 @@ dispatch :: proc(c: Context, args: []string, w: io.Writer) -> int {
 		f := Add_Flags {
 			every = "daily",
 		}
-		if code, ok := parse(&f, rest); !ok {
+		if code, ok := parse(c, &f, rest, w); !ok {
 			return code
 		}
 		if !c.unlocked {
-			fmt.wprintln(w, LOCKED)
+			errorf(c, w, LOCKED)
 			return EXIT_FAILED
 		}
 		every, ok := settings.frequency_named(f.every)
 		if !ok {
-			fmt.wprintfln(w, "error: --every is hourly, daily or weekly, not %q", f.every)
+			errorf(c, w, "--every is hourly, daily or weekly, not %q", f.every)
 			return EXIT_FAILED
 		}
 		limits := settings.Limits {
@@ -129,9 +133,10 @@ dispatch :: proc(c: Context, args: []string, w: io.Writer) -> int {
 		}
 		for v, name in ([2]int{f.warn_used, f.fail_used}) {
 			if v < 0 || v > 100 {
-				fmt.wprintfln(
+				errorf(
+					c,
 					w,
-					"error: --%s is a percent, 0 to 100, not %d",
+					"--%s is a percent, 0 to 100, not %d",
 					"warn-used" if name == 0 else "fail-used",
 					v,
 				)
@@ -139,16 +144,12 @@ dispatch :: proc(c: Context, args: []string, w: io.Writer) -> int {
 			}
 		}
 		if f.full_within < 0 {
-			fmt.wprintfln(w, "error: --full-within is days, not %d", f.full_within)
+			errorf(c, w, "--full-within is days, not %d", f.full_within)
 			return EXIT_FAILED
 		}
 		if f.min_free != "" {
 			if limits.min_free, ok = human.parse_bytes(f.min_free); !ok {
-				fmt.wprintfln(
-					w,
-					"error: cannot read --min-free %q: a size such as 20GiB",
-					f.min_free,
-				)
+				errorf(c, w, "cannot read --min-free %q: a size such as 20GiB", f.min_free)
 				return EXIT_FAILED
 			}
 		}
@@ -158,44 +159,74 @@ dispatch :: proc(c: Context, args: []string, w: io.Writer) -> int {
 			path: string `args:"pos=0,required" usage:"The place to stop watching."`,
 		}
 		f: Remove_Flags
-		if code, ok := parse(&f, rest); !ok {
+		if code, ok := parse(c, &f, rest, w); !ok {
 			return code
 		}
 		return remove(c, f.path, w)
 	case "on":
 		if !c.unlocked {
-			fmt.wprintln(w, LOCKED)
+			errorf(c, w, LOCKED)
 			return EXIT_FAILED
 		}
 		return switch_on(c, w)
 	case "off":
 		return switch_off(c, w)
 	case "-h", "--help", "help":
-		fmt.wprint(w, USAGE)
+		print_usage(c, w)
 		return 0
 	}
-	fmt.wprintf(w, "error: no monitor command %q\n\n%s", verb, USAGE)
+	errorf(c, w, "no monitor command %q", verb)
+	fmt.wprintln(w)
+	print_usage(c, w)
 	return EXIT_FAILED
 }
 
-// parse reads args into f, saying what is wrong; it fails with the exit code to
-// return, 0 for a request for help.
+// print_usage writes USAGE on w: plain, byte for byte; for a person, with weight.
 @(private)
-parse :: proc(f: ^$T, args: []string) -> (code: int, ok: bool) {
-	err := flags.parse(f, args, .Unix)
-	if err == nil {
+print_usage :: proc(c: Context, w: io.Writer) {
+	b := strings.builder_make(context.temp_allocator)
+	term.write_usage(&b, c.style, "leita monitor", USAGE)
+	fmt.wprint(w, strings.to_string(b))
+}
+
+// errorf says what went wrong on w, the prefix in bold for a person.
+@(private)
+errorf :: proc(c: Context, w: io.Writer, format: string, args: ..any) {
+	fmt.wprintfln(w, "%s %s", term.painted(c.style, {.Bold}, "error:"), fmt.tprintf(format, ..args))
+}
+
+// notef says what a person should know on w, the prefix in bold for them.
+@(private)
+notef :: proc(c: Context, w: io.Writer, format: string, args: ..any) {
+	fmt.wprintfln(w, "%s %s", term.painted(c.style, {.Bold}, "note:"), fmt.tprintf(format, ..args))
+}
+
+// parse reads args into f, saying what is wrong on w; it fails with the exit
+// code to return, 0 for a request for help, which USAGE answers.
+@(private)
+parse :: proc(c: Context, f: ^$T, args: []string, w: io.Writer) -> (code: int, ok: bool) {
+	switch e in flags.parse(f, args, .Unix) {
+	case nil:
 		return 0, true
+	case flags.Help_Request:
+		print_usage(c, w)
+		return 0, false
+	case flags.Parse_Error:
+		errorf(c, w, "%s", e.message)
+	case flags.Validation_Error:
+		errorf(c, w, "%s", e.message)
+	case flags.Open_File_Error:
+		errorf(c, w, "cannot open %s: %v", e.filename, e.errno)
 	}
-	flags.print_errors(T, err, "leita monitor", .Unix)
-	_, help := err.(flags.Help_Request)
-	return 0 if help else EXIT_FAILED, false
+	fmt.wprintln(w, "leita monitor -h lists what it takes")
+	return EXIT_FAILED, false
 }
 
 // open_settings opens the settings store, saying why not on w.
 @(private)
 open_settings :: proc(c: Context, st: ^settings.Store, w: io.Writer) -> bool {
 	if err := settings.open(st, c.paths.settings); err != nil {
-		fmt.wprintfln(w, "error: cannot open %s: %s", c.paths.settings, history.describe(err))
+		errorf(c, w, "cannot open %s: %s", c.paths.settings, history.describe(err))
 		return false
 	}
 	return true
@@ -231,19 +262,19 @@ add :: proc(
 	defer settings.close(&st)
 	place := place_of(path)
 	if !os.exists(place) {
-		fmt.wprintfln(w, "error: %s is not there", place)
+		errorf(c, w, "%s is not there", place)
 		return EXIT_FAILED
 	}
 	if err := settings.watch(
 		&st,
 		{place = place, every = every, added = time.to_unix_seconds(c.now), limits = limits},
 	); err != nil {
-		fmt.wprintfln(w, "error: cannot watch %s: %s", place, history.describe(err))
+		errorf(c, w, "cannot watch %s: %s", place, history.describe(err))
 		return EXIT_FAILED
 	}
 	fmt.wprintfln(w, "watching %s, %s", place, settings.FREQUENCY_NAMES[every])
 	if !settings.monitoring(&st) {
-		fmt.wprintln(w, "note: monitoring is off; leita monitor on turns it on")
+		notef(c, w, "monitoring is off; leita monitor on turns it on")
 	}
 	return 0
 }
@@ -259,7 +290,7 @@ remove :: proc(c: Context, path: string, w: io.Writer) -> int {
 	for place in ([]string{path, place_of(path)}) {
 		found, err := forget(&st, c.paths, place)
 		if err != nil {
-			fmt.wprintfln(w, "error: cannot stop watching %s: %s", place, history.describe(err))
+			errorf(c, w, "cannot stop watching %s: %s", place, history.describe(err))
 			return EXIT_FAILED
 		}
 		if found {
@@ -267,7 +298,7 @@ remove :: proc(c: Context, path: string, w: io.Writer) -> int {
 			return 0
 		}
 	}
-	fmt.wprintfln(w, "error: %s is not watched", path)
+	errorf(c, w, "%s is not watched", path)
 	return EXIT_FAILED
 }
 
@@ -280,19 +311,20 @@ switch_on :: proc(c: Context, w: io.Writer) -> int {
 	defer settings.close(&st)
 	problem, logged_in_only := schedule.install(c.host, c.argv)
 	if problem != "" {
-		fmt.wprintfln(w, "error: cannot add the %s: %s", schedule.describe(c.host), problem)
+		errorf(c, w, "cannot add the %s: %s", schedule.describe(c.host), problem)
 		return EXIT_FAILED
 	}
 	if err := settings.set_monitoring(&st, true); err != nil {
 		schedule.remove(c.host)
-		fmt.wprintfln(w, "error: cannot turn monitoring on: %s", history.describe(err))
+		errorf(c, w, "cannot turn monitoring on: %s", history.describe(err))
 		return EXIT_FAILED
 	}
 	fmt.wprintfln(w, "monitoring is on: the %s runs it every hour", schedule.describe(c.host))
 	if logged_in_only {
-		fmt.wprintfln(
+		notef(
+			c,
 			w,
-			"note: it runs only while %s is logged in; to run it always: loginctl enable-linger %s",
+			"it runs only while %s is logged in; to run it always: loginctl enable-linger %s",
 			c.host.login,
 			c.host.login,
 		)
@@ -308,11 +340,11 @@ switch_off :: proc(c: Context, w: io.Writer) -> int {
 	}
 	defer settings.close(&st)
 	if err := settings.set_monitoring(&st, false); err != nil {
-		fmt.wprintfln(w, "error: cannot turn monitoring off: %s", history.describe(err))
+		errorf(c, w, "cannot turn monitoring off: %s", history.describe(err))
 		return EXIT_FAILED
 	}
 	if problem := schedule.remove(c.host); problem != "" {
-		fmt.wprintfln(w, "error: cannot remove the %s: %s", schedule.describe(c.host), problem)
+		errorf(c, w, "cannot remove the %s: %s", schedule.describe(c.host), problem)
 		return EXIT_FAILED
 	}
 	fmt.wprintln(w, "monitoring is off, and nothing is scheduled")
@@ -334,7 +366,7 @@ list :: proc(c: Context, w: io.Writer) -> int {
 	}
 	watches, err := settings.watches(&st, context.temp_allocator)
 	if err != nil {
-		fmt.wprintfln(w, "error: cannot read what is watched: %s", history.describe(err))
+		errorf(c, w, "cannot read what is watched: %s", history.describe(err))
 		return EXIT_FAILED
 	}
 	if len(watches) == 0 {
@@ -344,7 +376,12 @@ list :: proc(c: Context, w: io.Writer) -> int {
 	english := new(msg.Strings, context.temp_allocator)
 	msg.init(english, .English)
 	for watch in watches {
-		fmt.wprintfln(w, "%s  %s", watch.place, settings.FREQUENCY_NAMES[watch.every])
+		fmt.wprintfln(
+			w,
+			"%s  %s",
+			term.painted(c.style, {.Bold}, watch.place),
+			settings.FREQUENCY_NAMES[watch.every],
+		)
 		if limits := limits_text(watch.limits); limits != "" {
 			fmt.wprintfln(w, "  alerts on %s", limits)
 		}
@@ -353,7 +390,13 @@ list :: proc(c: Context, w: io.Writer) -> int {
 		case !ok:
 			fmt.wprintln(w, "  not scanned yet")
 		case last.problem != "":
-			fmt.wprintfln(w, "  %s  failed: %s", when_(last.started), last.problem)
+			fmt.wprintfln(
+				w,
+				"  %s  %s %s",
+				when_(last.started),
+				term.painted(c.style, {.Bold}, "failed:"),
+				last.problem,
+			)
 		case:
 			fmt.wprintfln(
 				w,
@@ -368,8 +411,9 @@ list :: proc(c: Context, w: io.Writer) -> int {
 			if a, known := alert_of(r); known {
 				fmt.wprintfln(
 					w,
-					"  %s  alert: %s",
+					"  %s  %s %s",
 					when_(r.raised),
+					term.painted(c.style, {.Bold}, "alert:"),
 					alert.say(english, a, r.place, r.problem),
 				)
 			}
@@ -418,9 +462,11 @@ system's scheduler, and this binary as what the scheduler runs. It says how it
 went on standard output and returns the exit code.
 */
 run_command_line :: proc(args: []string) -> int {
+	mode, _ := term.parse_mode(os.get_env("LEITA_COLOR", context.temp_allocator))
+	style := term.detect(terminal.is_terminal(os.stdout), mode)
 	kept := history.default_path(context.temp_allocator)
 	if kept == "" {
-		fmt.eprintln("error: no folder to keep leita's data in")
+		errorf({style = style}, os.to_writer(os.stderr), "no folder to keep leita's data in")
 		return EXIT_FAILED
 	}
 	exe, err := os.get_executable_path(context.temp_allocator)
@@ -432,6 +478,7 @@ run_command_line :: proc(args: []string) -> int {
 	licensee := licence.licensee_kept(paths.licence)
 	first := licence.first_use(licence.path_beside(kept, context.temp_allocator, "first-use"))
 	c := Context {
+		style    = style,
 		paths    = paths,
 		host     = host,
 		argv     = {exe, "monitor", "run"},

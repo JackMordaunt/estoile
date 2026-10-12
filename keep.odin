@@ -77,7 +77,7 @@ error, why history was unavailable, if it was.
 */
 say_kept :: proc(k: Kept, now: u64, quiet: bool) {
 	if k.problem != "" {
-		fmt.eprintfln("note: history unavailable, so this scan is not kept: %s", k.problem)
+		say_note("history unavailable, so this scan is not kept: %s", k.problem)
 	}
 	prev, compared := k.previous.?
 	if quiet || k.place == "" || (!compared && k.problem != "") {
@@ -85,23 +85,25 @@ say_kept :: proc(k: Kept, now: u64, quiet: bool) {
 	}
 	fmt.println()
 	if !compared {
-		fmt.println("history    the first scan of this place kept")
+		label("history", "the first scan of this place kept")
 		return
 	}
 	then := timefmt.local(prev.taken, "%Y-%m-%d %H:%M", context.temp_allocator)
 	switch {
 	case now == k.bytes:
-		fmt.printfln("history    unchanged since %s", then)
+		label("history", "unchanged since %s", then)
 	case now > k.bytes:
-		fmt.printfln(
-			"history    up %s since %s, from %s",
+		label(
+			"history",
+			"up %s since %s, from %s",
 			human.bytes(now - k.bytes),
 			then,
 			human.bytes(k.bytes),
 		)
 	case:
-		fmt.printfln(
-			"history    down %s since %s, from %s",
+		label(
+			"history",
+			"down %s since %s, from %s",
 			human.bytes(k.bytes - now),
 			then,
 			human.bytes(k.bytes),

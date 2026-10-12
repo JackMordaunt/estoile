@@ -11,11 +11,13 @@ a live volume needs an elevated prompt.
 */
 package main
 
+import "base:runtime"
 import "core:debug/trace"
 import "core:flags"
 import "core:fmt"
 import "core:os"
 import "core:strings"
+import "core:terminal"
 import "core:time"
 
 import "history"
@@ -27,42 +29,89 @@ import "ntfs"
 import "report"
 import "scan"
 import "survey"
+import "term"
 import "version"
 import "walk"
 
 // Largest N files/folders to print.
 TOP_N :: 20
 
+/*
+USAGE is what -h prints: plain, byte for byte, in a pipe or to an agent; for a
+person at a terminal, with the weight term.usage gives its shape. It names
+every flag Options has, and a test holds it to that.
+*/
+USAGE :: `leita — find out what is using the disk.
+
+Scan
+  leita [TARGET]            the largest files and directories of a drive, device,
+                            image or directory; your home directory unless named
+  leita monitor ...         scheduled scans of the places you watch; leita monitor -h
+  --live                    draw the answer as it is found rather than once at the end
+  --no-history              neither compare with earlier scans of this place nor keep
+                            this one
+Report
+  --report FILE             write the scan up as FILE, .csv, .json, .html or .pdf;
+                            - writes it to standard output instead of the summary
+  --format FORMAT           the report's format, csv, json, html or pdf, whatever its
+                            file is called
+  --paper a4|letter         the paper a PDF report is laid out on; the locale's unless set
+  --top N                   largest directories and files a report lists, 50 unless set
+  --reclaim                 include in the report what can be deleted and made again
+Alert
+  --warn-used N             exit code 2 once the volume is at least N percent used, e.g. 80
+  --fail-used N             exit code 3 once the volume is at least N percent used, e.g. 95
+  --min-free SIZE           exit code 3 once the volume has less free than SIZE, e.g. 20GiB
+Read
+  --gentle                  leave the disk and cores to other work by reading with
+                            fewer threads
+  --buffered                read the volume through the system cache rather than around it
+  --workers N               MFT readers to run at once
+  --walk-workers N          directory readers to run at once
+  --chunk BYTES             bytes per volume read
+  --no-skip                 read runs of dead MFT records rather than jumping over them
+  --min-skip BYTES          shortest run of dead records worth jumping over
+Also
+  --color auto|always|never decorate the summary; auto does for a person at a terminal,
+                            never in a pipe (LEITA_COLOR sets it too)
+  --version                 print which leita this is and stop
+
+Exit codes: 0 no limit crossed; 1 a bad flag, or a target that could not be scanned;
+2 a --warn-used limit crossed; 3 a --fail-used or --min-free limit crossed.
+Each scan is kept beside the window's, so the next says what changed.
+`
+
 // PROGRAM is the command's name in its messages: the product's.
 PROGRAM :: version.NAME
 
 /*
-What the command line can set.
+What the command line can set, each said in USAGE, which a test keeps in step.
 
 Read in UNIX style, so `--flag`, `--flag=value` and `--flag value` all work, and `-h`
-prints this. A count left at zero means the reader chooses its own, rather than
+prints USAGE. A count left at zero means the reader chooses its own, rather than
 having a second set of defaults to keep in step here.
 */
 Options :: struct {
-	target:       string `args:"pos=0" usage:"Drive, device, image or directory to scan. Defaults to your home directory."`,
-	live:         bool `usage:"Draw the answer as it is found rather than once at the end."`,
-	buffered:     bool `usage:"Read the volume through the system cache rather than around it."`,
-	no_skip:      bool `usage:"Read runs of dead MFT records rather than jumping over them."`,
-	min_skip:     int `usage:"Shortest run of dead records worth jumping over, in bytes."`,
-	workers:      int `usage:"MFT readers to run at once."`,
-	walk_workers: int `usage:"Directory readers to run at once."`,
-	gentle:       bool `usage:"Leave the disk and cores to other work by reading with fewer threads."`,
-	chunk:        int `usage:"Bytes per volume read."`,
-	report:       string `usage:"Write a report of the scan to this file, .csv, .json, .html or .pdf; - writes it to standard output instead of the usual summary."`,
-	format:       string `usage:"The report's format, csv, json, html or pdf, whatever its file is called."`,
-	paper:        string `usage:"The paper a PDF report is laid out on, a4 or letter; the locale's unless set."`,
-	top:          int `usage:"Largest directories and files a report lists, 50 unless set."`,
-	reclaim:      bool `usage:"Include in the report what can be deleted and made again."`,
-	no_history:   bool `usage:"Neither compare with earlier scans of this place nor keep this one."`,
-	warn_used:    int `usage:"Exit code 2 once the volume is at least this percent used, e.g. 80."`,
-	fail_used:    int `usage:"Exit code 3 once the volume is at least this percent used, e.g. 95."`,
-	min_free:     string `usage:"Exit code 3 once the volume has less free than this, e.g. 20GiB."`,
-	version:      bool `usage:"Print which leita this is and stop."`,
+	target:       string `args:"pos=0"`,
+	live:         bool,
+	buffered:     bool,
+	no_skip:      bool,
+	min_skip:     int,
+	workers:      int,
+	walk_workers: int,
+	gentle:       bool,
+	chunk:        int,
+	report:       string,
+	format:       string,
+	paper:        string,
+	top:          int,
+	reclaim:      bool,
+	no_history:   bool,
+	warn_used:    int,
+	fail_used:    int,
+	min_free:     string,
+	color:        string,
+	version:      bool,
 }
 
 /*
@@ -99,13 +148,30 @@ run :: proc() -> int {
 		return monitor.run_command_line(os.args[2:])
 	}
 
+	// Plain unless a person is watching, decided before the flags are read,
+	// so a bad flag and -h are already said their way: --color is found by
+	// hand, since core:flags returns Help_Request as it meets -h, wherever it
+	// stands (core/flags/parsing.odin), so --color=always -h would never be
+	// read.
+	mode, _ := term.parse_mode(os.get_env("LEITA_COLOR", context.temp_allocator))
+	if word, given := find_color(os.args[1:]); given {
+		ok: bool
+		if mode, ok = term.parse_mode(word); !ok {
+			set_style(.Auto)
+			say_error("--color takes auto, always or never, not %q", word)
+			return EXIT_ERROR
+		}
+	}
+	set_style(mode)
+
 	opt: Options
 	if err := flags.parse(&opt, os.args[1:], .Unix); err != nil {
-		// print_errors writes usage for a help request and the reason for anything
-		// else, so the only decision left here is what to exit with.
-		flags.print_errors(Options, err, PROGRAM, .Unix)
-		_, asked_for_help := err.(flags.Help_Request)
-		return 0 if asked_for_help else 1
+		if _, asked_for_help := err.(flags.Help_Request); asked_for_help {
+			print_usage()
+			return EXIT_OK
+		}
+		say_flag_error(err)
+		return EXIT_ERROR
 	}
 	if opt.version {
 		fmt.println(version_line())
@@ -125,6 +191,53 @@ run :: proc() -> int {
 	)
 }
 
+// find_color finds --color among args the way the parser would, as --color=WORD
+// or --color WORD, and says whether it was given.
+find_color :: proc(args: []string) -> (word: string, given: bool) {
+	for a, i in args {
+		switch {
+		case strings.has_prefix(a, "--color="):
+			word, given = a[len("--color="):], true
+		case a == "--color" && i + 1 < len(args):
+			word, given = args[i + 1], true
+		}
+	}
+	return
+}
+
+// set_style decides what each stream may carry; see say.odin.
+set_style :: proc(mode: term.Mode) {
+	style = term.detect(terminal.is_terminal(os.stdout), mode)
+	estyle = term.detect(terminal.is_terminal(os.stderr), mode)
+}
+
+// print_usage writes USAGE on standard output, styled for a person.
+print_usage :: proc() {
+	b := strings.builder_make(context.temp_allocator)
+	term.write_usage(&b, style, PROGRAM, USAGE)
+	fmt.print(strings.to_string(b))
+}
+
+/*
+say_flag_error says what was wrong with the command line in words, and where
+the flags are listed, rather than the "[flags.Parse_Error.Reason] message" line
+flags.print_errors writes (core/flags/util.odin). A help request is not an
+error and is answered before this.
+*/
+say_flag_error :: proc(err: flags.Error) {
+	switch e in err {
+	case flags.Parse_Error:
+		say_error("%s", e.message)
+	case flags.Validation_Error:
+		say_error("%s", e.message)
+	case flags.Open_File_Error:
+		say_error("cannot open %s: %v", e.filename, e.errno)
+	case flags.Help_Request:
+		return
+	}
+	fmt.eprintfln("%s -h lists what it takes", PROGRAM)
+}
+
 /*
 scan_and_say scans what opt names and says what it found: a summary on the
 terminal, a report as well or instead when one is asked for. kept is the history
@@ -136,44 +249,44 @@ scan_and_say :: proc(opt: Options, kept := "", licensee := "", locked := false) 
 	// Checked before anything is read, so a mistake costs nothing.
 	format, format_err := report_format(opt)
 	if format_err != "" {
-		fmt.eprintfln("error: %s", format_err)
+		say_error("%s", format_err)
 		return 1
 	}
 	if opt.report != "" && locked {
-		fmt.eprintln(
-			"error: reports need a licence now the 30-day trial has ended; add one in Leita, the window, under the key in its toolbar",
+		say_error(
+			"reports need a licence now the 30-day trial has ended; add one in Leita, the window, under Licence in its settings",
 		)
 		return 1
 	}
 	if opt.report != "" && opt.live {
-		fmt.eprintln("error: a report is written from a finished scan, not a live one")
+		say_error("a report is written from a finished scan, not a live one")
 		return 1
 	}
 	paper := report.paper_of_locale()
 	if opt.paper != "" {
 		ok: bool
 		if paper, ok = report.paper_named(opt.paper); !ok {
-			fmt.eprintfln("error: no paper %q: use a4 or letter", opt.paper)
+			say_error("no paper %q: use a4 or letter", opt.paper)
 			return 1
 		}
 		if format != .Pdf || opt.report == "" {
-			fmt.eprintln("error: --paper lays out a PDF report; name one with --report")
+			say_error("--paper lays out a PDF report; name one with --report")
 			return 1
 		}
 	}
 	if opt.warn_used < 0 || opt.warn_used > 100 {
-		fmt.eprintfln("error: --warn-used is a percent, 0 to 100, not %d", opt.warn_used)
+		say_error("--warn-used is a percent, 0 to 100, not %d", opt.warn_used)
 		return EXIT_ERROR
 	}
 	if opt.fail_used < 0 || opt.fail_used > 100 {
-		fmt.eprintfln("error: --fail-used is a percent, 0 to 100, not %d", opt.fail_used)
+		say_error("--fail-used is a percent, 0 to 100, not %d", opt.fail_used)
 		return EXIT_ERROR
 	}
 	min_free: u64
 	if opt.min_free != "" {
 		ok: bool
 		if min_free, ok = human.parse_bytes(opt.min_free); !ok {
-			fmt.eprintfln("error: cannot read --min-free %q: a size such as 20GiB", opt.min_free)
+			say_error("cannot read --min-free %q: a size such as 20GiB", opt.min_free)
 			return EXIT_ERROR
 		}
 	}
@@ -194,7 +307,7 @@ scan_and_say :: proc(opt: Options, kept := "", licensee := "", locked := false) 
 
 	target, engine, resolve_err := scan.resolve(target_str)
 	if resolve_err != nil {
-		fmt.eprintfln("error: cannot scan %s: %v", target_str, resolve_err)
+		say_error("cannot scan %s: %v", target_str, resolve_err)
 		return 1
 	}
 	defer scan.target_destroy(&target)
@@ -206,38 +319,44 @@ scan_and_say :: proc(opt: Options, kept := "", licensee := "", locked := false) 
 
 	if !quiet {
 		fmt.printfln(
-			"leita: %s on %s (%v, %v media, %v engine, %v io)",
-			scan.location(target, context.temp_allocator),
+			"%s %s on %s %s",
+			dim("leita:"),
+			bold(scan.location(target, context.temp_allocator)),
 			target.volume,
-			target.fs,
-			target.media,
-			engine.engine,
-			opts.io_mode,
+			dim(
+				fmt.tprintf(
+					"(%v, %v media, %v engine, %v io)",
+					target.fs,
+					target.media,
+					engine.engine,
+					opts.io_mode,
+				),
+			),
 		)
 		if engine.engine == .Walk {
-			fmt.printfln("walk: %d readers at %v pace", walk.width(wcfg), wcfg.pace)
+			fmt.printfln("%s %d readers at %v pace", dim("walk:"), walk.width(wcfg), wcfg.pace)
 		}
 	}
 
 	if engine.permission_would_help {
 		when ODIN_OS == .Windows {
-			fmt.eprintln("note: this volume reads far faster from an administrator prompt")
+			say_note("this volume reads far faster from an administrator prompt")
 		} else {
-			fmt.eprintfln(
-				"note: this volume reads far faster with permission to open %s directly",
+			say_note(
+				"this volume reads far faster with permission to open %s directly",
 				target.volume,
 			)
 		}
 	}
 
 	if engine.engine == .None {
-		fmt.eprintfln("error: nothing here can be scanned")
+		say_error("nothing here can be scanned")
 		return 1
 	}
 
 	t: scan.Tree
 	if err := scan.tree_init(&t, walk.width(wcfg)); err != nil {
-		fmt.eprintfln("error: %v", err)
+		say_error("%v", err)
 		return 1
 	}
 	defer scan.tree_destroy(&t)
@@ -269,8 +388,9 @@ scan_and_say :: proc(opt: Options, kept := "", licensee := "", locked := false) 
 			print_native(&f.table, elapsed)
 		}
 		fmt.println()
-		fmt.printfln(
-			"tree       %d slots, %d used, read in %.0f ms",
+		label(
+			"tree",
+			"%d slots, %d used, read in %.0f ms",
 			t.count,
 			t.nodes_done,
 			time.duration_milliseconds(elapsed),
@@ -309,7 +429,7 @@ scan_and_say :: proc(opt: Options, kept := "", licensee := "", locked := false) 
 		context.temp_allocator,
 	)
 	if thresholds_set && !known {
-		fmt.eprintln("error: cannot check thresholds: this target's free space is unknown")
+		say_error("cannot check thresholds: this target's free space is unknown")
 		return EXIT_ERROR
 	}
 	if thresholds_set {
@@ -368,8 +488,8 @@ say_threshold :: proc(th: report.Threshold) {
 		return
 	}
 	fmt.eprintfln(
-		"%s: %s",
-		report.VERDICT_KEYS[th.verdict],
+		"%s %s",
+		term.painted(estyle, {.Bold}, fmt.tprintf("%s:", report.VERDICT_KEYS[th.verdict])),
 		strings.join(th.reasons, "; ", context.temp_allocator),
 	)
 }
@@ -416,14 +536,14 @@ write_report :: proc(
 ) -> int {
 	if path == "-" {
 		if err := report.export(os.to_writer(os.stdout), r, format, paper); err != nil {
-			fmt.eprintfln("error: %s", report.ERROR_TEXT[err])
+			say_error("%s", report.ERROR_TEXT[err])
 			return 1
 		}
 		return 0
 	}
 	file, open_err := os.open(path, {.Write, .Create, .Trunc}, os.Permissions_Default_File)
 	if open_err != nil {
-		fmt.eprintfln("error: cannot write %s: %v", path, open_err)
+		say_error("cannot write %s: %v", path, open_err)
 		return 1
 	}
 	w := os.to_writer(file)
@@ -433,18 +553,18 @@ write_report :: proc(
 	}
 	if err != nil {
 		os.remove(path)
-		fmt.eprintfln("error: %s: %s", report.ERROR_TEXT[err], path)
+		say_error("%s: %s", report.ERROR_TEXT[err], path)
 		return 1
 	}
 	fmt.println()
-	fmt.printfln("report     %s, %s", path, report.FORMAT_NAMES[format])
+	label("report", "%s, %s", path, report.FORMAT_NAMES[format])
 	return 0
 }
 
 // Say what went wrong, if anything did.
 fill_report :: proc(f: ^survey.Fill) -> bool {
 	if msg := survey.problem(f); msg != "" {
-		fmt.eprintfln("error: %s", msg)
+		say_error("%s", msg)
 		return true
 	}
 	return false
@@ -501,14 +621,18 @@ print_largest :: proc(t: ^scan.Tree, roll: ^survey.Rollup, kind: Kind) {
 		}
 		top_n(top[:], &count, Sized{bytes = bytes, record = i})
 	}
-	fmt.println()
-	fmt.printfln("largest %v (%d)", kind, count)
+	say_heading(fmt.tprintf("largest %v", kind), count)
+	// Every path starts with the scanned place; dim, it lets the tail that
+	// differs stand out. The place itself, among the directories, stays whole.
+	root := scan.path(t, t.root, context.temp_allocator)
 	for s in top[:count] {
-		fmt.printfln(
-			"  %10s  %s",
-			human.bytes(s.bytes),
-			scan.path(t, s.record, context.temp_allocator),
-		)
+		// Each row's path is let go with the row.
+		runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
+		path := scan.path(t, s.record, context.temp_allocator)
+		if len(path) > len(root) && strings.has_prefix(path, root) {
+			path = strings.concatenate({dim(root), path[len(root):]}, context.temp_allocator)
+		}
+		fmt.printfln("  %10s  %s", human.bytes(s.bytes), path)
 	}
 }
 
@@ -528,26 +652,29 @@ print_native :: proc(m: ^ntfs.Mft, elapsed: time.Duration) {
 	}
 	volume_bytes := m.boot.total_sectors * u64(m.boot.bytes_per_sector)
 	fmt.println()
-	fmt.printfln(
-		"volume     %s, %d B clusters, %d B records",
+	label(
+		"volume",
+		"%s, %d B clusters, %d B records",
 		human.bytes(volume_bytes),
 		m.boot.bytes_per_cluster,
 		m.boot.record_size,
 	)
-	fmt.printfln(
-		"mft        %d slots, %d records, %d unreadable, read in %.0f ms",
+	label(
+		"mft",
+		"%d slots, %d records, %d unreadable, read in %.0f ms",
 		m.stats.records,
 		m.stats.records_read,
 		m.stats.records_bad,
 		time.duration_milliseconds(elapsed),
 	)
-	fmt.printfln(
-		"in use     %d files, %d directories, %d extra hard links",
+	label(
+		"in use",
+		"%d files, %d directories, %d extra hard links",
 		files,
 		m.stats.directories,
 		len(m.links),
 	)
-	fmt.printfln("attributed %s summed from every file run list", human.bytes(allocated))
+	label("attributed", "%s summed from every file run list", human.bytes(allocated))
 
 	/*
 	$Bitmap counts allocated clusters without consulting a single file, so comparing it
@@ -557,24 +684,27 @@ print_native :: proc(m: ^ntfs.Mft, elapsed: time.Duration) {
 	*/
 	on_disk := m.stats.allocated_clusters * u64(m.boot.bytes_per_cluster)
 	if on_disk > 0 {
-		fmt.printfln("on disk    %s marked allocated in $Bitmap", human.bytes(on_disk))
+		label("on disk", "%s marked allocated in $Bitmap", human.bytes(on_disk))
 		if on_disk >= allocated {
 			gap := on_disk - allocated
-			fmt.printfln(
-				"unclaimed  %s (%.2f%%) allocated but charged to no file",
+			label(
+				"unclaimed",
+				"%s (%.2f%%) allocated but charged to no file",
 				human.bytes(gap),
 				100 * f64(gap) / f64(on_disk),
 			)
 		} else {
-			fmt.printfln(
-				"overcount  %s more attributed than $Bitmap reports allocated",
+			label(
+				"overcount",
+				"%s more attributed than $Bitmap reports allocated",
 				human.bytes(allocated - on_disk),
 			)
 		}
 	}
 	if m.stats.resident_files > 0 {
-		fmt.printfln(
-			"resident   %d files hold %s inside their MFT records, charged to $MFT",
+		label(
+			"resident",
+			"%d files hold %s inside their MFT records, charged to $MFT",
 			m.stats.resident_files,
 			human.bytes(m.stats.resident_bytes),
 		)

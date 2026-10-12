@@ -116,6 +116,30 @@ a_place_is_due_once_its_period_is_nearly_up :: proc(t: ^testing.T) {
 	testing.expect(t, due(.Weekly, 1, 7 * 24 * hour))
 }
 
+// -h answers with USAGE, plain unless a person is watching, and a command
+// that is missing something says so in words and where the words are.
+@(test)
+help_is_plain_unless_a_person_is_watching :: proc(t: ^testing.T) {
+	b: Bench
+	bench_open(t, &b)
+	defer os.remove_all(b.dir)
+
+	code, out := run_monitor(&b, "-h")
+	testing.expect_value(t, code, 0)
+	testing.expect_value(t, out, USAGE)
+	code, out = run_monitor(&b, "add")
+	testing.expect_value(t, code, EXIT_FAILED)
+	testing.expect(t, strings.has_prefix(out, "error: "), out)
+	testing.expect(t, strings.has_suffix(out, "leita monitor -h lists what it takes\n"), out)
+
+	b.c.style = {depth = .Three_Bit}
+	_, out = run_monitor(&b, "-h")
+	testing.expect(t, strings.contains(out, "\x1b[1mWatch\x1b[0m"), "headings are bold")
+	testing.expect(t, strings.contains(out, "\x1b[2mleita monitor\x1b[0m \x1b[1madd\x1b[0m"), out)
+	_, out = run_monitor(&b, "bogus")
+	testing.expect(t, strings.has_prefix(out, "\x1b[1merror:\x1b[0m no monitor command"), out)
+}
+
 @(test)
 a_place_is_added_listed_and_removed :: proc(t: ^testing.T) {
 	b: Bench

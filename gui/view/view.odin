@@ -243,6 +243,16 @@ Model :: struct {
 	watch_text:       ui.Text_State,
 	monitor_sent:     Maybe(u32),
 	monitor_answered: bool,
+	// The alerts editor (monitor.odin): whether it is open, under which place,
+	// its fields, and whether they last failed to read.
+	limits_open:      bool,
+	limits_place:     string,
+	limit_warn:       ui.Text_State,
+	limit_fail:       ui.Text_State,
+	limit_free:       ui.Text_State,
+	limit_days:       ui.Text_State,
+	limit_growth:     bool,
+	limits_bad:       bool,
 }
 
 // model_init readies m to show path in locale, English unless the caller says.
@@ -264,6 +274,11 @@ model_destroy :: proc(m: ^Model) {
 	ui.text_destroy(&m.licence_text)
 	ui.text_destroy(&m.search)
 	ui.text_destroy(&m.watch_text)
+	ui.text_destroy(&m.limit_warn)
+	ui.text_destroy(&m.limit_fail)
+	ui.text_destroy(&m.limit_free)
+	ui.text_destroy(&m.limit_days)
+	delete(m.limits_place)
 	delete(m.search_held)
 	delete(m.buy_url)
 	free(m.strings)

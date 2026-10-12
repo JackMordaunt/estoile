@@ -334,18 +334,36 @@ Frequency :: enum u8 {
 	Weekly,
 }
 
-// Watched_Place is one place the monitor scans, and how its last scan went:
-// scanned is false until it has run once; problem is why it failed, "" when it
-// did not.
+// Watched_Place is one place the monitor scans, what its scans are checked
+// against, and how its last scan went: scanned is false until it has run once;
+// problem is why it failed, "" when it did not; alerting is whether anything
+// was wrong after it.
 Watched_Place :: struct {
-	place:   string,
-	every:   Frequency,
-	scanned: bool,
-	started: i64, // Unix seconds
-	seconds: f64,
-	bytes:   u64,
-	problem: string,
+	place:       string,
+	every:       Frequency,
+	warn_used:   int, // percent used, 0 for none
+	fail_used:   int, // percent used, 0 for none
+	min_free:    u64, // bytes, 0 for none
+	full_within: int, // days, 0 for none
+	growth:      bool,
+	scanned:     bool,
+	started:     i64, // Unix seconds
+	seconds:     f64,
+	bytes:       u64,
+	problem:     string,
+	alerting:    bool,
 }
+
+// Raised_Alert is an alert a scheduled scan raised, when, worded in the
+// window's language.
+Raised_Alert :: struct {
+	place:  string,
+	raised: i64, // Unix seconds
+	text:   string,
+}
+
+// MONITOR_ALERTS_LIMIT is the most alerts a Monitor_Result carries, newest first.
+MONITOR_ALERTS_LIMIT :: 20
 
 Monitor_Result :: struct {
 	on:        bool,
@@ -357,4 +375,5 @@ Monitor_Result :: struct {
 	problem:   string,
 	note:      string,
 	watched:   []Watched_Place, // in the order they were added
+	alerts:    []Raised_Alert, // of every place, newest first, at most MONITOR_ALERTS_LIMIT
 }

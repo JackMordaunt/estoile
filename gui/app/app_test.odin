@@ -31,6 +31,7 @@ import "jm:ui/primer"
 import "jm:ui/render"
 
 import "../../licence"
+import "../../monitor"
 import "../../scan"
 import "../../schedule"
 import "../../settings"
@@ -2813,7 +2814,12 @@ monitoring_watches_a_place_and_hands_it_to_the_scheduler :: proc(t: ^testing.T) 
 	testing.expect(t, ui.probe_click(&r.p, "Off"), "the switch is off")
 	hand_on(&r)
 	testing.expect(t, settle(&r, "Run every hour by the systemd user timer leita-monitor.timer."))
-	testing.expect(t, os.exists(timer), "the timer is written")
+	timer_text, _ := os.read_entire_file(timer, context.temp_allocator)
+	testing.expect(
+		t,
+		strings.contains(string(timer_text), "OnCalendar=hourly\n"),
+		"the timer is written",
+	)
 	service, _ := os.read_entire_file(
 		fmt.tprintf("%s/leita-monitor.service", host.units),
 		context.temp_allocator,
@@ -2830,6 +2836,27 @@ monitoring_watches_a_place_and_hands_it_to_the_scheduler :: proc(t: ^testing.T) 
 			slice.contains(rec.commands[:], "systemctl --user enable --now leita-monitor.timer"),
 		)
 	}
+
+	// The bell opens the place's alerts; one set and saved is checked by the
+	// next run, whose alert the dialog shows within a few seconds.
+	testing.expect(t, ui.probe_click(&r.p, fmt.tprintf("Alerts for %s", root)))
+	ui.probe_advance(&r.p, 5, 1.0 / 60)
+	testing.expect(t, ui.probe_tagged(&r.p, "Warn at percent used"))
+	ui.text_set(&r.m.limit_warn, "1")
+	ui.probe_advance(&r.p, 20, 1.0 / 60)
+	testing.expect(t, render.headless_png(&r.hl, "build/test/monitoring_alerts_editor.png"))
+	testing.expect(t, ui.probe_click_top(&r.p, "Save"))
+	hand_on(&r)
+	testing.expect(t, settle(&r, "Warn at percent used", false), "the editor closes")
+	out := strings.builder_make(context.temp_allocator)
+	code := monitor.run(
+		{paths = monitor.paths_beside(kept, context.temp_allocator), now = time.now(), all = true},
+		strings.to_writer(&out),
+	)
+	testing.expectf(t, code == 0, "the run: %s", strings.to_string(out))
+	testing.expect(t, strings.contains(strings.to_string(out), "alert:"), strings.to_string(out))
+	testing.expect(t, settle(&r, "Alert"), "the place is marked")
+	testing.expect(t, settle(&r, "Recent alerts"))
 
 	ui.probe_advance(&r.p, 20, 1.0 / 60)
 	testing.expect(t, render.headless_png(&r.hl, "build/test/monitoring_light.png"))

@@ -169,10 +169,16 @@ Monitoring :: struct {
 }
 
 // Watch has the monitor scan the place at path every every (query.Frequency's
-// value, which this package does not import), in place of any schedule it had.
+// value, which this package does not import), checking each scan against the
+// limits given, each 0 or false for none, in place of any it had.
 Watch :: struct {
-	path:  Text,
-	every: u8,
+	path:        Text,
+	every:       u8,
+	warn_used:   int, // percent used
+	fail_used:   int, // percent used
+	min_free:    u64, // bytes
+	full_within: int, // days
+	growth:      bool,
 }
 
 // Unwatch stops the monitor scanning the place at path.

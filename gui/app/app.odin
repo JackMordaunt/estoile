@@ -550,6 +550,7 @@ desk_step :: proc(d: ^Desk, v: Desk_In) {
 			answer_all(d)
 		}
 		find_tick(d)
+		monitor_refresh(d)
 	}
 }
 

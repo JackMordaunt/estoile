@@ -1,6 +1,8 @@
 package leita_view
 
 import "core:fmt"
+import "core:strconv"
+import "core:strings"
 
 import "jm:ui"
 import "jm:ui/primer"
@@ -109,8 +111,12 @@ monitor_dialog :: proc(gtx: ^ui.Ctx, m: ^Model) {
 		}
 		for w, i in r.watched {
 			watched_row(gtx, m, r, w, i)
+			if m.limits_open && m.limits_place == w.place {
+				limits_editor(gtx, m, r, w)
+			}
 		}
 		watch_field(gtx, m, r, locked)
+		recent_alerts(gtx, r)
 	}
 	if close {
 		m.monitor_open = false
@@ -133,6 +139,9 @@ watched_row :: proc(
 	if ui.row(gtx, gap = 8, align = .Center) {
 		ui.flexible(gtx, 1)
 		primer.truncate(gtx, w.place, title = w.place, max_width = ui.INF, weight = .Semibold)
+		if w.alerting {
+			primer.label(gtx, tr(.Alerting), .Danger)
+		}
 		options := make([]primer.Select_Option, len(query.Frequency), gtx.allocator)
 		for e in query.Frequency {
 			options[int(e)] = {
@@ -147,12 +156,18 @@ watched_row :: proc(
 			size = .Small,
 			name = trf(gtx, .Schedule_Of, w.place),
 		) {
-			send_monitor(
-				gtx,
-				m,
-				r,
-				command.Watch{path = command.text_make(w.place), every = u8(at)},
-			)
+			c := watch_of(w)
+			c.every = u8(at)
+			send_monitor(gtx, m, r, c)
+		}
+		if primer.icon_button(
+			gtx,
+			.Bell,
+			trf(gtx, .Limits_Of, w.place),
+			.Invisible,
+			size = .Small,
+		) {
+			limits_show(m, w)
 		}
 		if primer.icon_button(
 			gtx,
@@ -221,4 +236,143 @@ watch_field :: proc(gtx: ^ui.Ctx, m: ^Model, r: ^query.Monitor_Result, locked: b
 send_monitor :: proc(gtx: ^ui.Ctx, m: ^Model, r: ^query.Monitor_Result, c: command.Command) {
 	m.monitor_sent = r.changed
 	ui.command(gtx, c)
+}
+
+// watch_of is the Watch that leaves w as it is, for a change to one part.
+@(private)
+watch_of :: proc(w: query.Watched_Place) -> command.Watch {
+	return {
+		path = command.text_make(w.place),
+		every = u8(w.every),
+		warn_used = w.warn_used,
+		fail_used = w.fail_used,
+		min_free = w.min_free,
+		full_within = w.full_within,
+		growth = w.growth,
+	}
+}
+
+// limits_show opens the alerts editor under w, or closes it when it is open
+// there, its fields holding what w is checked against.
+@(private)
+limits_show :: proc(m: ^Model, w: query.Watched_Place) {
+	if m.limits_open && m.limits_place == w.place {
+		m.limits_open = false
+		return
+	}
+	m.limits_open = true
+	m.limits_bad = false
+	delete(m.limits_place)
+	m.limits_place = strings.clone(w.place)
+	number :: proc(n: int) -> string {
+		return fmt.tprint(n) if n > 0 else ""
+	}
+	ui.text_set(&m.limit_warn, number(w.warn_used))
+	ui.text_set(&m.limit_fail, number(w.fail_used))
+	ui.text_set(&m.limit_free, human.bytes(w.min_free) if w.min_free > 0 else "")
+	ui.text_set(&m.limit_days, number(w.full_within))
+	m.limit_growth = w.growth
+}
+
+// LIMIT_FIELD is how wide an alert's field is drawn.
+@(private)
+LIMIT_FIELD :: f32(120)
+
+// limits_editor is what w's scans are checked against, as fields to change:
+// each empty for none, saved together.
+@(private)
+limits_editor :: proc(gtx: ^ui.Ctx, m: ^Model, r: ^query.Monitor_Result, w: query.Watched_Place) {
+	ui.inset(gtx, {left = 16})
+	ui.column(gtx, gap = 12, align = .Fill)
+	primer.text(gtx, trf(gtx, .Limits_Of, w.place), weight = .Semibold)
+	field :: proc(gtx: ^ui.Ctx, s: ^ui.Text_State, label: string, bad: bool) {
+		if ui.row(gtx, gap = 12, align = .Center) {
+			ui.flexible(gtx, 1)
+			primer.text(gtx, label, .Small)
+			primer.text_input(
+				gtx,
+				s,
+				size = .Small,
+				width = LIMIT_FIELD,
+				name = label,
+				validation = .Error if bad else .None,
+			)
+		}
+	}
+	field(gtx, &m.limit_warn, tr(.Warn_Used_Label), m.limits_bad)
+	field(gtx, &m.limit_fail, tr(.Fail_Used_Label), m.limits_bad)
+	field(gtx, &m.limit_free, tr(.Min_Free_Label), m.limits_bad)
+	field(gtx, &m.limit_days, tr(.Full_Within_Label), m.limits_bad)
+	primer.checkbox(gtx, &m.limit_growth, tr(.Growth_Label))
+	if m.limits_bad {
+		primer.inline_message(gtx, tr(.Limits_Invalid), .Critical, .Small)
+	} else {
+		primer.text(gtx, tr(.Limits_Caption), .Small, color = primer.color(.Fg_Color_Muted))
+	}
+	if ui.row(gtx, gap = 8) {
+		ui.flexible(gtx, 1)
+		ui.spacer(gtx, 0)
+		if primer.button(gtx, tr(.Cancel), size = .Small) {
+			m.limits_open = false
+		}
+		if primer.button(gtx, tr(.Save), .Primary, size = .Small) {
+			c, ok := limits_read(m, w)
+			m.limits_bad = !ok
+			if ok {
+				m.limits_open = false
+				send_monitor(gtx, m, r, c)
+			}
+		}
+	}
+}
+
+/*
+limits_read is the Watch the editor's fields make of w, and whether they all
+read: a percent is a whole number from 1 to 100, a size one human.parse_bytes
+reads, days a whole number; each empty for none.
+*/
+@(private)
+limits_read :: proc(m: ^Model, w: query.Watched_Place) -> (c: command.Watch, ok: bool) {
+	c = watch_of(w)
+	whole :: proc(s: ^ui.Text_State, most: int) -> (int, bool) {
+		text := strings.trim_space(ui.text_string(s))
+		if text == "" {
+			return 0, true
+		}
+		n, read := strconv.parse_int(text, 10)
+		return n, read && n >= 1 && n <= most
+	}
+	c.warn_used = whole(&m.limit_warn, 100) or_return
+	c.fail_used = whole(&m.limit_fail, 100) or_return
+	c.full_within = whole(&m.limit_days, 36500) or_return
+	c.min_free = 0
+	if free := strings.trim_space(ui.text_string(&m.limit_free)); free != "" {
+		c.min_free = human.parse_bytes(free) or_return
+	}
+	c.growth = m.limit_growth
+	return c, true
+}
+
+// recent_alerts is the newest alerts the monitor raised, each when and what.
+@(private)
+recent_alerts :: proc(gtx: ^ui.Ctx, r: ^query.Monitor_Result) {
+	primer.heading(gtx, tr(.Recent_Alerts), level = 2, variant = .Small)
+	if len(r.alerts) == 0 {
+		primer.text(gtx, tr(.Alerts_None), color = primer.color(.Fg_Color_Muted))
+		return
+	}
+	for a, i in r.alerts {
+		s := ui.scope_open(gtx, u64(i + 1))
+		defer ui.scope_close(&s)
+		if ui.row(gtx, gap = 8, align = .Start) {
+			primer.text(
+				gtx,
+				taken_text(a.raised, gtx.allocator),
+				.Small,
+				color = primer.color(.Fg_Color_Muted),
+			)
+			ui.flexible(gtx, 1)
+			primer.text(gtx, a.text, .Small)
+		}
+	}
 }

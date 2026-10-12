@@ -4,6 +4,7 @@ import "core:os"
 import "core:strings"
 import "core:time"
 
+import "../../alert"
 import "../../licence"
 import "../../monitor"
 import "../../schedule"
@@ -34,6 +35,31 @@ Monitoring :: struct {
 	changed:   u32,
 	problem:   string,
 	note:      string,
+	answered:  time.Tick, // when a Monitor need was last answered on a tick
+}
+
+// MONITOR_FRESH is how often a live Monitor need is answered again on the
+// clock, so a run the scheduler finishes while the dialog is open shows.
+MONITOR_FRESH :: 2 * time.Second
+
+// monitor_refresh answers each live Monitor need again once MONITOR_FRESH has
+// passed since it last was.
+monitor_refresh :: proc(d: ^Desk) {
+	mo := &d.monitoring
+	if time.tick_since(mo.answered) < MONITOR_FRESH {
+		return
+	}
+	mo.answered = time.tick_now()
+	asked := false
+	for key, q in d.live {
+		if _, is := q.(query.Monitor); is {
+			answer(d, key, q)
+			asked = true
+		}
+	}
+	if asked {
+		notify(d)
+	}
 }
 
 // monitor_open readies monitoring beside the history store at kept: on the
@@ -155,6 +181,13 @@ watch :: proc(d: ^Desk, c: ^command.Watch) {
 		place = place,
 		every = every,
 		added = time.to_unix_seconds(time.now()),
+		limits = {
+			warn_used = clamp(c.warn_used, 0, 100),
+			fail_used = clamp(c.fail_used, 0, 100),
+			min_free = c.min_free,
+			full_within = max(c.full_within, 0),
+			growth = c.growth,
+		},
 	}
 	if err := settings.watch(d.settings, w); err != nil {
 		monitor_settle(d, say(d, .Monitor_Unkept))
@@ -197,8 +230,13 @@ monitor_answer :: proc(d: ^Desk) -> query.Monitor_Result {
 	out := make([]query.Watched_Place, len(watches), context.temp_allocator)
 	for w, i in watches {
 		out[i] = {
-			place = w.place,
-			every = query.Frequency(w.every),
+			place       = w.place,
+			every       = query.Frequency(w.every),
+			warn_used   = w.limits.warn_used,
+			fail_used   = w.limits.fail_used,
+			min_free    = w.limits.min_free,
+			full_within = w.limits.full_within,
+			growth      = w.limits.growth,
 		}
 		if last, ok := settings.last_run(d.settings, w.place, context.temp_allocator); ok {
 			out[i].scanned = true
@@ -206,8 +244,28 @@ monitor_answer :: proc(d: ^Desk) -> query.Monitor_Result {
 			out[i].seconds = last.seconds
 			out[i].bytes = last.bytes
 			out[i].problem = last.problem
+			out[i].alerting = last.firing != ""
 		}
 	}
 	r.watched = out
+	raised, _ := settings.alerts(
+		d.settings,
+		limit = query.MONITOR_ALERTS_LIMIT,
+		allocator = context.temp_allocator,
+	)
+	alerts := make([dynamic]query.Raised_Alert, context.temp_allocator)
+	for a in raised {
+		if said, known := monitor.alert_of(a); known {
+			append(
+				&alerts,
+				query.Raised_Alert {
+					place = a.place,
+					raised = a.raised,
+					text = alert.say(d.words, said, a.place, a.problem),
+				},
+			)
+		}
+	}
+	r.alerts = alerts[:]
 	return r
 }

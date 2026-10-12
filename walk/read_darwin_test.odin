@@ -165,6 +165,7 @@ test_a_mount_point_is_not_walked :: proc(t: ^testing.T) {
 	mounted, has_mount := names["mounted"]
 	testing.expect(t, has_mount, "the mount point was not recorded")
 	testing.expect(t, .Directory in scan.node(&tree, mounted).flags, "not a directory")
+	testing.expect(t, .Mount in scan.node(&tree, mounted).flags, "not marked a mount")
 	testing.expect(t, "kept" in names, "the plain directory was not walked")
 	testing.expect(t, "hidden" not_in names, "the mounted volume was walked")
 }

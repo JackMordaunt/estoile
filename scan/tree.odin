@@ -52,6 +52,9 @@ Node_Flag  :: enum u8 {
 	Directory,
 	Reparse, // junction, symlink or cloud placeholder: its target is counted elsewhere
 	Extra_Name, // another name for a node already counted, so rolling up must skip it
+	// A directory another volume is mounted on, recorded but not read: what is under
+	// it belongs to that volume, so an update of this tree never reads it either.
+	Mount,
 }
 Node_Flags :: distinct bit_set[Node_Flag;u8]
 

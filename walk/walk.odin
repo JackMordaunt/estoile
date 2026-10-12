@@ -301,6 +301,9 @@ record :: proc(
 	case e.directory:
 		flags |= {.Directory}
 		descend = !e.mount
+		if e.mount {
+			flags |= {.Mount}
+		}
 	case e.symlink:
 		flags |= {.Reparse}
 		descend = w.follow

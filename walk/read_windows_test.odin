@@ -201,6 +201,9 @@ test_links_and_mounts_are_not_walked :: proc(t: ^testing.T) {
 	defer scan.tree_destroy(&tree)
 	_, outsides := named_in(&tree, "outside.txt")
 	testing.expect_value(t, outsides, 0)
+	// only fails the test itself when a name is missing or doubled, so an empty
+	// tree cannot pass.
+	testing.expect(t, only(t, &tree, "inside.txt") != nil, "inside.txt was not walked")
 	if j := only(t, &tree, "junction"); j != nil {
 		testing.expect(t, .Reparse in j.flags, "the junction is not marked a reparse point")
 		testing.expect(t, .Directory not_in j.flags, "the junction is counted as a directory")
@@ -214,6 +217,7 @@ test_links_and_mounts_are_not_walked :: proc(t: ^testing.T) {
 		if m := only(t, &tree, "mounted"); m != nil {
 			testing.expect(t, .Directory in m.flags, "the mount is not a directory")
 			testing.expect(t, .Reparse not_in m.flags, "the mount is marked a link")
+			testing.expect(t, .Mount in m.flags, "the mount is not marked a mount")
 		}
 		// Every node is inside.txt, the three links and the root.
 		testing.expectf(t, tree.count <= 5, "%d nodes: the mount was walked", tree.count)

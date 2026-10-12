@@ -90,16 +90,17 @@ delete_tree_is_careful_with_links_and_read_only_trees :: proc(t: ^testing.T) {
 	)
 	testing.expect(
 		t,
-		os.symlink(outside, strings.concatenate({root, "/tree/link"}, context.temp_allocator)) ==
-		nil,
+		symlink_directory(
+			outside,
+			strings.concatenate({root, "/tree/link"}, context.temp_allocator),
+		),
 	)
 	testing.expect(
 		t,
-		os.symlink(
+		symlink_directory(
 			strings.concatenate({root, "/tree"}, context.temp_allocator),
 			strings.concatenate({root, "/alias"}, context.temp_allocator),
-		) ==
-		nil,
+		),
 	)
 	// As Go leaves its module cache: no write permission anywhere.
 	for dir in ([]string{"/tree/locked/deep", "/tree/locked"}) {

@@ -31,6 +31,7 @@ import "jm:ui/primer"
 import "jm:ui/render"
 
 import "../../licence"
+import "../../scan"
 import "../../settings"
 import "../command"
 import "../msg"
@@ -143,7 +144,9 @@ own_trash readies notes.txt in root for a test that trashes it, and says the nam
 to trash it by and where it will land. The freedesktop.org Trash is pointed at one
 beside root through XDG_DATA_HOME, which the caller holds trash_env for and unsets.
 The Finder's cannot be pointed anywhere, so there notes.txt is given a name no other
-entry has, which the Finder keeps, and the caller deletes what landed.
+entry has, which the Finder keeps, and the caller deletes what landed. Nor can the
+Recycle Bin, whose file is named for it, so on Windows nothing is said to have
+landed anywhere: recycled finds it by the record of where it was.
 */
 @(private = "file")
 own_trash :: proc(t: ^testing.T, root: string) -> (name, landed: string) {
@@ -153,6 +156,8 @@ own_trash :: proc(t: ^testing.T, root: string) -> (name, landed: string) {
 		testing.expect(t, os.rename(from, fmt.tprintf("%s/%s", root, name)) == nil)
 		home := os.get_env("HOME", context.temp_allocator)
 		return name, fmt.tprintf("%s/.Trash/%s", home, name)
+	} else when ODIN_OS == .Windows {
+		return "notes.txt", ""
 	} else {
 		data := fmt.tprintf("%s-data", root)
 		os.remove_all(data)
@@ -176,12 +181,25 @@ scratch :: proc(t: ^testing.T) -> string {
 	testing.expect(t, dir_err == nil, "no temp directory")
 	info, stat_err := os.stat(dir, context.temp_allocator)
 	testing.expect(t, stat_err == nil, "the temp directory is not there")
-	return strings.trim_right(info.fullpath, "/")
+	return strings.trim_right(info.fullpath, `/\`)
+}
+
+// under is the path of names below dir, as the scan names it: joined with the
+// platform's separator, as is a root made by fixture.
+@(private = "file")
+under :: proc(dir: string, names: ..string) -> string {
+	sb := strings.builder_make(context.temp_allocator)
+	strings.write_string(&sb, dir)
+	for name in names {
+		strings.write_string(&sb, scan.SEPARATOR)
+		strings.write_string(&sb, name)
+	}
+	return strings.to_string(sb)
 }
 
 @(private = "file")
 fixture :: proc(t: ^testing.T, name: string) -> string {
-	root := fmt.tprintf("%s/leita_gui_%s", scratch(t), name)
+	root := under(scratch(t), fmt.tprintf("leita_gui_%s", name))
 	os.remove_all(root)
 
 	write :: proc(t: ^testing.T, path: string, size: int) {
@@ -405,7 +423,7 @@ a_rename_is_kept_in_the_audit_trail :: proc(t: ^testing.T) {
 	testing.expect(t, qerr == nil)
 	testing.expect(t, sqlite3.next(&rows), "the rename is in the trail")
 	testing.expect_value(t, sqlite3.text(rows, 0), "rename")
-	testing.expect_value(t, sqlite3.text(rows, 1), fmt.tprintf("%s/photos", root))
+	testing.expect_value(t, sqlite3.text(rows, 1), under(root, "photos"))
 	testing.expect_value(t, sqlite3.text(rows, 2), "pictures")
 	testing.expect(t, sqlite3.integer(rows, 3) >= 264 * 1024, "with what it held")
 	testing.expect_value(t, sqlite3.integer(rows, 4), 0)
@@ -444,8 +462,17 @@ a_right_click_moves_an_entry_to_the_trash_and_out_of_the_totals :: proc(t: ^test
 	testing.expect(t, settle(&r, fmt.tprintf("arc %s", name), present = false), "its arc is gone")
 	testing.expect(t, settle(&r, "264.0 KiB in 1 item"), "the totals dropped")
 	testing.expect(t, !os.exists(fmt.tprintf("%s/%s", root, name)), "gone from the folder")
-	testing.expect(t, os.exists(landed), "in the Trash")
-	when ODIN_OS != .Darwin {
+	when ODIN_OS == .Windows {
+		// recycled finds only a record that names root's notes.txt.
+		record, file := recycled(root, name)
+		testing.expect(t, os.exists(file), "in the Recycle Bin")
+		testing.expect(t, record != "", "with a record of where it was")
+		os.remove(record)
+		os.remove(file)
+	} else {
+		testing.expect(t, os.exists(landed), "in the Trash")
+	}
+	when ODIN_OS != .Darwin && ODIN_OS != .Windows {
 		info := fmt.tprintf("%s-data/Trash/info/notes.txt.trashinfo", root)
 		testing.expect(t, os.exists(info), "with a record of where it was")
 	}
@@ -475,7 +502,14 @@ a_right_click_on_a_contents_row_trashes_it :: proc(t: ^testing.T) {
 	testing.expect(t, ui.probe_click(&r.p, "Trash"), "the dialog asks first")
 	press_and_hand_on(&r)
 	testing.expect(t, settle(&r, "264.0 KiB in 1 item"), "the row is gone from the totals")
-	testing.expect(t, os.exists(landed), "in the Trash")
+	when ODIN_OS == .Windows {
+		record, file := recycled(root, name)
+		testing.expect(t, os.exists(file), "in the Recycle Bin")
+		os.remove(record)
+		os.remove(file)
+	} else {
+		testing.expect(t, os.exists(landed), "in the Trash")
+	}
 }
 
 @(test)
@@ -741,7 +775,7 @@ the_location_bar_walks_the_path_and_scans_above_it :: proc(t: ^testing.T) {
 			}
 		}
 	}
-	testing.expect_value(t, scanned, fmt.tprintf("%s/", above))
+	testing.expect_value(t, scanned, fmt.tprintf("%s%s", above, scan.SEPARATOR))
 	ui.router_commands_clear(&r.p.router)
 }
 
@@ -752,6 +786,9 @@ the_location_bar_edits_into_a_field_and_back :: proc(t: ^testing.T) {
 	r: Rig
 	rig_open(&r, root)
 	defer rig_close(&r)
+	// Wide enough that the bar has an empty end past the steps of macOS's long
+	// temp folder, /private/var/folders/<two hashed names>/T.
+	r.p.size = {1600, 700}
 	testing.expect(t, settle(&r, "Done"))
 	testing.expect(t, settle(&r, "leita_gui_edit"))
 
@@ -991,7 +1028,7 @@ hovering_a_largest_file_lights_its_arc :: proc(t: ^testing.T) {
 	testing.expect(t, settle(&r, "268.0 KiB in 2 items"))
 
 	// The largest files are an answer of their own, too.
-	testing.expect(t, settle(&r, fmt.tprintf("%s/photos/big.raw", root)))
+	testing.expect(t, settle(&r, under(root, "photos", "big.raw")))
 
 	// big.raw is in the largest files, and in the second ring, under photos.
 	said := "256.0 KiB · 95.5% of leita_gui_lfh"
@@ -1226,7 +1263,7 @@ A directory of projects, made fresh:
 */
 @(private = "file")
 projects :: proc(t: ^testing.T, name: string) -> string {
-	root := fmt.tprintf("%s/leita_gui_%s", scratch(t), name)
+	root := under(scratch(t), fmt.tprintf("leita_gui_%s", name))
 	os.remove_all(root)
 	for d in ([]string{"", "web", "web/node_modules", "web/node_modules/lib", "rust", "rust/target", "plain", "plain/build"}) {
 		testing.expectf(
@@ -1316,7 +1353,8 @@ reclaim_empties_the_trash_it_found :: proc(t: ^testing.T) {
 	defer os.remove_all(root)
 	// A trashed file and what records it: the freedesktop.org Trash keeps the file
 	// in files and a record in info; the Finder's keeps the file itself, and here
-	// a trashed folder stands in for the record.
+	// a trashed folder stands in for the record. The record is a block long: NTFS
+	// keeps a file of a few bytes inside its MFT record, taking no space of its own.
 	when ODIN_OS == .Darwin {
 		TRASH  :: ".Trash"
 		FILE   :: TRASH + "/old.bin"
@@ -1335,7 +1373,8 @@ reclaim_empties_the_trash_it_found :: proc(t: ^testing.T) {
 	testing.expect(t, os.write_entire_file(fmt.tprintf("%s/%s", root, FILE), old) == nil)
 	testing.expect(
 		t,
-		os.write_entire_file(fmt.tprintf("%s/%s/old.bin.trashinfo", root, RECORD), old[:2]) == nil,
+		os.write_entire_file(fmt.tprintf("%s/%s/old.bin.trashinfo", root, RECORD), old[:4096]) ==
+		nil,
 	)
 	sync.guard(&trash_env)
 	home := strings.clone(os.get_env("HOME", context.temp_allocator), context.temp_allocator)
@@ -1512,8 +1551,19 @@ a_big_chart_says_only_its_top_layer :: proc(t: ^testing.T) {
 	defer rig_close(&r)
 	testing.expect(t, settle(&r, "Done"))
 	testing.expect(t, settle(&r, "arc a0"))
+	// The rings are an answer of their own, which can land after the one that says
+	// Done: the sunburst keeps where it drew each arc, by node, so it is drawn
+	// until it has drawn them all.
+	deadline := time.tick_now()._nsec + i64(30 * time.Second)
+	for len(r.m.poses) != 2210 && time.tick_now()._nsec < deadline {
+		if ui.inbox_pending(&r.h.inbox) {
+			ui.inbox_drain(&r.h.inbox, &r.p.layout)
+			hand_on(&r)
+		}
+		ui.probe_advance(&r.p, 1, 1.0 / 60)
+		time.sleep(time.Millisecond)
+	}
 	ui.probe_advance(&r.p, 60, 1.0 / 60)
-	// The sunburst keeps where it drew each arc, by node.
 	arcs := len(r.m.poses)
 	testing.expectf(t, arcs == 2210, "the chart draws %d arcs", arcs)
 
@@ -1609,7 +1659,7 @@ each_chart_is_a_tree_a_screen_reader_walks :: proc(t: ^testing.T) {
 
 	// big.raw lies in photos, which is closed: photos is selected for it. The
 	// largest files are an answer of their own, so it is awaited.
-	testing.expect(t, settle(&r, fmt.tprintf("%s/photos/big.raw", root)))
+	testing.expect(t, settle(&r, under(root, "photos", "big.raw")))
 	row = ui.probe_bounds(&r.p, "big.raw")
 	ui.probe_move(&r.p, row.x + 24, row.y + row.h / 2)
 	ui.probe_advance(&r.p, 3, 1.0 / 60)
@@ -1776,7 +1826,7 @@ export_writes_a_report_of_each_format :: proc(t: ^testing.T) {
 		}
 		testing.expectf(
 			t,
-			strings.has_prefix(path, fmt.tprintf("%s/leita-report-leita_gui_export-", reports)),
+			strings.has_prefix(path, under(reports, "leita-report-leita_gui_export-")),
 			"%s is in the folder, named for the target",
 			path,
 		)
@@ -2053,7 +2103,7 @@ an_export_compares_with_the_scan_before :: proc(t: ^testing.T) {
 		totals["bytes"].(json.Integer) - (2 << 20),
 	)
 	grown := top["largest_files"].(json.Array)[0].(json.Object)
-	testing.expect_value(t, grown["path"].(json.String), fmt.tprintf("%s/added.bin", root))
+	testing.expect_value(t, grown["path"].(json.String), under(root, "added.bin"))
 	testing.expect(t, grown["bytes_before"].(json.Null) == nil, "the added file is new")
 }
 

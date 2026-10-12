@@ -470,14 +470,7 @@ toolbar :: proc(gtx: ^ui.Ctx, m: ^Model, prog: ^query.Progress_Result) {
 	title(gtx, version.NAME)
 	ui.spacer(gtx, 8)
 	ui.flexible(gtx, 1)
-	if m.searching {
-		search_field(gtx, m)
-	} else {
-		location(gtx, m, prog)
-		if prog != nil && prog.generation != 0 {
-			search_button(gtx, m)
-		}
-	}
+	location_bar(gtx, m, prog)
 	export_button(gtx, m, prog)
 	switch {
 	case prog != nil && prog.state == .Scanning:
@@ -502,6 +495,36 @@ toolbar :: proc(gtx: ^ui.Ctx, m: ^Model, prog: ^query.Progress_Result) {
 	) {
 		m.dark = !m.dark
 		ui.command(gtx, command.Command(command.Theme{dark = m.dark}))
+	}
+}
+
+/*
+location_bar is the location bar with the magnifier beside it, or the search field
+in the place of both. It is one child of the toolbar either way, and sizes the
+bar from this frame's width: a row offers a stretched child what its other
+children took the frame before (ui.flexible), so were the magnifier the
+toolbar's own child, the buttons after it would jump for the frame the search
+closes, as the_bar_holds_still_as_the_search_opens_and_closes saw.
+*/
+@(private)
+location_bar :: proc(gtx: ^ui.Ctx, m: ^Model, prog: ^query.Progress_Result) {
+	ui.row(gtx, gap = 8, align = .Center)
+	if m.searching {
+		search_field(gtx, m)
+		return
+	}
+	magnifier := prog != nil && prog.generation != 0
+	width := gtx.constraints.max.x
+	if magnifier {
+		width -= tok.CONTROL_MEDIUM_SIZE + 8
+	}
+	if !ui.is_finite(width) {
+		location(gtx, m, prog)
+	} else if ui.sized(gtx, {min = {width, 0}, max = {width, ui.INF}}) {
+		location(gtx, m, prog)
+	}
+	if magnifier {
+		search_button(gtx, m)
 	}
 }
 

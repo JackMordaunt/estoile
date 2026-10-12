@@ -26,6 +26,8 @@ tagline = Instant disk search, with reports.
 explainer = See what fills any drive as it scans, track what changed since the last scan, free space safely, and hand on reports.
 free_personal = Free for personal use.
 free_personal_trial = Free for personal use. {0}
+notices = Open-source licences
+notices_intro = {0} is built on these components, each under its own licence.
 close = Close
 
 # How the scan is going

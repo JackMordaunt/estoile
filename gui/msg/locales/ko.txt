@@ -19,6 +19,8 @@ tagline = 즉각적인 디스크 검색과 보고서.
 explainer = 스캔하는 동안 드라이브를 무엇이 채우는지 확인하고, 지난 스캔 이후 바뀐 내용을 추적하고, 안전하게 공간을 확보하고, 보고서를 공유할 수 있습니다.
 free_personal = 개인 용도로는 무료입니다.
 free_personal_trial = 개인 용도로는 무료입니다. {0}
+notices = 오픈 소스 라이선스
+notices_intro = {0}은(는) 다음 구성 요소로 만들어졌으며, 각각 고유한 라이선스를 따릅니다.
 close = 닫기
 
 # How the scan is going

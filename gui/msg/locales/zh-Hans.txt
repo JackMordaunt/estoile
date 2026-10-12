@@ -21,6 +21,8 @@ tagline = 即时磁盘搜索，附带报告。
 explainer = 边扫描边查看任意驱动器被什么占满，追踪自上次扫描以来的变化，安全释放空间，并导出报告供他人查阅。
 free_personal = 个人使用免费。
 free_personal_trial = 个人使用免费。{0}
+notices = 开源许可证
+notices_intro = {0} 基于以下组件构建，每个组件均遵循其自身的许可证。
 close = 关闭
 
 # How the scan is going

@@ -22,6 +22,8 @@ tagline = 瞬時のディスク検索とレポート。
 explainer = スキャンしながらドライブの中身を表示し、前回のスキャンからの変化を追跡し、安全に空き容量を増やし、レポートを共有できます。
 free_personal = 個人利用は無料です。
 free_personal_trial = 個人利用は無料です。{0}
+notices = オープンソースライセンス
+notices_intro = {0} は以下のコンポーネントで作られており、それぞれ独自のライセンスに従います。
 close = 閉じる
 
 # How the scan is going

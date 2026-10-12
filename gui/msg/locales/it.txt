@@ -19,6 +19,8 @@ tagline = Ricerca istantanea sul disco, con report.
 explainer = Scopri cosa riempie qualsiasi unità durante la scansione, segui cosa è cambiato dall'ultima scansione, libera spazio in sicurezza e condividi report.
 free_personal = Gratuito per uso personale.
 free_personal_trial = Gratuito per uso personale. {0}
+notices = Licenze open source
+notices_intro = {0} è costruito con questi componenti, ciascuno con la propria licenza.
 close = Chiudi
 
 # How the scan is going

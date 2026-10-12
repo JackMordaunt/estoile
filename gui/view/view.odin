@@ -228,6 +228,7 @@ Model :: struct {
 	trial_seen:       bool, // the trial banner was dismissed, until leita next starts
 	buy_url:          string,
 	about_open:       bool, // the About dialog (about.odin)
+	notices_open:     bool, // the licences of what leita is built on (about.odin)
 	// The language in use and its text, whether the menu of languages is open,
 	// and the language the host was last told (language.odin).
 	locale:           i18n.Locale,
@@ -364,6 +365,7 @@ view :: proc(gtx: ^ui.Ctx, user: rawptr) {
 	export_dialog(gtx, m, prog)
 	licence_dialog(gtx, m)
 	about_dialog(gtx, m)
+	notices_dialog(gtx, m)
 	monitor_dialog(gtx, m)
 }
 

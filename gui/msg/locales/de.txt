@@ -20,6 +20,8 @@ tagline = Blitzschnelle Datenträgersuche, mit Berichten.
 explainer = Sehen Sie schon während des Scans, was ein Laufwerk füllt, verfolgen Sie Änderungen seit dem letzten Scan, geben Sie sicher Speicher frei und reichen Sie Berichte weiter.
 free_personal = Kostenlos für private Nutzung.
 free_personal_trial = Kostenlos für private Nutzung. {0}
+notices = Open-Source-Lizenzen
+notices_intro = {0} baut auf diesen Komponenten auf, jede unter ihrer eigenen Lizenz.
 close = Schließen
 
 # How the scan is going

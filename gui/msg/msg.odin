@@ -36,6 +36,8 @@ Msg :: enum u16 {
 	Explainer,
 	Free_Personal,
 	Free_Personal_Trial,
+	Notices,
+	Notices_Intro,
 	Close,
 	Status_Empty,
 	Scanning,

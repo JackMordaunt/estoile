@@ -38,7 +38,8 @@ join :: proc(parts: ..string) -> string {
 	return strings.join(parts, scan.SEPARATOR, context.temp_allocator)
 }
 
-@(private = "file")
+// Write a file of `size` bytes, for this package's tests.
+@(private)
 put :: proc(t: ^testing.T, path: string, size: int) {
 	body := make([]byte, size, context.temp_allocator)
 	slice.fill(body, 'x')

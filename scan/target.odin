@@ -133,12 +133,17 @@ is a separate procedure so the whole decision table can be tested without a disk
 because anything else needs to choose. An image needs no special case: it is a file,
 so it opens.
 
-The MFT reader takes the whole volume at once, so a subtree costs no more than the
-root does and is far cheaper than walking it. That makes a subtree target a reason to
-filter the result, never a reason to reject the reader.
+The MFT reader takes the whole volume at once and has no way yet to keep only a
+subtree of it: ntfs/tree.odin's projection only renames the top, so given one it
+answers with the whole volume (a report of a temp directory, on an elevated Windows
+runner, listed C:\$MFT as its largest file). So a subtree is walked, which reads
+only what is under it, and elevation would not change that.
 */
 @(private)
 choose :: proc(t: Target, readable: bool) -> Choice {
+	if t.fs == .Ntfs && t.root != "" && t.mount != "" {
+		return {engine = .Walk}
+	}
 	if t.fs == .Ntfs {
 		if readable {
 			return {engine = .Mft}

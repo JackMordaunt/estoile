@@ -19,6 +19,23 @@ test_choose_prefers_the_mft_when_it_can_be_read :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_choose_walks_a_directory_within_an_ntfs_volume :: proc(t: ^testing.T) {
+	// The MFT reader would answer with the whole volume (see choose), so a directory under its
+	// top is walked, and elevation is not suggested because it would not help.
+	sub := Target {
+		fs     = .Ntfs,
+		volume = `\\.\C:`,
+		mount  = `C:\`,
+		root   = `Users\ann\src`,
+	}
+	c := choose(sub, readable = true)
+	testing.expect_value(t, c.engine, Engine.Walk)
+	testing.expect(t, !c.permission_would_help)
+	sub.root = ""
+	testing.expect_value(t, choose(sub, readable = true).engine, Engine.Mft)
+}
+
+@(test)
 test_choose_walks_what_it_cannot_read_directly :: proc(t: ^testing.T) {
 	// Elevation buys nothing on these, so it must not be suggested. A mount point is
 	// what makes a target walkable, and `resolve` sets one for everything that has a

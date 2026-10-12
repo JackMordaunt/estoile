@@ -103,10 +103,14 @@ test_walk_marks_directories_and_sizes :: proc(t: ^testing.T) {
 	testing.expect(t, .Directory in sub.flags, "sub is not marked a directory")
 	testing.expect_value(t, sub.disk, u64(0)) // a directory is charged through what it holds
 
-	a, _ := named(&tree, "a.txt")
+	a, a_count := named(&tree, "a.txt")
+	testing.expect_value(t, a_count, 1)
 	testing.expect(t, .Directory not_in a.flags, "a.txt is marked a directory")
-	// 100 bytes occupy a block, whether the reader knows the block or estimates it.
-	testing.expectf(t, a.disk >= 512 && a.disk <= 8192, "a.txt charged %d bytes", a.disk)
+	// 100 bytes occupy a block. On NTFS they fit inside the file's MFT record and
+	// occupy no cluster of their own, which the MFT reader charges nothing and so
+	// does the Windows walker.
+	least: u64 = 0 when ODIN_OS == .Windows else 512
+	testing.expectf(t, a.disk >= least && a.disk <= 8192, "a.txt charged %d bytes", a.disk)
 
 	b, _ := named(&tree, "b.txt")
 	testing.expectf(t, b.disk >= 5000, "b.txt charged %d for 5000 bytes", b.disk)

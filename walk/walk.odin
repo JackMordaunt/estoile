@@ -1,5 +1,5 @@
 /*
-Package walk enumerates directories through core:os.
+Package walk enumerates directories through the operating system.
 
 It is the reader that works anywhere: any filesystem, any platform, no privilege. It
 is also much slower than reading a filesystem's own metadata, because it pays a
@@ -9,8 +9,8 @@ against.
 
 A directory listing is already the shape of the tree, so it writes straight into it.
 Reading one directory is the only part that differs by platform, and it is the part
-worth specialising: `read_dir` is portable through core:os everywhere but Linux and
-macOS, which ask the kernel directly.
+worth specialising: `read_dir` asks each kernel directly, getdents and statx on
+Linux, getattrlistbulk on macOS, and a directory handle's listing on Windows.
 */
 package walk
 
@@ -227,11 +227,13 @@ Entry :: struct {
 	mount:     bool, // a directory another volume is mounted on
 }
 
-// Where a file's data lives, the same for every name it has.
+// Where a file's data lives, the same for every name it has. `upper` is the high half
+// of a 128-bit file id, which ReFS gives its files, and 0 everywhere else.
 @(private)
 File_Id :: struct {
 	device: u64,
 	inode:  u64,
+	upper:  u64,
 }
 
 /*

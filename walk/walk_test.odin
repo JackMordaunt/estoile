@@ -42,7 +42,7 @@ fixture :: proc(t: ^testing.T, name: string) -> string {
 	write(t, fmt.tprintf("%s/sub/deep/c.txt", root), 1)
 	testing.expect(
 		t,
-		os.symlink("sub", fmt.tprintf("%s/link", root)) == nil,
+		symlink_directory("sub", fmt.tprintf("%s/link", root)),
 		"could not make the symlink",
 	)
 	return root

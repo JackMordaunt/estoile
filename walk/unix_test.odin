@@ -8,6 +8,13 @@ import "core:testing"
 
 import "../scan"
 
+// Make `path` a symlink to the directory `target`, through core:os. Windows has its
+// own in read_windows_test.odin.
+@(private)
+symlink_directory :: proc(target, path: string) -> bool {
+	return os.symlink(target, path) == nil
+}
+
 /*
 A hole costs nothing and has to be charged nothing.
 

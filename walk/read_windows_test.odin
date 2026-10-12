@@ -72,7 +72,7 @@ test_a_sparse_file_is_charged_what_it_occupies_on_windows :: proc(t: ^testing.T)
 	returned: win.DWORD
 	sparse := win.DeviceIoControl(f, FSCTL_SET_SPARSE, nil, 0, nil, 0, &returned, nil)
 	if !sparse {
-		log.warnf("skipped: the volume refused to make a file sparse: %d", win.GetLastError())
+		log.errorf("the volume refused to make a file sparse: %d", win.GetLastError())
 		win.CloseHandle(f)
 		return
 	}
@@ -84,6 +84,8 @@ test_a_sparse_file_is_charged_what_it_occupies_on_windows :: proc(t: ^testing.T)
 	}
 	written: win.DWORD
 	testing.expect(t, bool(win.WriteFile(f, &body, len(body), &written, nil)), "write")
+	// Flushed, so what is measured is what reached the volume.
+	testing.expect(t, bool(win.FlushFileBuffers(f)), "flush")
 	win.CloseHandle(f)
 
 	tree := walk_tree(t, root)
@@ -92,7 +94,12 @@ test_a_sparse_file_is_charged_what_it_occupies_on_windows :: proc(t: ^testing.T)
 	if hole == nil {
 		return
 	}
-	testing.expectf(t, hole.disk < 1024 * 1024, "the sparse file charged %d bytes", hole.disk)
+	testing.expectf(
+		t,
+		hole.disk > 0 && hole.disk < 1024 * 1024,
+		"the sparse file charged %d bytes",
+		hole.disk,
+	)
 	log.infof(
 		"sparse: charged %d bytes for a %d byte file; the old reader charged %d",
 		hole.disk,
@@ -263,6 +270,18 @@ test_long_paths_and_unicode_names_are_read :: proc(t: ^testing.T) {
 	}
 	// The root, five directories, deep.txt, two names and a file in one of them.
 	testing.expect_value(t, tree.count, u32(10))
+}
+
+// Make `path` a symlink to the directory `target`, which core:os's symlink refuses
+// on Windows as unsupported (core/os/file_windows.odin). Needs Developer Mode or an
+// elevated process.
+@(private)
+symlink_directory :: proc(target, path: string) -> bool {
+	flags := win.SYMBOLIC_LINK_FLAG_DIRECTORY | win.SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE
+	link := win.utf8_to_wstring(path, context.temp_allocator)
+	return bool(
+		win.CreateSymbolicLinkW(link, win.utf8_to_wstring(target, context.temp_allocator), flags),
+	)
 }
 
 // What the reader this replaced charged a file of `length` bytes: its length rounded

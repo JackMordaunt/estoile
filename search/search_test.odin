@@ -362,3 +362,28 @@ passes_during_a_scan_find_what_one_after_it_does :: proc(t: ^testing.T) {
 	}
 	testing.expect(t, same, "the same hits, in the same order")
 }
+
+// The ceiling a search skips scoring under is never below a real score, or a
+// hit that should rank would be counted and dropped.
+@(test)
+no_match_scores_above_the_ceiling :: proc(t: ^testing.T) {
+	texts := []string {
+		"a",
+		"Cache",
+		"Code Cache",
+		"src/main.odin",
+		"x/y/z",
+		"FooBar",
+		"a-b-c",
+		"写真",
+	}
+	terms := []string{"a", "c", "ca", "cache", "src/m", "xyz", "fb", "abc", "写"}
+	for text in texts {
+		for term in terms {
+			p := pattern_make(term)
+			if v, ok := score_of(term, text); ok {
+				testing.expectf(t, v <= ceiling(p.count), "%q in %q scored %d", term, text, v)
+			}
+		}
+	}
+}

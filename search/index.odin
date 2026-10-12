@@ -312,11 +312,11 @@ keep :: proc(c: ^Chunk, limit: int, hit: Hit) {
 	}
 }
 
-// ceiling is the most a match of count characters could score: each a word's
-// start after a space, the first twice over, and no gaps.
+// ceiling is the most a match of count characters could score: each earning the
+// largest bonus there is, the first twice over, and no gaps.
 @(private)
 ceiling :: proc(count: int) -> i32 {
-	return i32(count) * SCORE_MATCH + i32(count + 1) * BONUS_BOUNDARY_WHITE
+	return i32(count) * SCORE_MATCH + i32(count + 1) * BONUS_MOST
 }
 
 @(private)

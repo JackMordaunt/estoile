@@ -26,10 +26,12 @@ MAX_TERM :: 64
 MAX_TEXT :: 512
 
 /*
-The scores, the values fzf's algo.go uses: a matched character is worth SCORE_MATCH, a gap
-costs GAP_START for its first character and GAP_EXTENSION for each after, and a
-match where a word starts earns a bonus, the most after a space, then after a
-path separator, then after other punctuation; a lower-to-upper case change or a
+The scores, chosen after the values fzf's algo.go gives its path scheme
+(github.com/junegunn/fzf, src/algo/algo.go, read 2026-10), not checked against
+fzf's own output: a matched character is worth SCORE_MATCH, a gap costs GAP_START for its
+first character and GAP_EXTENSION for each after, and a match where a word
+starts earns a bonus, the most after a path separator, so a name or a folder
+that starts with the term ranks first, then after a space or other punctuation; a lower-to-upper case change or a
 digit after a non-digit earns BONUS_CAMEL. A run of matches keeps the bonus of
 the character it started on, and the term's first character counts its bonus
 twice.
@@ -41,9 +43,19 @@ BONUS_BOUNDARY           :: SCORE_MATCH / 2
 BONUS_NON_WORD           :: SCORE_MATCH / 2
 BONUS_CAMEL              :: BONUS_BOUNDARY + GAP_EXTENSION
 BONUS_CONSECUTIVE        :: -(GAP_START + GAP_EXTENSION)
-BONUS_BOUNDARY_WHITE     :: BONUS_BOUNDARY + 2
+BONUS_BOUNDARY_WHITE     :: BONUS_BOUNDARY
 BONUS_BOUNDARY_DELIMITER :: BONUS_BOUNDARY + 1
 BONUS_FIRST_MULTIPLIER   :: 2
+
+// BONUS_MOST is the largest bonus a character can earn, as a run or alone.
+BONUS_MOST :: max(
+	BONUS_BOUNDARY,
+	BONUS_NON_WORD,
+	BONUS_CAMEL,
+	BONUS_CONSECUTIVE,
+	BONUS_BOUNDARY_WHITE,
+	BONUS_BOUNDARY_DELIMITER,
+)
 
 // BONUS_NAME is what a match wholly inside an entry's own name earns over the
 // same characters found along its path: worth more than any arrangement of
@@ -142,10 +154,6 @@ ASCII_CLASS := #partial [utf8.RUNE_SELF]Class {
 	'\r' = .White,
 	'/'  = .Delimiter,
 	'\\' = .Delimiter,
-	','  = .Delimiter,
-	':'  = .Delimiter,
-	';'  = .Delimiter,
-	'|'  = .Delimiter,
 	'0' ..= '9'     = .Number,
 	'a' ..= 'z'     = .Lower,
 	'A' ..= 'Z'     = .Upper,

@@ -1,8 +1,9 @@
 /*
-Package settings is what the window remembers of how the person likes it between
-runs: the language they chose, the theme. It lives in one SQLite file of its own,
-settings.db beside the history store, so preferences never mix with the scans
-kept and either file can be deleted without touching the other.
+Package settings is what leita remembers of how the person likes it between
+runs: the language they chose, the theme, and what monitoring watches
+(monitor.odin). It lives in one SQLite file of its own, settings.db beside the
+history store, so preferences never mix with the scans kept and either file can
+be deleted without touching the other. The window and the command line share it.
 
 A setting is a key and a text value. Only what the person chose is kept: a key
 never written reads as absent, and the window then follows its own default (the
@@ -50,9 +51,11 @@ open :: proc(st: ^Store, path: string) -> sqlite3.Error {
 		}
 	}
 	db := sqlite3.open(path, {wal = true, busy_timeout = BUSY_WAIT}, context.allocator) or_return
-	if err := sqlite3.exec(db, SCHEMA); err != nil {
-		sqlite3.close(&db)
-		return err
+	for schema in ([]string{SCHEMA, MONITOR_SCHEMA}) {
+		if err := sqlite3.exec(db, schema); err != nil {
+			sqlite3.close(&db)
+			return err
+		}
 	}
 	st.db = db
 	return nil

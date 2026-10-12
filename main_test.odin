@@ -12,6 +12,7 @@ import "core:time"
 import "jm:sqlite3"
 
 import "history"
+import "scan"
 import "version"
 
 // --version names the build and where it runs.
@@ -87,10 +88,11 @@ a_report_of_a_directory_reads_back :: proc(t: ^testing.T) {
 	testing.expect_value(t, totals["directories"].(json.Integer), 1)
 	files := top["largest_files"].(json.Array)
 	testing.expect_value(t, len(files), 3)
+	// The scan joins what it finds under the target with the platform's separator.
 	testing.expect_value(
 		t,
 		files[0].(json.Object)["path"].(json.String),
-		fmt.tprintf("%s/sub/b.mp4", root),
+		fmt.tprintf("%s%ssub%sb.mp4", root, scan.SEPARATOR, scan.SEPARATOR),
 	)
 	testing.expect(t, top["compared"].(json.Null) == nil, "no store, so no earlier scan")
 	space := top["space"].(json.Object)

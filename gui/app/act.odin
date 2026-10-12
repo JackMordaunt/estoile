@@ -2,6 +2,8 @@ package leita_app
 
 import "core:fmt"
 import "core:os"
+import "core:sync"
+import "core:thread"
 import "core:time"
 
 import "jm:stream"
@@ -109,12 +111,15 @@ Opening :: struct {
 	path:   command.Text,
 	name:   command.Text,
 	answer: ^stream.Port(Open_Failure),
+	done:   ^sync.Wait_Group,
 }
 
 /*
-open_entry opens path as the system would, on a worker: the application it
-starts may take its time, which the desk must not wait for. Only a failure is
-said, in a notice, as the window has nothing to show for one that went well.
+open_entry opens path as the system would, on a thread of its own: the
+application it starts may take its time, which the desk must not wait for, and
+an opener that waits for the application to quit must not hold a worker a
+search needs. Only a failure is said, in a notice, as the window has nothing to
+show for one that went well.
 */
 open_entry :: proc(d: ^Desk, path, name: string) {
 	o := new(Opening)
@@ -122,14 +127,18 @@ open_entry :: proc(d: ^Desk, path, name: string) {
 		path   = command.text_make(path),
 		name   = command.text_make(name),
 		answer = d.open_failures,
+		done   = d.opening,
 	}
-	stream.submit(d.workers, proc(data: rawptr) {
+	sync.wait_group_add(d.opening, 1)
+	thread.create_and_start_with_data(o, proc(data: rawptr) {
 			o := (^Opening)(data)
 			if !files.open_default(command.text_of(&o.path)) {
 				stream.port_send(o.answer^, Open_Failure{name = o.name})
 			}
+			done := o.done
 			free(o)
-		}, o)
+			sync.wait_group_done(done)
+		}, context, self_cleanup = true)
 }
 
 // Doing is a request about an entry, for entry_path to say it could not do.

@@ -2651,3 +2651,91 @@ first_hit :: proc(r: ^Rig) -> string {
 	}
 	return strings.clone(name, context.temp_allocator)
 }
+
+// A hit double-clicked, and one picked and given Return, are opened as the
+// system opens them, by their paths; one the system would not open is said in
+// a notice. A stand-in gio, first on PATH, writes down what it was given and
+// exits as told.
+@(test)
+a_search_hit_opens_as_the_system_would :: proc(t: ^testing.T) {
+	when ODIN_OS != .Linux {
+		return
+	}
+	dir, _ := os.temp_directory(context.temp_allocator)
+	info, _ := os.stat(dir, context.temp_allocator)
+	root := fmt.tprintf("%s/leita_open_hit", info.fullpath)
+	os.remove_all(root)
+	testing.expect(t, os.make_directory(root) == nil)
+	defer os.remove_all(root)
+	notes := fmt.tprintf("%s/notes.txt", root)
+	testing.expect(t, os.write_entire_file(notes, make([]byte, 4096, context.temp_allocator)) == nil)
+
+	bin := fmt.tprintf("%s-bin", root)
+	os.remove_all(bin)
+	testing.expect(t, os.make_directory(bin) == nil)
+	defer os.remove_all(bin)
+	given := fmt.tprintf("%s/given", bin)
+	exit := fmt.tprintf("%s/exit", bin)
+	stand_in := fmt.tprintf("%s/gio", bin)
+	script := fmt.tprintf(
+		"#!/bin/sh\nprintf '%%s' \"$2\" > '%s'\nread code < '%s'\nexit \"$code\"\n",
+		given,
+		exit,
+	)
+	testing.expect(t, os.write_entire_file(stand_in, script) == nil)
+	testing.expect(t, os.chmod(stand_in, {.Read_User, .Write_User, .Execute_User}) == nil)
+	testing.expect(t, os.write_entire_file(exit, "0") == nil)
+	path := os.get_env("PATH", context.temp_allocator)
+	testing.expect(t, os.set_env("PATH", fmt.tprintf("%s:%s", bin, path)) == nil)
+	defer os.set_env("PATH", path)
+
+	r: Rig
+	rig_open(&r, root)
+	defer rig_close(&r)
+	testing.expect(t, settle(&r, "Done"), "the scan finished")
+	ui.probe_advance(&r.p, 10, 1.0 / 60)
+	testing.expect(t, ui.probe_click(&r.p, "Search"), "the magnifier")
+	ui.probe_advance(&r.p, 2, 1.0 / 60)
+	ui.probe_type(&r.p, "notes")
+	ui.probe_frame(&r.p)
+	hand_on(&r)
+	testing.expect(t, settle(&r, "1 match"), "the search is answered")
+
+	// opened is what the stand-in was given, once it has been.
+	opened := proc(given: string) -> string {
+		deadline := time.tick_now()._nsec + i64(10 * time.Second)
+		for time.tick_now()._nsec < deadline {
+			got, err := os.read_entire_file(given, context.temp_allocator)
+			if err == nil && len(got) > 0 {
+				os.remove(given)
+				return string(got)
+			}
+			time.sleep(5 * time.Millisecond)
+		}
+		return ""
+	}
+
+	// A double click, its commands handed on after each frame, as
+	// jm:ui/shell's frame loop hands them on (ui.data_after_frame).
+	at := ui.probe_bounds(&r.p, "notes.txt")
+	centre := ops.Point{at.x + at.w / 2, at.y + at.h / 2}
+	for clicks in u8(1) ..= 2 {
+		ui.router_push(&r.p.router, {kind = .Press, pos = centre, button = .Left, clicks = clicks})
+		ui.probe_frame(&r.p)
+		hand_on(&r)
+		ui.router_push(&r.p.router, {kind = .Release, pos = centre, button = .Left})
+		ui.probe_frame(&r.p)
+		hand_on(&r)
+	}
+	testing.expect_value(t, opened(given), notes)
+
+	// Return on the picked hit.
+	ui.probe_key(&r.p, .Enter)
+	hand_on(&r)
+	testing.expect_value(t, opened(given), notes)
+
+	testing.expect(t, os.write_entire_file(exit, "2") == nil)
+	ui.probe_key(&r.p, .Enter)
+	hand_on(&r)
+	testing.expect(t, settle(&r, "Could not open notes.txt"), "a failure is said")
+}

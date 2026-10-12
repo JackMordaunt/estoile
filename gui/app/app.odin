@@ -177,6 +177,7 @@ Desk :: struct {
 	workers:         ^stream.Workers,
 	searched:        ^stream.Port(Finished_Pass),
 	open_failures:   ^stream.Port(Open_Failure), // act.odin's open_entry
+	opening:         ^sync.Wait_Group, // the entries open_entry is opening
 	scratch:         ^search.Scratch,
 }
 
@@ -187,6 +188,7 @@ Host :: struct {
 	act_port:      stream.Port(Activated),
 	searched:      stream.Port(Finished_Pass),
 	open_failures: stream.Port(Open_Failure),
+	opening:       sync.Wait_Group,
 	thumbs:        Thumbs, // thumbs.odin
 	workers:       ^stream.Workers,
 	inbox:         ui.Inbox,
@@ -232,6 +234,7 @@ init :: proc(
 		workers       = h.workers,
 		searched      = &h.searched,
 		open_failures = &h.open_failures,
+		opening       = &h.opening,
 		scratch       = new(search.Scratch, allocator),
 	}
 	msg.init(h.desk.words, .English)
@@ -307,6 +310,9 @@ stop :: proc(h: ^Host) {
 	find_halt(&h.desk)
 	stream.port_close(h.searched)
 	stream.port_close(h.open_failures)
+	// An entry still being opened says a failure through the port, which
+	// refuses it now but lives until the pipeline goes.
+	sync.wait_group_wait(&h.opening)
 	stream.workers_stop(h.workers)
 	find_stop(&h.desk)
 	thumbs_destroy(h)

@@ -31,6 +31,7 @@ Command :: union {
 	Scan,
 	Stop,
 	Locate,
+	Open,
 	Trash,
 	Rename,
 	Clean,
@@ -59,6 +60,12 @@ Entry :: struct {
 
 // Locate shows the entry in the system's file manager.
 Locate :: struct {
+	entry: Entry,
+}
+
+// Open opens the entry in the application the system opens it with: a file
+// in its default application, a folder in the file manager.
+Open :: struct {
 	entry: Entry,
 }
 

@@ -101,6 +101,7 @@ Desk_In :: union {
 	Tick,
 	Activated,
 	Finished_Pass,
+	Open_Failure,
 }
 
 // Scan is one run of a reader and everything derived from it. It is heap
@@ -175,24 +176,26 @@ Desk :: struct {
 	passes:          map[^search.Pass]^Finding,
 	workers:         ^stream.Workers,
 	searched:        ^stream.Port(Finished_Pass),
+	open_failures:   ^stream.Port(Open_Failure), // act.odin's open_entry
 	scratch:         ^search.Scratch,
 }
 
 Host :: struct {
-	p:         ^stream.Pipeline,
-	cmd_port:  stream.Port(command.Command),
-	need_port: stream.Port(Need_Event),
-	act_port:  stream.Port(Activated),
-	searched:  stream.Port(Finished_Pass),
-	thumbs:    Thumbs, // thumbs.odin
-	workers:   ^stream.Workers,
-	inbox:     ui.Inbox,
-	desk:      Desk,
-	pool:      ^thread.Thread,
+	p:             ^stream.Pipeline,
+	cmd_port:      stream.Port(command.Command),
+	need_port:     stream.Port(Need_Event),
+	act_port:      stream.Port(Activated),
+	searched:      stream.Port(Finished_Pass),
+	open_failures: stream.Port(Open_Failure),
+	thumbs:        Thumbs, // thumbs.odin
+	workers:       ^stream.Workers,
+	inbox:         ui.Inbox,
+	desk:          Desk,
+	pool:          ^thread.Thread,
 	// The desk thread: woken by the pipeline when the pinned stage has work.
-	desk_wake: sync.Sema,
-	stopping:  bool, // atomic
-	desk_main: ^thread.Thread,
+	desk_wake:     sync.Sema,
+	stopping:      bool, // atomic
+	desk_main:     ^thread.Thread,
 }
 
 /*
@@ -219,16 +222,17 @@ init :: proc(
 	ui.inbox_init(&h.inbox, allocator)
 	h.workers = stream.workers_start(worker_count(), allocator)
 	h.desk = {
-		inbox    = &h.inbox,
-		wake     = wake,
-		live     = make(map[ui.Need_Key]Query, allocator),
-		words    = new(msg.Strings, allocator),
-		reports  = strings.clone(reports, allocator) if reports != "" else files.reports_folder(allocator),
-		findings = make(map[ui.Need_Key]^Finding, allocator),
-		passes   = make(map[^search.Pass]^Finding, allocator),
-		workers  = h.workers,
-		searched = &h.searched,
-		scratch  = new(search.Scratch, allocator),
+		inbox         = &h.inbox,
+		wake          = wake,
+		live          = make(map[ui.Need_Key]Query, allocator),
+		words         = new(msg.Strings, allocator),
+		reports       = strings.clone(reports, allocator) if reports != "" else files.reports_folder(allocator),
+		findings      = make(map[ui.Need_Key]^Finding, allocator),
+		passes        = make(map[^search.Pass]^Finding, allocator),
+		workers       = h.workers,
+		searched      = &h.searched,
+		open_failures = &h.open_failures,
+		scratch       = new(search.Scratch, allocator),
 	}
 	msg.init(h.desk.words, .English)
 	history_open(&h.desk, kept)
@@ -255,6 +259,8 @@ init :: proc(
 	h.desk.activations = &h.act_port
 	searched: stream.Stream(Finished_Pass)
 	searched, h.searched = stream.port(p, Finished_Pass, cap = 256, name = "searched")
+	open_failures: stream.Stream(Open_Failure)
+	open_failures, h.open_failures = stream.port(p, Open_Failure, cap = 16, name = "open failures")
 	thumbs_init(h, thumbs)
 
 	desk_in := stream.merge(
@@ -264,6 +270,7 @@ init :: proc(
 			stream.transform(clock, tick_in),
 			stream.transform(activations, activated_in),
 			stream.transform(searched, finished_in),
+			stream.transform(open_failures, open_failure_in),
 		},
 		name = "desk in",
 	)
@@ -299,6 +306,7 @@ stop :: proc(h: ^Host) {
 	// workers stop and the tree they read goes.
 	find_halt(&h.desk)
 	stream.port_close(h.searched)
+	stream.port_close(h.open_failures)
 	stream.workers_stop(h.workers)
 	find_stop(&h.desk)
 	thumbs_destroy(h)
@@ -483,7 +491,12 @@ desk_step :: proc(d: ^Desk, v: Desk_In) {
 			answer_all(d)
 		case command.Theme:
 			remember_theme(d, c)
-		case command.Locate, command.Trash, command.Rename, command.Clean, command.Empty_Trash:
+		case command.Locate,
+		     command.Open,
+		     command.Trash,
+		     command.Rename,
+		     command.Clean,
+		     command.Empty_Trash:
 			// A rename writes a name a search may be reading.
 			_, renaming := c.(command.Rename)
 			if renaming {
@@ -503,6 +516,9 @@ desk_step :: proc(d: ^Desk, v: Desk_In) {
 		answer_all(d)
 	case Finished_Pass:
 		take_pass(d, e.pass)
+	case Open_Failure:
+		tell(d, true, .Open_Failed, command.text_of(&e.name))
+		answer_all(d)
 	case Tick:
 		if advance(d) {
 			answer_all(d)

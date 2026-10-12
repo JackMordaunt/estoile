@@ -13,6 +13,8 @@ import "core:time"
 import "jm:ui"
 import bl "jm:ui/blend2d"
 
+import "../command"
+import "../msg"
 import "../query"
 
 // The host on its own, asked as the frame loop asks: a need made from a query,
@@ -219,4 +221,20 @@ a_thumbnail_is_made_once_and_kept :: proc(t: ^testing.T) {
 		none,
 	)
 	testing.expect(t, empty, "a file that is not a picture has no thumbnail")
+}
+
+// An entry the system would not open comes back from its worker as a notice,
+// in the window's language.
+@(test)
+an_entry_not_opened_is_said_in_a_notice :: proc(t: ^testing.T) {
+	words := new(msg.Strings)
+	defer free(words)
+	msg.init(words, .German)
+	d := Desk {
+		words = words,
+	}
+	defer delete(d.notice.text)
+	desk_step(&d, Open_Failure{name = command.text_make("Urlaub.mov")})
+	testing.expect(t, d.notice.failed)
+	testing.expect_value(t, d.notice.text, "Urlaub.mov konnte nicht geöffnet werden")
 }

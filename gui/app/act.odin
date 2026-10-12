@@ -4,6 +4,8 @@ import "core:fmt"
 import "core:os"
 import "core:time"
 
+import "jm:stream"
+
 import "../../history"
 import "../../human"
 import "../../reclaim"
@@ -16,8 +18,8 @@ import "../msg"
 import "../query"
 
 /*
-What the window asks of an entry it was shown: locate, trash, rename. Each runs
-on the desk thread, which owns the tree and its totals, so a trashed entry leaves
+What the window asks of an entry it was shown: locate, open, trash, rename. Each
+runs on the desk thread, which owns the tree and its totals, so a trashed entry leaves
 the totals and a renamed one takes its new name in the same step as the disk
 changes, and the next answers show it.
 
@@ -33,7 +35,8 @@ act :: proc(d: ^Desk, c: ^command.Command) {
 	// A made-up disk's paths may name real files, /Applications/Xcode.app among
 	// them, which no request about the made-up ones may touch.
 	if d.scan != nil && d.scan.engine == .Synthetic {
-		tell(d, true, .Made_Up)
+		_, opening := c.(command.Open)
+		tell(d, true, .Made_Up_Open if opening else .Made_Up)
 		return
 	}
 	done := make([dynamic]history.Action, context.temp_allocator)
@@ -42,6 +45,10 @@ act :: proc(d: ^Desk, c: ^command.Command) {
 	case command.Locate:
 		if path, ok := entry_path(d, c.entry, .Locate); ok {
 			files.locate(path)
+		}
+	case command.Open:
+		if path, ok := entry_path(d, c.entry, .Open); ok {
+			open_entry(d, path, name_of(d, c.entry))
 		}
 	case command.Trash:
 		path, ok := entry_path(d, c.entry, .Trash)
@@ -86,9 +93,49 @@ act :: proc(d: ^Desk, c: ^command.Command) {
 	}
 }
 
+// Open_Failure is an entry the system would not open, by its name, back from the
+// worker that asked.
+Open_Failure :: struct {
+	name: command.Text,
+}
+
+open_failure_in :: proc(n: Open_Failure) -> Desk_In {
+	return n
+}
+
+// Opening is an entry being opened on a worker.
+@(private)
+Opening :: struct {
+	path:   command.Text,
+	name:   command.Text,
+	answer: ^stream.Port(Open_Failure),
+}
+
+/*
+open_entry opens path as the system would, on a worker: the application it
+starts may take its time, which the desk must not wait for. Only a failure is
+said, in a notice, as the window has nothing to show for one that went well.
+*/
+open_entry :: proc(d: ^Desk, path, name: string) {
+	o := new(Opening)
+	o^ = {
+		path   = command.text_make(path),
+		name   = command.text_make(name),
+		answer = d.open_failures,
+	}
+	stream.submit(d.workers, proc(data: rawptr) {
+			o := (^Opening)(data)
+			if !files.open_default(command.text_of(&o.path)) {
+				stream.port_send(o.answer^, Open_Failure{name = o.name})
+			}
+			free(o)
+		}, o)
+}
+
 // Doing is a request about an entry, for entry_path to say it could not do.
 Doing :: enum u8 {
 	Locate,
+	Open,
 	Trash,
 	Rename,
 }
@@ -99,18 +146,21 @@ entry_path :: proc(d: ^Desk, e: command.Entry, doing: Doing) -> (string, bool) {
 	@(static, rodata)
 	GONE := [Doing]msg.Msg {
 		.Locate = .Gone_Locate,
+		.Open   = .Gone_Open,
 		.Trash  = .Gone_Trash,
 		.Rename = .Gone_Rename,
 	}
 	@(static, rodata)
 	TRASHED := [Doing]msg.Msg {
 		.Locate = .Trashed_Locate,
+		.Open   = .Trashed_Open,
 		.Trash  = .Trashed_Trash,
 		.Rename = .Trashed_Rename,
 	}
 	@(static, rodata)
 	TOP := [Doing]msg.Msg {
 		.Locate = .Top_Trash, // never said: the top can be located
+		.Open   = .Top_Trash, // nor this: the top can be opened
 		.Trash  = .Top_Trash,
 		.Rename = .Top_Rename,
 	}
@@ -123,7 +173,7 @@ entry_path :: proc(d: ^Desk, e: command.Entry, doing: Doing) -> (string, bool) {
 		tell(d, true, TRASHED[doing])
 		return "", false
 	}
-	if top, ok := root(s); ok && top == e.node && doing != .Locate {
+	if top, ok := root(s); ok && top == e.node && doing != .Locate && doing != .Open {
 		tell(d, true, TOP[doing])
 		return "", false
 	}

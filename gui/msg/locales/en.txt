@@ -286,6 +286,11 @@ gone_rename = Could not rename it: the scan it came from is gone
 trashed_locate = Could not locate it: it was moved to the Trash
 trashed_trash = Could not move it to the Trash: it was moved to the Trash
 trashed_rename = Could not rename it: it was moved to the Trash
+gone_open = Could not open it: the scan it came from is gone
+trashed_open = Could not open it: it was moved to the Trash
+# {0} a file or folder's name
+open_failed = Could not open {0}
+made_up_open = Could not open it: this disk is made up, so its files are not on disk
 top_trash = Could not move the top of the scan to the Trash from here
 top_rename = Could not rename the top of the scan from here
 clean_gone = Could not clean up: the scan it came from is gone

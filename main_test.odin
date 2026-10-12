@@ -32,9 +32,13 @@ the_version_says_which_leita_this_is :: proc(t: ^testing.T) {
 The command line asked for a JSON report of a directory writes one that reads
 back, counting what the directory holds:
 
-	<root>/a.txt           100 bytes
+	<root>/a.txt           2000 bytes
 	<root>/sub/b.mp4       5000 bytes
-	<root>/sub/QUOTED_NAME 1 byte
+	<root>/sub/QUOTED_NAME 1500 bytes
+
+Each large enough to need a cluster of its own on NTFS. A file small enough to be
+stored in its MFT record is charged nothing on Windows, as the MFT reader charges it,
+and a file charged nothing is not among the largest files.
 */
 @(test)
 a_report_of_a_directory_reads_back :: proc(t: ^testing.T) {
@@ -60,9 +64,9 @@ a_report_of_a_directory_reads_back :: proc(t: ^testing.T) {
 		body := make([]byte, size, context.temp_allocator)
 		testing.expectf(t, os.write_entire_file(path, body) == nil, "could not write %s", path)
 	}
-	write(t, fmt.tprintf("%s/a.txt", root), 100)
+	write(t, fmt.tprintf("%s/a.txt", root), 2000)
 	write(t, fmt.tprintf("%s/sub/b.mp4", root), 5000)
-	write(t, fmt.tprintf("%s/sub/%s", root, QUOTED_NAME), 1)
+	write(t, fmt.tprintf("%s/sub/%s", root, QUOTED_NAME), 1500)
 	out := fmt.tprintf("%s.json", root)
 	defer os.remove(out)
 
@@ -90,6 +94,7 @@ a_report_of_a_directory_reads_back :: proc(t: ^testing.T) {
 	)
 	testing.expect(t, top["compared"].(json.Null) == nil, "no store, so no earlier scan")
 	space := top["space"].(json.Object)
+	testing.expect(t, space["total"].(json.Integer) > 0, "the disk it is on was measured")
 	testing.expect(t, space["free"].(json.Integer) <= space["total"].(json.Integer))
 }
 

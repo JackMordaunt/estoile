@@ -1,5 +1,6 @@
 package leita_schedule
 
+import "core:log"
 import "core:os"
 import "core:path/filepath"
 import "core:strings"
@@ -224,4 +225,28 @@ a_command_line_survives_each_scheduler :: proc(t: ^testing.T) {
 	testing.expect_value(t, windows_quote(""), `""`)
 
 	testing.expect_value(t, escape_xml(`<a & 'b'>`), "&lt;a &amp; &apos;b&apos;&gt;")
+}
+
+// On a Windows CI runner, a machine of its own, the task is made in Task
+// Scheduler for real, read back, and deleted. Anywhere else it would change the
+// person's own scheduler, so the test says it left it alone.
+@(test)
+task_scheduler_takes_and_gives_back_the_task_on_ci :: proc(t: ^testing.T) {
+	when ODIN_OS == .Windows {
+		if os.get_env("CI", context.temp_allocator) == "true" {
+			h := host_default(context.temp_allocator)
+			testing.expect_value(t, h.system, System.Task_Scheduler)
+			exe, _ := os.get_executable_path(context.temp_allocator)
+			problem, _ := install(h, {exe, "monitor", "run"})
+			testing.expect_value(t, problem, "")
+			testing.expect(t, installed(h), "the task is in Task Scheduler")
+			query := run_command({"schtasks", "/Query", "/TN", TASK_NAME, "/XML"}, nil)
+			testing.expect(t, strings.contains(query.out, "<Interval>PT1H</Interval>"), query.out)
+			testing.expect_value(t, remove(h), "")
+			testing.expect(t, !installed(h), "and gone again")
+			log.infof("Task Scheduler made, read back and deleted %s", TASK_NAME)
+			return
+		}
+	}
+	log.info("Task Scheduler is changed only on a Windows CI runner: left alone here")
 }

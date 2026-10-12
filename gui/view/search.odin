@@ -11,6 +11,7 @@ import tok "jm:ui/primer/tokens"
 
 import "../../human"
 import "../../kinds"
+import "../command"
 import "../query"
 
 /*
@@ -24,11 +25,17 @@ that match, best first, each with its icon, its name and the folder it is in,
 the characters that matched marked, and its size. Escape, the field's clear
 button, or leaving it empty puts the location back.
 
+The hits are a file browser's: a click picks one, a double click or Return
+opens it in the application the system opens it with, a folder in the file
+manager (command.Open). Down from the field moves into them, and the arrows,
+Home, End, Page Up and Page Down move the pick, focus going with it so a screen
+reader follows; Up from the first row, or Escape, goes back to the field, and
+typing goes on typing there.
+
 The host answers each term once it has searched the scan for it, and again as
 the scan finds more; until a new term is answered, what the last one found stays,
-so typing never blanks the list. A click on a folder opens it in the charts, on
-a file opens the folder holding it; a right click offers what the charts' rows
-do.
+so typing never blanks the list. A right click offers what the charts' rows
+do, Open among them for a folder, which shows it in the charts.
 
 Each entry's icon says what it is, by its name (package kinds); a picture the
 host can read shows itself instead, as a thumbnail it makes for the entries on
@@ -70,6 +77,7 @@ close_search :: proc(m: ^Model) {
 	m.searching, m.search_focus = false, false
 	ui.text_set(&m.search, "")
 	m.search_list = {}
+	m.search_pick, m.search_keys, m.search_go = 0, false, false
 }
 
 // search_button is the magnifier beside the location bar.
@@ -103,12 +111,22 @@ search_field :: proc(gtx: ^ui.Ctx, m: ^Model) {
 	}
 	if field.changed {
 		m.search_list = {} // a new term: its best are at the top
+		m.search_pick = 0
 	}
 	for e in ui.events(gtx, field.id) {
-		if e.kind == .Key && e.key == .Escape {
+		if e.kind != .Key {
+			continue
+		}
+		#partial switch e.key {
+		case .Escape:
 			close_search(m)
 			return
+		case .Down:
+			m.search_keys, m.search_move = true, true
 		}
+	}
+	if field.submitted {
+		m.search_go = true // the pick, or the best
 	}
 	if field.action || !field.focused && !m.search_focus && search_term(m) == "" {
 		close_search(m)
@@ -151,8 +169,9 @@ search_answer :: proc(gtx: ^ui.Ctx, m: ^Model, term: string) -> ^query.Search_Re
 Results :: struct {
 	m:       ^Model,
 	r:       ^query.Search_Result,
-	columns: int,
+	columns: int, // 1 for a list
 	tile:    f32, // a tile's width
+	page:    int, // how many hits a page moves
 }
 
 // search_results is the window's main content while there is a term: what was
@@ -210,21 +229,126 @@ search_results :: proc(gtx: ^ui.Ctx, m: ^Model, term: string) {
 	}
 	ui.flexible(gtx, 1)
 	results := Results {
-		m = m,
-		r = r,
+		m       = m,
+		r       = r,
+		columns = 1,
 	}
-	if !m.search_grid {
-		ui.list(gtx, &m.search_list, len(r.hits), hit_row, &results)
+	row := ROW_HEIGHT
+	if m.search_grid {
+		width := gtx.constraints.max.x - PAD
+		if !ui.is_finite(width) {
+			width = 4 * TILE_WIDTH
+		}
+		results.columns = max(int(width / TILE_WIDTH), 1)
+		results.tile = width / f32(results.columns)
+		row = TILE_HEIGHT
+	}
+	results.page = max(int(m.search_view / row), 1) * results.columns
+	rows := (len(r.hits) + results.columns - 1) / results.columns
+	pick_follow(gtx, m, r, results.columns, row)
+	dims: ui.Dims
+	if m.search_grid {
+		dims = ui.list(gtx, &m.search_list, rows, tile_row, &results)
+	} else {
+		dims = ui.list(gtx, &m.search_list, rows, hit_row, &results)
+	}
+	m.search_view = dims.size.y
+}
+
+/*
+pick_follow keeps the pick to the hits there are: the best when the keys have
+just moved into them, or Return was pressed in the field with none picked. It
+opens the pick on Return, and scrolls it into view when it has moved.
+*/
+@(private)
+pick_follow :: proc(gtx: ^ui.Ctx, m: ^Model, r: ^query.Search_Result, columns: int, row: f32) {
+	at := hit_index(r, m.search_pick)
+	if at < 0 && (m.search_keys || m.search_go) {
+		at, m.search_pick, m.search_move = 0, r.hits[0].node, true
+	}
+	if m.search_go {
+		m.search_go = false
+		if at >= 0 {
+			open_hit(gtx, m, r.hits[at])
+		}
+	}
+	if m.search_move && at >= 0 {
+		m.search_move = false
+		top := f32(at / columns) * row
+		if top < m.search_list.offset {
+			m.search_list.offset = top
+		} else if m.search_view > 0 && top + row > m.search_list.offset + m.search_view {
+			m.search_list.offset = top + row - m.search_view
+		}
+	}
+}
+
+// hit_index is where node is among r's hits, or -1.
+@(private)
+hit_index :: proc(r: ^query.Search_Result, node: u32) -> int {
+	if node == 0 {
+		return -1
+	}
+	for h, i in r.hits {
+		if h.node == node {
+			return i
+		}
+	}
+	return -1
+}
+
+// open_hit asks the host to open h as the system would.
+@(private)
+open_hit :: proc(gtx: ^ui.Ctx, m: ^Model, h: query.Hit) {
+	ui.command(
+		gtx,
+		command.Command(command.Open{entry = {generation = m.generation, node = h.node}}),
+	)
+}
+
+/*
+pick_step moves the pick from hit at by key, as a file browser's arrows do: a
+row at a time in a list, a column at a time across a grid, a page, or to either
+end. Up from the first row hands the keys back to the field.
+*/
+@(private)
+pick_step :: proc(res: ^Results, at: int, key: ui.Key) {
+	m := res.m
+	n := len(res.r.hits)
+	columns := max(res.columns, 1)
+	to := at
+	#partial switch key {
+	case .Up:
+		if at < columns {
+			m.search_keys, m.search_focus = false, true
+			return
+		}
+		to = at - columns
+	case .Down:
+		// Into the last row, even where it stops short of this column.
+		if (at / columns + 1) * columns < n {
+			to = min(at + columns, n - 1)
+		}
+	case .Left:
+		if columns > 1 {
+			to = max(at - 1, 0)
+		}
+	case .Right:
+		if columns > 1 {
+			to = min(at + 1, n - 1)
+		}
+	case .Home:
+		to = 0
+	case .End:
+		to = n - 1
+	case .Page_Up:
+		to = max(at - res.page, 0)
+	case .Page_Down:
+		to = min(at + res.page, n - 1)
+	case:
 		return
 	}
-	width := gtx.constraints.max.x - PAD
-	if !ui.is_finite(width) {
-		width = 4 * TILE_WIDTH
-	}
-	results.columns = max(int(width / TILE_WIDTH), 1)
-	results.tile = width / f32(results.columns)
-	rows := (len(r.hits) + results.columns - 1) / results.columns
-	ui.list(gtx, &m.search_list, rows, tile_row, &results)
+	m.search_pick, m.search_keys, m.search_move = res.r.hits[to].node, true, true
 }
 
 // search_summary is how many entries matched, in a line.
@@ -254,7 +378,7 @@ hit_row :: proc(gtx: ^ui.Ctx, i: int, user: rawptr) {
 	}
 	box := ops.Rect{0, 0, width, ROW_HEIGHT}
 	c := design.control(gtx, p.id, box, .Live)
-	paint_hover(gtx, c, box)
+	paint_hover(gtx, c, box, h.node == m.search_pick)
 
 	name, folder := hit_parts(h)
 	entry_icon(gtx, h, {8, (ROW_HEIGHT - ROW_ICON) / 2}, ROW_ICON)
@@ -296,7 +420,7 @@ hit_row :: proc(gtx: ^ui.Ctx, i: int, user: rawptr) {
 		keep_end = true,
 	)
 
-	hit_close(gtx, m, &p, c, h, name, folder, box)
+	hit_close(gtx, res, i, &p, c, name, folder, box)
 }
 
 // tile_row is a grid's row i: as many tiles as fit across.
@@ -309,18 +433,20 @@ tile_row :: proc(gtx: ^ui.Ctx, i: int, user: rawptr) {
 		if at >= len(res.r.hits) {
 			break
 		}
-		hit_tile(gtx, res.m, res.r.hits[at], res.tile)
+		hit_tile(gtx, res, at)
 	}
 }
 
 // hit_tile is a grid's tile, width across: the icon large, then the name, the
 // folder it is in and its size, each centred under it.
 @(private)
-hit_tile :: proc(gtx: ^ui.Ctx, m: ^Model, h: query.Hit, width: f32) {
+hit_tile :: proc(gtx: ^ui.Ctx, res: ^Results, index: int) {
+	h := res.r.hits[index]
+	width := res.tile
 	p := ui.widget_open(gtx, key = u64(h.node) + 1)
 	box := ops.Rect{4, 4, width - 8, TILE_HEIGHT - 8}
 	c := design.control(gtx, p.id, box, .Live)
-	paint_hover(gtx, c, box)
+	paint_hover(gtx, c, box, h.node == res.m.search_pick)
 
 	name, folder := hit_parts(h)
 	entry_icon(gtx, h, {(width - TILE_ICON) / 2, 14}, TILE_ICON)
@@ -360,27 +486,59 @@ hit_tile :: proc(gtx: ^ui.Ctx, m: ^Model, h: query.Hit, width: f32) {
 		.Fg_Color_Muted,
 	)
 
-	hit_close(gtx, m, &p, c, h, name, folder, box)
+	hit_close(gtx, res, index, &p, c, name, folder, box)
 }
 
-// hit_close finishes a row or a tile: it takes the pointer, says what it is,
-// and does what a click or a right click asks.
+/*
+hit_close finishes hit at, a row or a tile: it takes the pointer and the keys,
+says what it is, and does what a click, a double click, a key or a right click
+asks. The pick takes focus while the keys are in the hits, so a screen reader
+reads the hit picked.
+*/
 @(private)
 hit_close :: proc(
 	gtx: ^ui.Ctx,
-	m: ^Model,
+	res: ^Results,
+	at: int,
 	p: ^ui.Placement,
 	c: design.Control,
-	h: query.Hit,
 	name, folder: string,
 	box: ops.Rect,
 ) {
-	design.listen(gtx, c.st, p.id, box, design.CLICK_KINDS, .Pointer)
+	m := res.m
+	h := res.r.hits[at]
+	picked := h.node == m.search_pick
+	if picked && m.search_keys && !c.focused {
+		ui.focus_request(gtx, p.id)
+	}
+	design.listen(gtx, c.st, p.id, box, design.CLICK_KINDS + {.Text}, .Pointer)
+	for e in ui.events(gtx, p.id) {
+		#partial switch e.kind {
+		case .Key:
+			#partial switch e.key {
+			case .Enter:
+				open_hit(gtx, m, h)
+			case .Escape:
+				m.search_keys, m.search_focus = false, true
+			case:
+				pick_step(res, at, e.key)
+			}
+		case .Text:
+			// Typing goes on in the field.
+			typed := strings.concatenate({ui.text_string(&m.search), e.text}, gtx.allocator)
+			ui.text_set(&m.search, typed)
+			m.search_keys, m.search_focus, m.search_pick = false, true, 0
+		}
+	}
 	ops.tag(gtx.scene, p.id, name)
 	ui.semantics(
 		gtx,
 		p,
-		{role = .List_Item, label = trf(gtx, .Search_Hit, name, human.bytes(h.bytes), folder)},
+		{
+			role = .List_Item,
+			label = trf(gtx, .Search_Hit, name, human.bytes(h.bytes), folder),
+			states = {.Selected} if picked else {},
+		},
 	)
 	ui.widget_close(gtx, p, {size = {box.x * 2 + box.w, box.y * 2 + box.h}})
 	row_menu(
@@ -390,17 +548,24 @@ hit_close :: proc(
 		ui.last_widget(gtx),
 		{node = h.node, name = name, directory = h.directory},
 	)
-	if c.clicked {
-		// A folder opens; a file opens where it is.
-		open(m, h.node if h.directory else h.parent)
+	switch {
+	case c.press && c.clicks >= 2:
+		open_hit(gtx, m, h)
+	case c.clicked:
+		m.search_pick, m.search_keys = h.node, true
 	}
 }
 
-// paint_hover is a hit's background as the pointer or focus is on it.
+// paint_hover is a hit's background as the pointer or focus is on it, or as it
+// is the pick.
 @(private)
-paint_hover :: proc(gtx: ^ui.Ctx, c: design.Control, box: ops.Rect) {
+paint_hover :: proc(gtx: ^ui.Ctx, c: design.Control, box: ops.Rect, picked: bool) {
 	shape := ops.Round_Rect{box, tok.BORDER_RADIUS_MEDIUM}
-	if c.hovered || c.pressed {
+	switch {
+	case picked:
+		ops.fill(gtx.scene, shape, primer.color(.Control_Transparent_Bg_Color_Selected))
+		ops.stroke(gtx.scene, shape, primer.color(.Border_Color_Accent_Emphasis), {width = 1})
+	case c.hovered || c.pressed:
 		ops.fill(gtx.scene, shape, primer.color(.Control_Transparent_Bg_Color_Hover))
 	}
 	design.paint_focus_visible_ring(
@@ -430,7 +595,7 @@ hit_parts :: proc(h: query.Hit) -> (name, folder: string) {
 marked_line draws s on one line at at, within room, with the stretches of marks
 that fall in it marked: the marks are offsets into a path, of which s starts at
 base. A line too long for room ends in an ellipsis, or, with keep_end, as a
-folder is, keeps its end and fades out at its start.
+folder is, starts with one and keeps its end, where the folder's own name is.
 */
 @(private)
 marked_line :: proc(
@@ -448,49 +613,76 @@ marked_line :: proc(
 		return
 	}
 	font := primer.font_for(gtx, st.weight)
+	text, start := s, int(base)
+	floor := 0 // marks start no earlier than this in text
 	para: ui.Paragraph
-	x := at.x
 	if keep_end {
-		para = design.layout_style(gtx, s, st, font)
+		para = design.layout_style(gtx, text, st, font)
 		if para.width > room {
-			x = at.x + room - para.width
+			text, start, floor = cut_start(gtx, s, int(base), para, room, st, font)
+			para = design.layout_style(gtx, text, st, font)
 		}
 	} else {
-		para = design.layout_style(gtx, s, st, font, width = room, max_lines = 1)
+		para = design.layout_style(gtx, text, st, font, width = room, max_lines = 1)
 	}
 	ops.clip_push(gtx.scene, ops.Rect{at.x, at.y - 2, room, para.height + 4})
 	defer ops.clip_pop(gtx.scene)
-	pos := ops.Point{x, at.y}
-	design.draw_paragraph(gtx, para, pos, primer.color(ink))
+	design.draw_paragraph(gtx, para, at, primer.color(ink))
 	mark_bg := primer.color(.Bg_Color_Accent_Muted)
 	mark_fg := primer.color(.Fg_Color_Accent)
 	for mk in marks {
-		lo := int(mk.from) - int(base)
-		hi := int(mk.to) - int(base)
-		if hi <= 0 || lo >= len(s) {
+		lo := max(int(mk.from) - start, floor)
+		hi := min(int(mk.to) - start, len(text))
+		if hi <= lo {
 			continue
 		}
-		for r in ui.paragraph_selection_rects(para, max(lo, 0), min(hi, len(s)), gtx.allocator) {
-			rect := ops.Rect{pos.x + r.x, pos.y + r.y, r.w, r.h}
+		for r in ui.paragraph_selection_rects(para, lo, hi, gtx.allocator) {
+			rect := ops.Rect{at.x + r.x, at.y + r.y, r.w, r.h}
 			ops.fill(gtx.scene, ops.Round_Rect{rect, 3}, mark_bg)
 			ops.clip_push(gtx.scene, rect)
-			ui.paragraph_draw(gtx.scene, para, pos, mark_fg)
+			ui.paragraph_draw(gtx.scene, para, at, mark_fg)
 			ops.clip_pop(gtx.scene)
 		}
 	}
-	if keep_end && para.width > room {
-		bg := primer.color(.Bg_Color_Default)
-		clear := bg
-		clear[3] = 0
-		stops := make([]ops.Gradient_Stop, 2, gtx.allocator)
-		stops[0], stops[1] = {0, bg}, {1, clear}
-		edge := ops.Rect{at.x, at.y - 2, LOCATION_FADE, para.height + 4}
-		ops.fill(
-			gtx.scene,
-			edge,
-			ops.Linear_Gradient{{edge.x, 0}, {edge.x + LOCATION_FADE, 0}, stops},
-		)
+}
+
+/*
+cut_start is s cut at its start to fit room behind an ellipsis, which para, s
+laid out whole, does not: the shortest cut, at a character's edge. start is
+where the text returned would begin in the path, base where s does, and floor
+where in the text the part of s it keeps begins, past the ellipsis.
+*/
+@(private)
+cut_start :: proc(
+	gtx: ^ui.Ctx,
+	s: string,
+	base: int,
+	para: ui.Paragraph,
+	room: f32,
+	st: tok.Type_Style,
+	font: ops.Font_Id,
+) -> (
+	text: string,
+	start: int,
+	floor: int,
+) {
+	ELLIPSIS :: "…"
+	edges := para.graphemes
+	// The fewest characters dropped that fit, found by halving: more dropped
+	// is never wider.
+	lo, hi := 0, max(len(edges) - 1, 0)
+	for lo < hi {
+		mid := (lo + hi) / 2
+		tail := strings.concatenate({ELLIPSIS, s[edges[mid]:]}, gtx.allocator)
+		if design.layout_style(gtx, tail, st, font).width <= room {
+			hi = mid
+		} else {
+			lo = mid + 1
+		}
 	}
+	at := edges[lo] if lo < len(edges) else len(s)
+	text = strings.concatenate({ELLIPSIS, s[at:]}, gtx.allocator)
+	return text, base + at - len(ELLIPSIS), len(ELLIPSIS)
 }
 
 // THUMBNAILS are the pictures the host is asked to make a thumbnail of, by

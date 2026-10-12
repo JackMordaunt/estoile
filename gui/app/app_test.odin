@@ -2614,6 +2614,16 @@ a_search_typed_during_a_scan_refines_until_it_is_done :: proc(t: ^testing.T) {
 	after := summary_of(&r)
 	testing.expectf(t, after != during, "the total grew from %q", during)
 	testing.expect_value(t, first_hit(&r), "cache")
+
+	// Return opens the best as the system would; a made-up disk's are not
+	// there to open, and the window says so.
+	ui.probe_key(&r.p, .Enter)
+	hand_on(&r)
+	testing.expect(
+		t,
+		settle(&r, "Could not open it: this disk is made up, so its files are not on disk"),
+		"the made-up disk's files are not opened",
+	)
 }
 
 // summary_of is the search's summary as the frame shows it, "" for none.

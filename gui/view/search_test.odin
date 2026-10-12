@@ -1,5 +1,6 @@
 package leita_view
 
+import "core:fmt"
 import "core:testing"
 
 import "jm:ui"
@@ -7,6 +8,7 @@ import "jm:ui/ops"
 import "jm:ui/primer"
 import "jm:ui/render"
 
+import "../command"
 import "../query"
 
 // The search view in a probe, the host's answers made up by hand.
@@ -135,7 +137,7 @@ the_magnifier_turns_the_location_into_a_search_and_escape_back :: proc(t: ^testi
 }
 
 @(test)
-a_hit_opens_its_folder_and_the_grid_shows_the_same :: proc(t: ^testing.T) {
+a_click_picks_a_hit_and_a_double_click_opens_it :: proc(t: ^testing.T) {
 	s: Search_Rig
 	searching_open(&s)
 	defer searching_close(&s)
@@ -157,11 +159,141 @@ a_hit_opens_its_folder_and_the_grid_shows_the_same :: proc(t: ^testing.T) {
 	tile := ui.probe_bounds(p, "main.odin")
 	testing.expectf(t, tile.w < 200 && tile.h > 100, "a tile, not a row: %v", tile)
 
-	// A file opens the folder it is in, and the search gives way.
+	// A click picks, as a file browser's does, and opens nothing.
 	testing.expect(t, ui.probe_click(p, "main.odin"))
 	settle(p)
-	testing.expect(t, !s.m.searching)
-	testing.expect_value(t, s.m.dir, u32(1))
+	testing.expect_value(t, s.m.search_pick, u32(2))
+	testing.expect(t, s.m.searching, "the search stays")
+	_, sent := opened(p)
+	testing.expect(t, !sent, "a click opens nothing")
+
+	// A double click opens it as the system would, as its second press lands.
+	at, _ := ui.probe_center(p, "main.odin")
+	ui.router_push(&p.router, {kind = .Press, pos = at, button = .Left, clicks = 2})
+	ui.probe_frame(p)
+	node, sent_open := opened(p)
+	ui.router_push(&p.router, {kind = .Release, pos = at, button = .Left})
+	settle(p)
+	testing.expect(t, sent_open, "a double click opens")
+	testing.expect_value(t, node, u32(2))
+}
+
+// many is a result of n hits, f0 to f<n-1>, nodes 10 on.
+@(private = "file")
+many :: proc(n: int) -> query.Search_Result {
+	hits := make([]query.Hit, n, context.temp_allocator)
+	// One mark for them all, made where it outlives this call.
+	marks := make([]query.Mark, 1, context.temp_allocator)
+	marks[0] = {5, 6}
+	for &h, i in hits {
+		h = {
+			node    = u32(10 + i),
+			parent  = 1,
+			path    = fmt.tprintf("/top/f%d", i),
+			name_at = 5,
+			marks   = marks,
+			bytes   = 1,
+		}
+	}
+	return {generation = 1, term = "f", total = n, hits = hits, complete = true}
+}
+
+@(private = "file")
+press :: proc(p: ^ui.Probe, key: ui.Key) {
+	ui.probe_key(p, key)
+	settle(p)
+	settle(p)
+}
+
+// opened is the node the frame's commands last asked to open.
+@(private = "file")
+opened :: proc(p: ^ui.Probe) -> (node: u32, ok: bool) {
+	for cmd in ui.probe_commands(p) {
+		if v, is := ui.command_as(cmd, command.Command); is {
+			if o, is_open := v.(command.Open); is_open {
+				node, ok = o.entry.node, o.entry.generation == 1
+			}
+		}
+	}
+	return
+}
+
+@(test)
+the_keys_move_through_the_hits_and_return_opens :: proc(t: ^testing.T) {
+	s: Search_Rig
+	searching_open(&s)
+	defer searching_close(&s)
+	p := &s.h.p
+
+	open_search(&s.m)
+	settle(p)
+	settle(p)
+	ui.probe_type(p, "f")
+	settle(p)
+	ui.probe_deliver(p, query.Search{generation = 1, term = "f"}, many(40))
+	settle(p)
+
+	// Down from the field picks the best, and focus goes with it.
+	press(p, .Down)
+	testing.expect_value(t, s.m.search_pick, u32(10))
+	testing.expect_value(t, ui.probe_focus_name(p), "f0")
+	press(p, .Down)
+	testing.expect_value(t, ui.probe_focus_name(p), "f1")
+	press(p, .End)
+	testing.expect_value(t, ui.probe_focus_name(p), "f39")
+	testing.expect(t, s.m.search_list.offset > 0, "the last is scrolled to")
+	press(p, .Home)
+	testing.expect_value(t, ui.probe_focus_name(p), "f0")
+	press(p, .Page_Down)
+	page := int(s.m.search_pick) - 10
+	testing.expectf(t, page > 2, "a page is the rows in view: %d", page)
+	press(p, .Page_Up)
+	testing.expect_value(t, ui.probe_focus_name(p), "f0")
+	// Left and Right move nothing in a list.
+	press(p, .Right)
+	testing.expect_value(t, ui.probe_focus_name(p), "f0")
+
+	// Return opens the pick, in the frame it is pressed in.
+	ui.probe_key(p, .Enter)
+	node, sent := opened(p)
+	testing.expect(t, sent, "Return opens")
+	testing.expect_value(t, node, u32(10))
+
+	// Typing goes on in the field.
+	press(p, .Down)
+	ui.probe_type(p, "x")
+	settle(p)
+	testing.expect_value(t, ui.text_string(&s.m.search), "fx")
+	testing.expect_value(t, ui.probe_focus_name(p), "Search")
+	ui.probe_deliver(p, query.Search{generation = 1, term = "fx"}, many(40))
+	settle(p)
+	// Return in the field opens the best, none being picked.
+	ui.probe_key(p, .Enter)
+	node, sent = opened(p)
+	testing.expect(t, sent && node == 10, "Return in the field opens the best")
+	settle(p)
+
+	// Up from the first row goes back to the field too, and Escape.
+	press(p, .Down)
+	testing.expect_value(t, ui.probe_focus_name(p), "f0")
+	press(p, .Up)
+	testing.expect_value(t, ui.probe_focus_name(p), "Search")
+	press(p, .Down)
+	press(p, .Escape)
+	testing.expect_value(t, ui.probe_focus_name(p), "Search")
+	testing.expect(t, s.m.searching, "Escape in the hits keeps the search")
+
+	// In a grid the arrows go across and down by the tiles in a row.
+	s.m.search_grid = true
+	settle(p)
+	press(p, .Down)
+	press(p, .Right)
+	testing.expect_value(t, ui.probe_focus_name(p), "f1")
+	press(p, .Down)
+	columns := int(s.m.search_pick) - 11
+	testing.expectf(t, columns > 1, "a row holds several tiles: %d", columns)
+	press(p, .Left)
+	testing.expect_value(t, int(s.m.search_pick), 10 + columns)
 }
 
 @(test)

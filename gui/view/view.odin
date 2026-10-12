@@ -115,7 +115,10 @@ Model :: struct {
 	// Searching (search.odin): whether the location bar is the search field,
 	// what it holds, whether it is still to take focus, whether what was found
 	// is laid out as a grid, how far it is scrolled, and the last term answered
-	// in which scan, shown until the one typed is.
+	// in which scan, shown until the one typed is. Then the hit picked, by
+	// node (0, the top, is never one), whether the keys are in the hits rather
+	// than the field, whether to open the pick, whether to scroll it into
+	// view, and how tall the hits' viewport was last frame.
 	searching:        bool,
 	search:           ui.Text_State,
 	search_focus:     bool,
@@ -123,6 +126,11 @@ Model :: struct {
 	search_list:      ui.List_State,
 	search_held:      string,
 	search_scan:      u32,
+	search_pick:      u32,
+	search_keys:      bool,
+	search_go:        bool,
+	search_move:      bool,
+	search_view:      f32,
 	dark:             bool,
 	scheme:           primer.Scheme,
 	// The directory shown, as an index into the tree of that generation. Each scan

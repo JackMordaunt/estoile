@@ -3,7 +3,6 @@ package main
 import "core:fmt"
 import "core:time"
 
-import "jm:sqlite3"
 import "jm:timefmt"
 
 import "history"
@@ -52,7 +51,7 @@ keep_scan :: proc(
 	context.allocator = context.temp_allocator
 	st: history.Store
 	if err := history.open(&st, path); err != nil {
-		k.problem = why(err)
+		k.problem = history.describe(err)
 		return
 	}
 	defer history.close(&st)
@@ -65,16 +64,9 @@ keep_scan :: proc(
 		}
 	}
 	if _, err := history.keep(&st, k.place, t, roll, top, t.nodes_done); err != nil {
-		k.problem = why(err)
+		k.problem = history.describe(err)
 	}
 	return
-}
-
-// why is what err says went wrong.
-@(private)
-why :: proc(err: sqlite3.Error) -> string {
-	f := err.? or_else {}
-	return f.text if f.text != "" else fmt.tprint(f.code)
 }
 
 /*

@@ -21,6 +21,7 @@ may each have the one file open at once.
 */
 package leita_history
 
+import "core:fmt"
 import "core:os"
 import "core:path/filepath"
 import "core:time"
@@ -138,6 +139,13 @@ open :: proc(st: ^Store, path: string) -> sqlite3.Error {
 close :: proc(st: ^Store) {
 	sqlite3.close(&st.db)
 	st^ = {}
+}
+
+// describe says what err, from this store or another SQLite one, says went
+// wrong, in the temp allocator.
+describe :: proc(err: sqlite3.Error) -> string {
+	f := err.? or_else {}
+	return f.text if f.text != "" else fmt.tprint(f.code)
 }
 
 /*

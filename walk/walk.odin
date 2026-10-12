@@ -106,18 +106,35 @@ off part way, and Out_Of_Memory if the tree ran out of room, in which case what 
 there is short rather than wrong.
 */
 read :: proc(root: string, t: ^scan.Tree, cfg := Config{}) -> Error {
-	allocator := context.allocator
-
-	w := scan.writer(t, 0)
-	first, claim_err := scan.claim(&w, 1)
-	if claim_err != nil {
+	first, ok := claim_root(root, t)
+	if !ok {
 		return .Out_Of_Memory
+	}
+	return run({index = first, path = root, job = .Walk}, t, cfg, nil)
+}
+
+// A node for `root`, holding itself, as the top of the tree.
+@(private)
+claim_root :: proc(root: string, t: ^scan.Tree) -> (first: u32, ok: bool) {
+	w := scan.writer(t, 0)
+	claim_err: scan.Error
+	first, claim_err = scan.claim(&w, 1)
+	if claim_err != nil {
+		return 0, false
 	}
 	n := scan.node(t, first)
 	n.parent = first // a root holds itself
 	n.name = scan.intern(&w, root)
 	n.flags = {.Used, .Settled, .Directory}
 	t.root = first
+	return first, true
+}
+
+// Read from `seed` down, which a walk and an update share. The seed's path is
+// borrowed; the queue owns a copy.
+@(private)
+run :: proc(seed: Dir, t: ^scan.Tree, cfg: Config, u: ^Update) -> Error {
+	allocator := context.allocator
 
 	// One writer per worker, and a writer needs an arena of its own, so a tree sized
 	// for fewer caps how wide this can run.
@@ -137,16 +154,20 @@ read :: proc(root: string, t: ^scan.Tree, cfg := Config{}) -> Error {
 			follow    = cfg.follow,
 			linked    = &linked,
 			scratch   = scratch_make(allocator),
+			update    = u,
+			siblings  = make(map[string]u32, allocator),
 			allocator = allocator,
 		}
 	}
 	defer for &s in states {
 		delete(s.found)
+		delete(s.siblings)
 		scratch_destroy(&s.scratch)
 	}
 
-	seed := []Dir{{index = first, path = strings.clone(root, allocator)}}
-	flow.manage(seed, states, walk_dir, hand_over, drop)
+	first := seed
+	first.path = strings.clone(seed.path, allocator)
+	flow.manage([]Dir{first}, states, walk_dir, hand_over, drop)
 
 	for &s in states {
 		if s.err != nil {
@@ -183,11 +204,23 @@ drop :: proc(d: Dir) {
 	delete(d.path, context.allocator)
 }
 
-// A directory waiting to be read, and the node already standing for it.
+// A directory waiting to be read, and the node already standing for it. A walk reads
+// every one; an update (update.odin) may instead copy it, or list it alone, from the
+// node `base` names in the tree it updates.
 @(private)
 Dir :: struct {
 	index: u32,
 	path:  string, // owned; freed once walked
+	base:  u32, // the same directory in the tree updated, for a job other than Walk
+	job:   Job,
+}
+
+// What becomes of a directory waiting to be read.
+@(private)
+Job :: enum u8 {
+	Walk, // read it and everything under it
+	Copy, // unchanged: copy its entries from the tree updated
+	List, // its entries changed: read it, and keep what under it is unchanged
 }
 
 @(private)
@@ -198,6 +231,12 @@ Worker :: struct {
 	linked:    ^Linked_Files, // shared by every worker
 	err:       Error, // why this worker gave up, which only the manager acts on
 	scratch:   Scratch, // reused by the platform's reader between directories
+	// An update's, shared by every worker and read only. nil for a walk.
+	update:    ^Update,
+	// While a List job reads its directory: the entries the tree updated had in it,
+	// by name, so a name it still has keeps the decision made about it there.
+	siblings:  map[string]u32,
+	listing:   bool,
 	allocator: mem.Allocator,
 }
 
@@ -207,7 +246,16 @@ walk_dir :: proc(d: Dir, w: ^Worker) -> bool {
 	if scan.cancelled(w.writer.tree) {
 		return false
 	}
-	nodes, bytes, ok := read_dir(d, w)
+	nodes, bytes: u64
+	ok: bool
+	switch d.job {
+	case .Walk:
+		nodes, bytes, ok = read_dir(d, w)
+	case .Copy:
+		nodes, bytes, ok = copy_dir(d, w)
+	case .List:
+		nodes, bytes, ok = list_dir(d, w)
+	}
 	scan.progress(w.writer.tree, nodes, bytes)
 	return ok
 }
@@ -315,6 +363,12 @@ record :: proc(
 			if map_err != nil {
 				w.err = .Out_Of_Memory
 				return 0, false, 0, false
+			}
+			// A name the tree being updated already had keeps the choice made
+			// there, since the name charged in its place may be in a directory
+			// this update copies rather than reads.
+			if was, known := kept_choice(w, e.name); known {
+				first = was
 			}
 			if !first {
 				flags |= {.Extra_Name}

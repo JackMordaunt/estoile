@@ -1,9 +1,11 @@
 # Standard recipes: build, run, clean, test, install.
 #
 #   just build [release]      the command line and the window, debug with ASan by
-#                             default -> build/<mode>/leita, build/<mode>/app/Leita
-#   just run [release] [dir]  build, then open the window on a directory, the home
-#                             directory by default
+#                             default, release optimised
+#   just cli [release]        the command line alone -> build/<mode>/leita
+#   just gui [release]        the window alone -> build/<mode>/app/Leita
+#   just run [release] [dir]  build the window, then open it on a directory, the
+#                             home directory by default
 #   just test                 run every imported package's tests under ASan -> build/test/
 #   just check                type-check both modes without producing a binary
 #   just clean                remove build/
@@ -45,31 +47,47 @@ gui   := "Leita"
 default:
     @just --list --unsorted
 
-# Debug with AddressSanitizer, or release optimised.
-#
 # Build the command line and the window: just build [release]
-build mode="debug": deps
+build mode="debug": (cli mode) (gui mode)
+
+# The command line, debug with AddressSanitizer or release optimised.
+#
+# Build the command line -> build/<mode>/leita: just cli [release]
+cli mode="debug": sqlite
     #!/usr/bin/env bash
     set -euo pipefail
     case "{{mode}}" in
     debug) opt="-debug {{san}}" ;;
     release) opt="-o:speed" ;;
-    *) echo "build: the mode is debug or release, not {{mode}}" >&2; exit 1 ;;
+    *) echo "cli: the mode is debug or release, not {{mode}}" >&2; exit 1 ;;
+    esac
+    mkdir -p build/{{mode}}
+    {{odin}} build . $opt {{flags}} -out:build/{{mode}}/{{bin}}{{exe}}
+
+# The window, debug with AddressSanitizer or release optimised.
+#
+# Build the window -> build/<mode>/app/Leita: just gui [release]
+gui mode="debug": deps
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "{{mode}}" in
+    debug) opt="-debug {{san}}" ;;
+    release) opt="-o:speed" ;;
+    *) echo "gui: the mode is debug or release, not {{mode}}" >&2; exit 1 ;;
     esac
     mkdir -p build/{{mode}}/app
-    {{odin}} build . $opt {{flags}} -out:build/{{mode}}/{{bin}}{{exe}}
     {{odin}} build gui $opt {{flags}} -out:build/{{mode}}/app/{{gui}}{{exe}}
 
 # A first argument of release builds and runs the release build.
 #
-# Build, then open the window on a directory: just run [release] [dir]
+# Build the window, then open it on a directory: just run [release] [dir]
 [positional-arguments]
 run *args:
     #!/usr/bin/env bash
     set -euo pipefail
     mode=debug
     if [ "${1:-}" = release ] || [ "${1:-}" = debug ]; then mode=$1; shift; fi
-    just --justfile "{{justfile()}}" build "$mode"
+    just --justfile "{{justfile()}}" gui "$mode"
     exec build/$mode/app/{{gui}}{{exe}} "$@"
 
 # Run the tests of every package the binary imports, pdf among them, under ASan
@@ -172,7 +190,7 @@ clean:
 # Copy the release binary to a directory on PATH. An installed copy is replaced in
 # place; otherwise ~/.local/bin, ~/bin, GOBIN, GOPATH/bin, /usr/local/bin, else the
 # first writable PATH entry.
-install: (build "release")
+install: (cli "release")
     #!/usr/bin/env bash
     set -euo pipefail
     dest=""

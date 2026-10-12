@@ -34,6 +34,15 @@ Fill :: struct {
 	// pays for doing so repeatedly, which is worth it only if someone is looking.
 	watched:   bool,
 	tree:      ^scan.Tree,
+	// A file to keep the place's whole tree in between runs. Set, the place is
+	// updated from it by what the system says changed, when that can be trusted, and
+	// read whole otherwise; either way the result is kept there for next time. Empty,
+	// the place is read whole and nothing is kept, as the window and the command
+	// line do. See update.odin.
+	baseline:  string, //review:ignore odin-destroy-incomplete borrowed from the caller
+	how:       Fill_Kind, // with a baseline: whether the place was read whole or updated
+	why:       string, //review:ignore odin-destroy-incomplete a constant, never freed: why it was read whole
+	saved:     bool, // the result was kept as the next baseline
 	// The MFT reader's own table, which carries what only NTFS knows. It outlives the
 	// tree, whose names are borrowed from it.
 	table:     ntfs.Mft,
@@ -54,6 +63,10 @@ fill_destroy :: proc(f: ^Fill) {
 fill_run :: proc(f: ^Fill) {
 	defer sync.atomic_store(&f.scanning, false)
 
+	if f.baseline != "" && (f.engine == .Mft || f.engine == .Walk) {
+		fill_from_baseline(f)
+		return
+	}
 	switch f.engine {
 	case .Mft:
 		fill_mft(f)

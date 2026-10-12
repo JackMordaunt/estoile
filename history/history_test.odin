@@ -1,5 +1,6 @@
 package leita_history
 
+import "core:path/filepath"
 import "core:testing"
 
 import "jm:sqlite3"
@@ -172,4 +173,24 @@ a_kept_scan_holds_what_is_at_least_kept_min :: proc(t: ^testing.T) {
 	testing.expect_value(t, snap.items, 5)
 	_, other := latest(&st, "/top", id)
 	testing.expect(t, !other, "no snapshot but the one kept")
+}
+
+// Each place's baseline is a file of its own beside the store, and the same place
+// always finds the same one.
+@(test)
+test_a_baseline_lives_beside_the_store :: proc(t: ^testing.T) {
+	store := filepath.join({"data", "leita", "history.db"}, context.temp_allocator) or_else ""
+	home := baseline_path(store, "/home/me", context.temp_allocator)
+	testing.expect_value(
+		t,
+		filepath.dir(home),
+		filepath.join({"data", "leita", "baselines"}, context.temp_allocator) or_else "",
+	)
+	testing.expect_value(t, baseline_path(store, "/home/me", context.temp_allocator), home)
+	testing.expect(
+		t,
+		baseline_path(store, "/home/you", context.temp_allocator) != home,
+		"two places share a baseline",
+	)
+	testing.expect_value(t, baseline_path("", "/home/me", context.temp_allocator), "")
 }

@@ -31,7 +31,8 @@ Update :: struct {
 	probe:  bool,
 	since:  i64,
 	restat: u64,
-	// Built by `update` from base.
+	// base's children, built by `update` if left empty. A caller that has built it
+	// already, to find what changed in base, passes it and keeps it.
 	index:  scan.Index,
 }
 
@@ -53,12 +54,17 @@ update :: proc(root: string, u: ^Update, t: ^scan.Tree, cfg := Config{}) -> Erro
 	if u.base.root >= scan.slots(u.base) {
 		return read(root, t, cfg)
 	}
-	ix, ix_err := scan.index_make(u.base)
-	if ix_err != nil {
-		return .Out_Of_Memory
+	built := u.index.first == nil
+	if built {
+		ix, ix_err := scan.index_make(u.base)
+		if ix_err != nil {
+			return .Out_Of_Memory
+		}
+		u.index = ix
 	}
-	u.index = ix
-	defer scan.index_destroy(&u.index)
+	defer if built {
+		scan.index_destroy(&u.index)
+	}
 
 	first, ok := claim_root(root, t)
 	if !ok {

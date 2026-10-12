@@ -46,6 +46,7 @@ import "../view"
 
 @(private = "file")
 Rig :: struct {
+	shared:   bool, // holds scan_env shared, as every rig does but the one that set it
 	h:        Host,
 	m:        view.Model,
 	// The probe, as p, with a renderer and the window's fonts beside it, so a
@@ -63,7 +64,12 @@ rig_open :: proc(
 	reports := "",
 	licence_key: []byte = nil,
 	activate_url := "",
+	made_up := false,
 ) {
+	if !made_up {
+		env_share()
+		r.shared = true
+	}
 	init(
 		&r.h,
 		path,
@@ -91,6 +97,38 @@ rig_close :: proc(r: ^Rig) {
 	ui.subscriptions_destroy(&r.needs)
 	view.model_destroy(&r.m)
 	stop(&r.h)
+	if r.shared {
+		env_unshare()
+	}
+}
+
+/*
+scan_env is held shared by every test whose host scans a real directory, and
+held alone by one that points scan.SYNTHETIC_ENV at a made-up disk: the variable
+is the process's, and a host resolves its target on a thread of its own, so a
+real scan started while it is set would read the made-up disk. A test thread
+holds it shared once, however many hosts it opens.
+*/
+@(private)
+scan_env: sync.RW_Mutex
+
+@(private, thread_local)
+env_shares: int
+
+@(private)
+env_share :: proc() {
+	if env_shares == 0 {
+		sync.rw_mutex_shared_lock(&scan_env)
+	}
+	env_shares += 1
+}
+
+@(private)
+env_unshare :: proc() {
+	env_shares -= 1
+	if env_shares == 0 {
+		sync.rw_mutex_shared_unlock(&scan_env)
+	}
 }
 
 // hand_on does what the frame loop does after a frame: the need diff and the
@@ -2536,4 +2574,70 @@ settings_hold :: proc(kept, key, value: string) -> bool {
 		time.sleep(5 * time.Millisecond)
 	}
 	return false
+}
+
+// A term typed while the made-up disk is read is answered while it is read,
+// ranked, and answered again, complete, once the scan is done.
+@(test)
+a_search_typed_during_a_scan_refines_until_it_is_done :: proc(t: ^testing.T) {
+	sync.rw_mutex_lock(&scan_env)
+	defer sync.rw_mutex_unlock(&scan_env)
+	testing.expect(t, os.set_env(scan.SYNTHETIC_ENV, "12") == nil)
+	defer os.unset_env(scan.SYNTHETIC_ENV)
+	r: Rig
+	rig_open(&r, "/", made_up = true)
+	defer rig_close(&r)
+
+	testing.expect(t, settle(&r, "Stop"), "the scan is running")
+	ui.probe_advance(&r.p, 10, 1.0 / 60)
+	testing.expect(t, ui.probe_click(&r.p, "Search"), "the magnifier")
+	ui.probe_advance(&r.p, 2, 1.0 / 60)
+	ui.probe_type(&r.p, "cache")
+	ui.probe_frame(&r.p)
+	hand_on(&r)
+	testing.expect(t, settle(&r, "cache"), "hits arrive")
+	testing.expect(t, ui.probe_tagged(&r.p, "Stop"), "while the scan runs")
+	during := summary_of(&r)
+	testing.expectf(t, strings.has_prefix(during, "The best 500 of "), "a total: %q", during)
+	// The hits come best first: a folder that is the term heads the list.
+	testing.expect_value(t, first_hit(&r), "cache")
+	// The summary changes width every tick; the layout switch stays inside.
+	layout := ui.probe_bounds(&r.p, "Layout")
+	testing.expectf(t, layout.x + layout.w <= r.p.size.x, "the switch fits: %v", layout)
+
+	testing.expect(t, settle(&r, "Done"), "the scan finished")
+	// Once complete, the total is what the whole disk holds: more than during.
+	deadline := time.tick_now()._nsec + i64(30 * time.Second)
+	for summary_of(&r) == during && time.tick_now()._nsec < deadline {
+		settle(&r, "never there")
+	}
+	after := summary_of(&r)
+	testing.expectf(t, after != during, "the total grew from %q", during)
+	testing.expect_value(t, first_hit(&r), "cache")
+}
+
+// summary_of is the search's summary as the frame shows it, "" for none.
+@(private = "file")
+summary_of :: proc(r: ^Rig) -> string {
+	for tag in ui.probe_current(&r.p).tags {
+		if strings.has_prefix(tag.name, "The best ") {
+			return strings.clone(tag.name, context.temp_allocator)
+		}
+	}
+	return ""
+}
+
+// first_hit is the topmost hit's name: of the names the frame tags, the one
+// placed nearest the top below the search's summary.
+@(private = "file")
+first_hit :: proc(r: ^Rig) -> string {
+	under := ui.probe_bounds(&r.p, "Layout")
+	top, name := f32(1e9), ""
+	for tag in ui.probe_current(&r.p).tags {
+		b := ui.probe_bounds(&r.p, tag.name)
+		if b.h > 0 && b.y > under.y + under.h && b.y < top {
+			top, name = b.y, tag.name
+		}
+	}
+	return strings.clone(name, context.temp_allocator)
 }

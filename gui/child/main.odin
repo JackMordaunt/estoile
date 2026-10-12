@@ -28,6 +28,8 @@ main :: proc() {
 	defer view.model_destroy(&m)
 	faces := view.fonts()
 	defer delete(faces)
-	child.run({ui = view.view, user = &m, fonts = faces})
+	scripts := view.fallbacks(faces)
+	defer delete(scripts)
+	child.run({ui = view.view, user = &m, fonts = faces, fallbacks = scripts})
 	free_all(context.temp_allocator)
 }

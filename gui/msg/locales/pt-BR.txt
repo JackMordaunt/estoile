@@ -1,0 +1,290 @@
+# leita, português do Brasil. Traduz as chaves de en.txt.
+#
+# Termos: scan = análise (analisar), Reclaim = Recuperar, Trash = Lixeira,
+# Sunburst = Explosão solar, Treemap = Mapa de árvore, Icicle = Estalactite,
+# licence = licença.
+
+# Toolbar
+language = Idioma
+about = Sobre o {0}
+stop = Parar
+rescan = Reanalisar
+theme_light = Tema claro
+theme_dark = Tema escuro
+export = Exportar
+exporting = Exportando…
+licence = Licença
+licence_free = Licença: grátis para uso pessoal
+
+# About
+version = Versão {0}
+tagline = Busca instantânea no disco, com relatórios.
+explainer = Veja o que ocupa qualquer unidade durante a análise, acompanhe o que mudou desde a última análise, libere espaço com segurança e compartilhe relatórios.
+free_personal = Grátis para uso pessoal.
+free_personal_trial = Grátis para uso pessoal. {0}
+close = Fechar
+
+# How the scan is going
+status_empty = Informe uma pasta para ver o que está ocupando o disco.
+scanning = Analisando
+done = Concluído
+stopped = Parado
+failed = Falhou
+scan_failed = A análise falhou
+slow_hint = Ler a tabela do próprio volume seria muito mais rápido, com permissão para abrir o dispositivo.
+count_items.one = {0} item
+count_items.many = {0} de itens
+count_items = {0} itens
+count_free = {0} livres de {1}
+count_seconds = {0} s
+count_pending.one = {0} aguardando a pasta superior
+count_pending.many = {0} de itens aguardando a pasta superior
+count_pending = {0} aguardando a pasta superior
+
+# The location bar
+location = Local
+location_placeholder = Uma pasta, unidade ou imagem para analisar
+
+# Panels
+resize_panels = Redimensionar painéis
+resize_lists = Redimensionar listas
+folded_away = recolhido
+points_wide.one = {0} ponto de largura
+points_wide.many = {0} de pontos de largura
+points_wide = {0} pontos de largura
+split_contents = {0}% conteúdo
+contents = Conteúdo
+listing_summary.one = {1} em {0} item
+listing_summary.many = {1} em {0} de itens
+listing_summary = {1} em {0} itens
+listing_empty = Nada encontrado aqui ainda.
+listing_more.one = e {0} item menor, {1}
+listing_more.many = e {0} de itens menores, {1} no total
+listing_more = e {0} itens menores, {1} no total
+share_of = Fatia de {0}
+largest_files = Maiores arquivos
+largest_none = Nenhum encontrado ainda.
+
+# Charts
+view = Exibir
+mode_sunburst = Explosão solar
+mode_treemap = Mapa de árvore
+mode_icicle = Estalactite
+mode_reclaim = Recuperar
+colour_by = Colorir por
+colour_folder = Pasta
+colour_type = Tipo
+colour_change = Mudança
+coloured_by_folder = Colorido pela pasta de nível superior
+arc_share = {0} · {1}% de {2}
+click_to_open = clique para abrir
+click_to_go_up = clique para subir
+chart_title.one = {1} de {2}, {3}, {0} item
+chart_title.many = {1} de {2}, {3}, {0} de itens
+chart_title = {1} de {2}, {3}, {0} itens
+chart_item = {0}, {1}, {2}% de {3}
+
+# What a file is, colouring by type
+kind_folder = Pasta
+kind_multimedia = Multimídia
+kind_image = Imagem
+kind_archive = Arquivo compactado
+kind_document = Documento
+kind_text = Texto
+kind_binary = Binário
+kind_cache = Cache
+kind_other = Outros
+
+# Colouring by change
+change_shrank_much = Diminuiu muito
+change_shrank = Diminuiu
+change_same = Sem mudança
+change_grew = Cresceu
+change_grew_much = Cresceu muito
+change_new = novo
+change_unchanged = sem mudança
+change_since = {0} desde então
+not_kept = As análises não estão sendo guardadas, então não há com o que comparar
+no_earlier = Ainda não há análise anterior desta pasta: a próxima análise será comparada com esta
+comparing_after = A comparação começa quando a análise terminar
+compare_with_more = Comparar com…
+compare_with = Comparar com
+since = Desde {0}
+none = Nenhuma
+date_year = {0} de {1} de {2}
+date_time = {0} de {1}, {2}
+month_1 = jan
+month_2 = fev
+month_3 = mar
+month_4 = abr
+month_5 = mai
+month_6 = jun
+month_7 = jul
+month_8 = ago
+month_9 = set
+month_10 = out
+month_11 = nov
+month_12 = dez
+
+# What can be done to an entry
+actions_for = Ações para {0}
+open = Abrir
+locate = Localizar
+rename = Renomear
+trash = Mover para a Lixeira
+cancel = Cancelar
+new_name = Novo nome
+trash_title = Mover {0} para a Lixeira?
+trash_body = {0} e tudo o que contém serão movidos para a Lixeira, de onde podem ser restaurados.
+
+# Reclaim
+looking = Procurando
+reclaim_after_scan = Recuperar procura quando a análise terminar.
+reclaim_nothing = Nada aqui pode ser recuperado com segurança.
+reclaim_explains = Recuperar encontra o que builds e ferramentas criaram e vão criar de novo: dependências instaladas, saída de build, caches.
+reclaim_total = {0} podem ser recuperados aqui
+reclaim_chosen.one = {1} em {0} pasta escolhida
+reclaim_chosen.many = {1} em {0} de pastas escolhidas
+reclaim_chosen = {1} em {0} pastas escolhidas
+clean_up = Limpar
+reclaim_all = Tudo: {0}
+empty_trash = Esvaziar Lixeira
+delete_title.one = Excluir {0} pasta para sempre?
+delete_title.many = Excluir {0} de pastas para sempre?
+delete_title = Excluir {0} pastas para sempre?
+delete_body = Isso libera {0}. Nada vai para a Lixeira: cada item volta sozinho no próximo build ou instalação do projeto, ou na próxima execução da ferramenta.
+delete = Excluir
+empty_title = Esvaziar a Lixeira?
+empty_body = {0} na Lixeira serão excluídos para sempre.
+empty = Esvaziar
+modified_recent = Modificado {0}, provavelmente em uso
+modified = Modificado {0}
+ago_today = hoje
+ago_yesterday = ontem
+ago_days.one = há {0} dia
+ago_days.many = há {0} de dias
+ago_days = há {0} dias
+ago_months.one = há {0} mês
+ago_months.many = há {0} de meses
+ago_months = há {0} meses
+ago_years.one = há {0} ano
+ago_years.many = há {0} de anos
+ago_years = há {0} anos
+reclaim_dependencies = Dependências instaladas
+reclaim_build_output = Saída de build
+reclaim_python = Caches e ambientes Python
+reclaim_package_cache = Downloads de pacotes
+reclaim_app_cache = Caches de aplicativos
+reclaim_trash = Lixeira
+why_dependencies = Reinstaladas a partir do manifesto do projeto pelo gerenciador de pacotes.
+why_build_output = Gerada de novo no próximo build do projeto.
+why_python = Gerados de novo pelo Python e suas ferramentas; um ambiente virtual é recriado a partir dos requisitos do projeto.
+why_package_cache = Baixados de novo quando um pacote for necessário.
+why_app_cache = Os aplicativos só guardam no cache o que podem gerar de novo.
+why_trash = Já excluído; esvaziá-la libera o espaço para sempre.
+
+# Exporting a report
+export_report = Exportar relatório
+format = Formato
+include_reclaim = Incluir candidatos de Recuperar
+include_reclaim_caption = O que pode ser excluído e gerado de novo
+export_next = Em seguida, escolha onde salvar; de início, sua pasta Documentos.
+format_pdf = Documento PDF
+format_html = Página da web
+format_csv = Planilha CSV
+format_json = Dados JSON
+caption_pdf = Páginas para imprimir ou anexar a um chamado
+caption_html = Uma página que abre em qualquer navegador
+caption_csv = Uma linha por item, para planilhas
+caption_json = Todos os números, para outro programa
+
+# The licence
+adding = Adicionando…
+add_licence = Adicionar licença
+licensed_to = Licenciado para {0}
+licence_details = {0} · pedido {1} · emitida em {2}
+licence_terms = A análise, os gráficos e o Recuperar são grátis para uso pessoal. Relatórios e acompanhamento de mudanças exigem licença. Uma organização precisa de licença para qualquer uso após os 30 dias de avaliação.
+trial_left.one = Você pode testar relatórios e acompanhamento de mudanças por mais {0} dia.
+trial_left.many = Você pode testar relatórios e acompanhamento de mudanças por mais {0} de dias.
+trial_left = Você pode testar relatórios e acompanhamento de mudanças por mais {0} dias.
+buy_licence = Comprar uma licença
+replace_licence = Substituir a licença
+add_a_licence = Adicionar uma licença
+licence_caption = A chave de licença do seu recibo, ou uma licença que começa com leita1.
+licence_key = Chave de licença
+licence_to_add = Licença a adicionar
+licence_privacy = O {0} envia a chave uma única vez, para mordaunt.dev, para buscar sua licença. Não envia mais nada, nem na hora nem depois.
+open_licence_file = Abrir arquivo de licença…
+trial_ended_title = Seu teste de 30 dias de relatórios e acompanhamento de mudanças terminou
+trial_ended_body = A análise, os gráficos e o Recuperar continuam grátis. Uma licença traz de volta os relatórios e o que mudou desde a última análise.
+reports_locked = Exportar relatórios exige licença, pois o teste de 30 dias terminou.
+change_locked = Ver o que mudou desde a última análise exige licença, pois o teste de 30 dias terminou. O {0} continua guardando todas as análises, então tudo estará lá quando você adicionar uma.
+tier_supporter = Apoiador
+tier_office = Escritório, até 10 pessoas
+tier_team = Equipe, até 50 pessoas
+tier_site = Unidade
+tier_multi_site = Várias unidades
+licence_not_valid = A licença não é válida.
+licence_no_key = Não é possível verificar a licença: esta versão do {0} não aceita licenças.
+licence_malformed = Esta não é uma licença do {0}; cole a linha inteira, de leita1. até o fim.
+licence_newer = A licença é para uma versão mais nova do {0}; atualize o {0} para usá-la.
+licence_signature = A licença não foi assinada pela Librium ou foi alterada.
+licence_terms_missing = A licença não diz para quem é nem o que cobre.
+licence_unreadable = Não foi possível ler o arquivo de licença.
+licence_unwritable = Não foi possível salvar a licença.
+not_a_key = Isso não é uma chave de licença: cole a chave do seu recibo, ou uma licença que começa com leita1.
+cannot_connect = O {0} não conseguiu iniciar uma conexão para buscar a licença.
+server_slow = O servidor de licenças não respondeu a tempo; tente novamente.
+server_unreachable = O {0} não conseguiu acessar o servidor de licenças. Verifique a conexão ou abra o arquivo de licença do seu recibo.
+key_refused = A chave de licença não foi aceita.
+server_busy = O servidor de licenças não pôde responder agora; tente novamente mais tarde.
+
+# What came of a request
+made_up = Nada foi alterado: este disco é fictício, então seus arquivos não estão em disco
+trash_failed = Não foi possível mover {0} para a Lixeira: {1}
+trashed = {0} movido para a Lixeira
+rename_failed = Não foi possível renomear {0}: {1}
+renamed = {0} renomeado para {1}
+gone_locate = Não foi possível localizar: a análise de origem não existe mais
+gone_trash = Não foi possível mover para a Lixeira: a análise de origem não existe mais
+gone_rename = Não foi possível renomear: a análise de origem não existe mais
+trashed_locate = Não foi possível localizar: o item foi movido para a Lixeira
+trashed_trash = Não foi possível mover para a Lixeira: o item já foi movido para a Lixeira
+trashed_rename = Não foi possível renomear: o item foi movido para a Lixeira
+top_trash = Não é possível mover a raiz da análise para a Lixeira daqui
+top_rename = Não é possível renomear a raiz da análise daqui
+clean_gone = Não foi possível limpar: a análise de origem não existe mais
+cleaned.one = {0} pasta excluída, {1} liberados
+cleaned.many = {0} de pastas excluídas, {1} liberados
+cleaned = {0} pastas excluídas, {1} liberados
+cleaned_partly.one = {0} pasta excluída, {1} liberados; {2} não puderam ser excluídas
+cleaned_partly.many = {0} de pastas excluídas, {1} liberados; {2} não puderam ser excluídas
+cleaned_partly = {0} pastas excluídas, {1} liberados; {2} não puderam ser excluídas
+empty_gone = Não foi possível esvaziar a Lixeira: a análise de origem não existe mais
+empty_not_trash = Não foi possível esvaziar a Lixeira: não é a Lixeira que o Recuperar encontrou
+emptied = Lixeira esvaziada, {0} liberados
+emptied_partly = Lixeira esvaziada, {0} liberados; {1} não puderam ser excluídos
+export_unfinished = Não foi possível exportar o relatório: a análise não terminou
+export_no_folder = Não foi possível exportar o relatório: não há pasta Documentos nem pasta pessoal para salvá-lo
+save_failed_to = Não foi possível salvar o relatório em {0}: {1}
+save_failed_in = Não foi possível salvar o relatório em {0}: {1}
+save_failed = Não foi possível salvar o relatório: {0}
+saved = Relatório salvo em {0}
+report_no_font = nenhuma fonte para compor o PDF: instale Liberation Sans, Noto Sans ou DejaVu Sans
+report_write_failed = não foi possível gravar o relatório
+file_exists = já existe algo com esse nome
+file_missing = não existe mais
+file_denied = permissão negada
+file_cross_device = está em um sistema de arquivos diferente do da Lixeira
+file_bad_name = esse não é um nome válido para um arquivo
+file_not_directory = não é uma pasta
+file_unsupported = este sistema não permite isso
+file_other = o sistema recusou
+name_empty = o nome não pode ficar vazio
+name_dot = esse nome indica a própria pasta
+name_slash = o nome não pode conter /
+name_nul = o nome não pode conter NUL
+name_reserved = o nome não pode conter \ : * ? " < > ou |
+cannot_scan = não é possível analisar {0}: {1}
+nothing_to_scan = nada aqui pode ser analisado
+reader_failed = não foi possível iniciar o leitor

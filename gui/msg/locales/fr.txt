@@ -1,0 +1,290 @@
+# leita, français. Traduit les clés de en.txt.
+#
+# Termes, identiques partout : analyse (lire un disque), Récupérer (le mode qui
+# trouve ce qui peut être supprimé et refait), Corbeille, les trois graphiques
+# Rayons de soleil, Compartimentage et Stalactites, licence.
+
+# Toolbar
+language = Langue
+about = À propos de {0}
+stop = Arrêter
+rescan = Réanalyser
+theme_light = Thème clair
+theme_dark = Thème sombre
+export = Exporter
+exporting = Exportation…
+licence = Licence
+licence_free = Licence : gratuite pour un usage personnel
+
+# About
+version = Version {0}
+tagline = Recherche instantanée sur disque, avec rapports.
+explainer = Voyez ce qui remplit un disque pendant l’analyse, suivez ce qui a changé depuis la dernière analyse, libérez de l’espace sans risque et transmettez des rapports.
+free_personal = Gratuit pour un usage personnel.
+free_personal_trial = Gratuit pour un usage personnel. {0}
+close = Fermer
+
+# How the scan is going
+status_empty = Indiquez un dossier pour voir ce qui occupe le disque.
+scanning = Analyse en cours
+done = Terminé
+stopped = Arrêté
+failed = Échec
+scan_failed = L’analyse a échoué
+slow_hint = Lire directement la table de ce volume serait bien plus rapide, avec l’autorisation d’ouvrir le périphérique.
+count_items.one = {0} élément
+count_items.many = {0} d’éléments
+count_items = {0} éléments
+count_free = {0} libres sur {1}
+count_seconds = {0} s
+count_pending.one = {0} en attente d’un parent
+count_pending.many = {0} en attente d’un parent
+count_pending = {0} en attente d’un parent
+
+# The location bar
+location = Emplacement
+location_placeholder = Un dossier, un disque ou une image à analyser
+
+# Panels
+resize_panels = Redimensionner les panneaux
+resize_lists = Redimensionner les listes
+folded_away = replié
+points_wide.one = {0} point de large
+points_wide.many = {0} de points de large
+points_wide = {0} points de large
+split_contents = {0} % de contenu
+contents = Contenu
+listing_summary.one = {1} dans {0} élément
+listing_summary.many = {1} dans {0} d’éléments
+listing_summary = {1} dans {0} éléments
+listing_empty = Rien trouvé ici pour l’instant.
+listing_more.one = et {0} élément plus petit, {1}
+listing_more.many = et {0} d’éléments plus petits, {1} au total
+listing_more = et {0} éléments plus petits, {1} au total
+share_of = Part de {0}
+largest_files = Plus gros fichiers
+largest_none = Aucun pour l’instant.
+
+# Charts
+view = Vue
+mode_sunburst = Rayons de soleil
+mode_treemap = Compartimentage
+mode_icicle = Stalactites
+mode_reclaim = Récupérer
+colour_by = Couleur par
+colour_folder = Dossier
+colour_type = Type
+colour_change = Évolution
+coloured_by_folder = Coloré par dossier de premier niveau
+arc_share = {0} · {1} % de {2}
+click_to_open = cliquer pour ouvrir
+click_to_go_up = cliquer pour remonter
+chart_title.one = {1} de {2}, {3}, {0} élément
+chart_title.many = {1} de {2}, {3}, {0} d’éléments
+chart_title = {1} de {2}, {3}, {0} éléments
+chart_item = {0}, {1}, {2} % de {3}
+
+# What a file is, colouring by type
+kind_folder = Dossier
+kind_multimedia = Multimédia
+kind_image = Image
+kind_archive = Archive
+kind_document = Document
+kind_text = Texte
+kind_binary = Binaire
+kind_cache = Cache
+kind_other = Autre
+
+# Colouring by change
+change_shrank_much = Fortement réduit
+change_shrank = Réduit
+change_same = Inchangé
+change_grew = Augmenté
+change_grew_much = Fortement augmenté
+change_new = nouveau
+change_unchanged = inchangé
+change_since = {0} depuis
+not_kept = Les analyses ne sont pas conservées, il n’y a donc rien à comparer
+no_earlier = Aucune analyse antérieure de ce dossier : la prochaine sera comparée à celle-ci
+comparing_after = Comparaison une fois l’analyse terminée
+compare_with_more = Comparer avec…
+compare_with = Comparer avec
+since = Depuis le {0}
+none = Aucune
+date_year = {0} {1} {2}
+date_time = {0} {1} à {2}
+month_1 = janv.
+month_2 = févr.
+month_3 = mars
+month_4 = avr.
+month_5 = mai
+month_6 = juin
+month_7 = juil.
+month_8 = août
+month_9 = sept.
+month_10 = oct.
+month_11 = nov.
+month_12 = déc.
+
+# What can be done to an entry
+actions_for = Actions pour {0}
+open = Ouvrir
+locate = Afficher
+rename = Renommer
+trash = Mettre à la Corbeille
+cancel = Annuler
+new_name = Nouveau nom
+trash_title = Mettre {0} à la Corbeille ?
+trash_body = {0} et tout son contenu seront placés dans la Corbeille, d’où ils pourront être restaurés.
+
+# Reclaim
+looking = Recherche
+reclaim_after_scan = Le mode Récupérer cherche une fois l’analyse terminée.
+reclaim_nothing = Rien ici ne peut être récupéré sans risque.
+reclaim_explains = Récupérer trouve ce que les compilations et les outils ont produit et produiront à nouveau : dépendances installées, résultats de compilation, caches.
+reclaim_total = {0} récupérables ici
+reclaim_chosen.one = {1} dans {0} dossier choisi
+reclaim_chosen.many = {1} dans {0} de dossiers choisis
+reclaim_chosen = {1} dans {0} dossiers choisis
+clean_up = Nettoyer
+reclaim_all = Tout : {0}
+empty_trash = Vider la Corbeille
+delete_title.one = Supprimer définitivement {0} dossier ?
+delete_title.many = Supprimer définitivement {0} de dossiers ?
+delete_title = Supprimer définitivement {0} dossiers ?
+delete_body = Cela libère {0}. Rien n’est placé dans la Corbeille : chaque élément revient de lui-même à la prochaine compilation ou installation du projet, ou à la prochaine exécution de l’outil.
+delete = Supprimer
+empty_title = Vider la Corbeille ?
+empty_body = {0} dans la Corbeille seront supprimés définitivement.
+empty = Vider
+modified_recent = Modifié {0}, donc probablement utilisé
+modified = Modifié {0}
+ago_today = aujourd’hui
+ago_yesterday = hier
+ago_days.one = il y a {0} jour
+ago_days.many = il y a {0} de jours
+ago_days = il y a {0} jours
+ago_months.one = il y a {0} mois
+ago_months.many = il y a {0} de mois
+ago_months = il y a {0} mois
+ago_years.one = il y a {0} an
+ago_years.many = il y a {0} d’années
+ago_years = il y a {0} ans
+reclaim_dependencies = Dépendances installées
+reclaim_build_output = Résultats de compilation
+reclaim_python = Caches et environnements Python
+reclaim_package_cache = Paquets téléchargés
+reclaim_app_cache = Caches d’applications
+reclaim_trash = Corbeille
+why_dependencies = Réinstallées par le gestionnaire de paquets à partir du manifeste du projet.
+why_build_output = Produits à nouveau par la prochaine compilation du projet.
+why_python = Produits à nouveau par Python et ses outils ; un environnement virtuel est recréé à partir des dépendances du projet.
+why_package_cache = Téléchargés à nouveau lorsqu’un paquet est requis.
+why_app_cache = Les applications ne gardent dans leur cache que ce qu’elles peuvent refaire.
+why_trash = Déjà supprimé ; la vider libère définitivement l’espace.
+
+# Exporting a report
+export_report = Exporter le rapport
+format = Format
+include_reclaim = Inclure les candidats de Récupérer
+include_reclaim_caption = Ce qui peut être supprimé et refait
+export_next = Choisissez ensuite où l’enregistrer ; votre dossier Documents par défaut.
+format_pdf = Document PDF
+format_html = Page web
+format_csv = Feuille de calcul CSV
+format_json = Données JSON
+caption_pdf = Pages à imprimer ou à joindre à un ticket
+caption_html = Une page qui s’ouvre dans n’importe quel navigateur
+caption_csv = Une ligne par élément, pour un tableur
+caption_json = Tous les chiffres, pour un autre programme
+
+# The licence
+adding = Ajout…
+add_licence = Ajouter la licence
+licensed_to = Licence accordée à {0}
+licence_details = {0} · commande {1} · émise le {2}
+licence_terms = L’analyse, les graphiques et Récupérer sont gratuits pour un usage personnel. Les rapports et le suivi des changements nécessitent une licence. Une organisation en a besoin pour tout usage au terme de son évaluation de 30 jours.
+trial_left.one = Vous pouvez essayer les rapports et le suivi des changements encore {0} jour.
+trial_left.many = Vous pouvez essayer les rapports et le suivi des changements encore {0} de jours.
+trial_left = Vous pouvez essayer les rapports et le suivi des changements encore {0} jours.
+buy_licence = Acheter une licence
+replace_licence = Remplacer la licence
+add_a_licence = Ajouter une licence
+licence_caption = La clé de licence de votre reçu, ou une licence commençant par leita1.
+licence_key = Clé de licence
+licence_to_add = Licence à ajouter
+licence_privacy = {0} envoie la clé une seule fois, à mordaunt.dev, pour obtenir votre licence. Il n’envoie rien d’autre, ni alors ni plus tard.
+open_licence_file = Ouvrir un fichier de licence…
+trial_ended_title = Votre essai de 30 jours des rapports et du suivi des changements est terminé
+trial_ended_body = L’analyse, les graphiques et Récupérer restent gratuits. Une licence rétablit les rapports et ce qui a changé depuis la dernière analyse.
+reports_locked = L’exportation de rapports nécessite une licence, l’essai de 30 jours étant terminé.
+change_locked = Voir ce qui a changé depuis la dernière analyse nécessite une licence, l’essai de 30 jours étant terminé. {0} conserve toutes les analyses : tout sera là dès que vous en ajouterez une.
+tier_supporter = Soutien
+tier_office = Bureau, jusqu’à 10 personnes
+tier_team = Équipe, jusqu’à 50 personnes
+tier_site = Site
+tier_multi_site = Multisite
+licence_not_valid = La licence n’est pas valide.
+licence_no_key = Impossible de vérifier la licence : cette version de {0} n’accepte pas de licence.
+licence_malformed = Ce n’est pas une licence {0} ; collez la ligne entière, de leita1. jusqu’à la fin.
+licence_newer = La licence concerne une version plus récente de {0} ; mettez à jour {0} pour l’utiliser.
+licence_signature = La licence n’a pas été signée par Librium, ou a été modifiée.
+licence_terms_missing = La licence n’indique ni son titulaire ni ce qu’elle couvre.
+licence_unreadable = Impossible de lire le fichier de licence.
+licence_unwritable = Impossible d’enregistrer la licence.
+not_a_key = Ce n’est pas une clé de licence : collez la clé de votre reçu, ou une licence commençant par leita1.
+cannot_connect = {0} n’a pas pu établir de connexion pour obtenir la licence.
+server_slow = Le serveur de licences n’a pas répondu à temps ; réessayez.
+server_unreachable = {0} n’a pas pu joindre le serveur de licences. Vérifiez la connexion, ou ouvrez plutôt le fichier de licence joint à votre reçu.
+key_refused = La clé de licence a été refusée.
+server_busy = Le serveur de licences ne peut pas répondre pour le moment ; réessayez plus tard.
+
+# What came of a request
+made_up = Rien n’a été modifié : ce disque est fictif, ses fichiers ne sont donc pas sur le disque
+trash_failed = Impossible de mettre {0} à la Corbeille : {1}
+trashed = {0} a été placé dans la Corbeille
+rename_failed = Impossible de renommer {0} : {1}
+renamed = {0} a été renommé en {1}
+gone_locate = Impossible de l’afficher : l’analyse d’origine n’existe plus
+gone_trash = Impossible de le mettre à la Corbeille : l’analyse d’origine n’existe plus
+gone_rename = Impossible de le renommer : l’analyse d’origine n’existe plus
+trashed_locate = Impossible de l’afficher : il a été placé dans la Corbeille
+trashed_trash = Impossible de le mettre à la Corbeille : il y est déjà
+trashed_rename = Impossible de le renommer : il a été placé dans la Corbeille
+top_trash = Impossible de mettre la racine de l’analyse à la Corbeille d’ici
+top_rename = Impossible de renommer la racine de l’analyse d’ici
+clean_gone = Nettoyage impossible : l’analyse d’origine n’existe plus
+cleaned.one = {0} dossier supprimé, {1} libérés
+cleaned.many = {0} de dossiers supprimés, {1} libérés
+cleaned = {0} dossiers supprimés, {1} libérés
+cleaned_partly.one = {0} dossier supprimé, {1} libérés ; {2} n’ont pas pu être supprimés
+cleaned_partly.many = {0} de dossiers supprimés, {1} libérés ; {2} n’ont pas pu être supprimés
+cleaned_partly = {0} dossiers supprimés, {1} libérés ; {2} n’ont pas pu être supprimés
+empty_gone = Impossible de vider la Corbeille : l’analyse d’origine n’existe plus
+empty_not_trash = Impossible de vider la Corbeille : ce n’est pas la Corbeille trouvée par Récupérer
+emptied = Corbeille vidée, {0} libérés
+emptied_partly = Corbeille vidée, {0} libérés ; {1} n’ont pas pu être supprimés
+export_unfinished = Impossible d’exporter un rapport : l’analyse n’est pas terminée
+export_no_folder = Impossible d’exporter un rapport : aucun dossier Documents ni dossier personnel où l’enregistrer
+save_failed_to = Impossible d’enregistrer le rapport dans {0} : {1}
+save_failed_in = Impossible d’enregistrer le rapport dans {0} : {1}
+save_failed = Impossible d’enregistrer le rapport : {0}
+saved = Rapport enregistré dans {0}
+report_no_font = aucune police pour composer un PDF : installez Liberation Sans, Noto Sans ou DejaVu Sans
+report_write_failed = impossible d’écrire le rapport
+file_exists = un élément porte déjà ce nom
+file_missing = il n’existe plus
+file_denied = autorisation refusée
+file_cross_device = il se trouve sur un autre système de fichiers que la Corbeille
+file_bad_name = ce nom n’est pas valide pour un fichier
+file_not_directory = ce n’est pas un dossier
+file_unsupported = ce système ne permet pas cette opération
+file_other = le système a refusé
+name_empty = un nom ne peut pas être vide
+name_dot = ce nom désigne le dossier lui-même
+name_slash = un nom ne peut pas contenir /
+name_nul = un nom ne peut pas contenir NUL
+name_reserved = un nom ne peut pas contenir \ : * ? " < > ou |
+cannot_scan = impossible d’analyser {0} : {1}
+nothing_to_scan = rien ici ne peut être analysé
+reader_failed = impossible de démarrer le lecteur

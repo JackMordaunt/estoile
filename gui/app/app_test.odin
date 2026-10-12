@@ -2389,3 +2389,38 @@ reports_and_change_tracking_need_a_licence_after_the_trial :: proc(t: ^testing.T
 	ui.probe_advance(&r.p, 20, 1.0 / 60)
 	testing.expect(t, ui.probe_tagged(&r.p, "Export report"), "under a licence, Export works")
 }
+
+// The globe's menu lists the languages by their own names; choosing one switches
+// the window from the next frame, and the host words what it says next in it,
+// here why a licence key was refused.
+@(test)
+the_language_menu_switches_the_window_and_the_host :: proc(t: ^testing.T) {
+	root := fixture(t, "language")
+	defer os.remove_all(root)
+	de := new(msg.Strings)
+	defer free(de)
+	msg.init(de, .German)
+	r: Rig
+	rig_open(&r, root)
+	defer rig_close(&r)
+	testing.expect(t, settle(&r, "Done"))
+
+	// The toolbar settles first: a press lands where the last frame drew.
+	ui.probe_advance(&r.p, 10, 1.0 / 60)
+	testing.expect(t, ui.probe_click(&r.p, "Language"))
+	ui.probe_advance(&r.p, 20, 1.0 / 60)
+	testing.expect(t, ui.probe_tagged(&r.p, "日本語"), "each language by its own name")
+	testing.expect(t, ui.probe_click(&r.p, "Deutsch"))
+	// The frame after the choice tells the host.
+	press_and_hand_on(&r)
+	testing.expect(t, settle(&r, msg.tr(de, .Done)), "the window speaks German")
+	testing.expect(t, !ui.probe_tagged(&r.p, "Done"))
+
+	open_licence(t, &r, msg.tr(de, .Licence_Free))
+	testing.expect(t, ui.probe_click(&r.p, msg.tr(de, .Licence_To_Add)))
+	ui.probe_type(&r.p, "not a key")
+	ui.probe_frame(&r.p)
+	testing.expect(t, ui.probe_click_top(&r.p, msg.tr(de, .Add_Licence)))
+	hand_on(&r)
+	testing.expect(t, settle(&r, msg.tr(de, .Not_A_Key)), "and so does the host")
+}

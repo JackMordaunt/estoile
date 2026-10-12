@@ -255,15 +255,35 @@ Msg :: enum u16 {
 }
 
 // OFFERED are the languages the window offers, in the order its menu lists
-// them: English first, then by how many read each.
+// them: English, then the European languages, then the Asian ones.
 @(rodata)
-OFFERED := [?]i18n.Locale{.English}
+OFFERED := [?]i18n.Locale {
+	.English,
+	.Spanish,
+	.Portuguese_Brazil,
+	.French,
+	.German,
+	.Italian,
+	.Russian,
+	.Japanese,
+	.Chinese_Simplified,
+	.Korean,
+}
 
 // SOURCES is each offered language's text; a language without one is not
 // offered.
 @(rodata)
 SOURCES := #partial [i18n.Locale]string {
-	.English = #load("locales/en.txt", string),
+	.English            = #load("locales/en.txt", string),
+	.Spanish            = #load("locales/es.txt", string),
+	.Portuguese_Brazil  = #load("locales/pt-BR.txt", string),
+	.French             = #load("locales/fr.txt", string),
+	.German             = #load("locales/de.txt", string),
+	.Italian            = #load("locales/it.txt", string),
+	.Russian            = #load("locales/ru.txt", string),
+	.Japanese           = #load("locales/ja.txt", string),
+	.Chinese_Simplified = #load("locales/zh-Hans.txt", string),
+	.Korean             = #load("locales/ko.txt", string),
 }
 
 // Strings is the text the window shows: English, loaded once as the base, and

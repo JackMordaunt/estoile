@@ -41,25 +41,56 @@ PAD :: f32(16)
 SIZE_WIDTH :: 84
 
 // fonts are the faces FONTS names, for whatever opens the window: jm:ui's default
-// font at Primer's three weights, and again as the monospace face. The caller
-// deletes the slice.
+// font at Primer's three weights, and again as the monospace face; then a face
+// for each script it lacks that the system has (SCRIPT_FONTS), which fallbacks
+// names. The caller deletes the slice.
 fonts :: proc(allocator := context.allocator) -> []ops.Font_Ref {
 	path := ui.default_font()
-	out := make([]ops.Font_Ref, 4, allocator)
+	out := make([dynamic]ops.Font_Ref, 0, 4 + len(SCRIPT_FONTS), allocator)
 	weights := [3]f32{400, 500, 600}
 	for w, i in weights {
-		out[i] = {
-			id     = ops.Font_Id(i),
-			path   = path,
-			weight = w,
+		append(&out, ops.Font_Ref{id = ops.Font_Id(i), path = path, weight = w})
+	}
+	append(&out, ops.Font_Ref{id = 3, path = path, weight = 400})
+	for candidates in SCRIPT_FONTS {
+		for file in candidates {
+			if os.exists(file) {
+				append(&out, ops.Font_Ref{id = ops.Font_Id(len(out)), path = file, weight = 400})
+				break
+			}
 		}
 	}
-	out[3] = {
-		id     = 3,
-		path   = path,
-		weight = 400,
+	return out[:]
+}
+
+// fallbacks are the ids of the script faces in faces, as fonts made them, for
+// the shaper to try in order for a character the asked-for face lacks. The
+// caller deletes the slice.
+fallbacks :: proc(faces: []ops.Font_Ref, allocator := context.allocator) -> []ops.Font_Id {
+	ids := make([]ops.Font_Id, max(len(faces) - 4, 0), allocator)
+	for &id, i in ids {
+		id = faces[4 + i].id
 	}
-	return out
+	return ids
+}
+
+/*
+SCRIPT_FONTS are faces for the scripts the default font lacks that the window's
+languages need, each a list of where it may be, the first found used: Chinese
+and Japanese, then Korean where the first has no Hangul. Cyrillic needs none:
+Liberation Sans, SF and Arial, the default fonts, have it. A collection's first
+face is the one read, so Noto Sans CJK draws Han in its Japanese forms.
+*/
+SCRIPT_FONTS := [?][]string {
+	{
+		"/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc", // Arch
+		"/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", // Debian, Ubuntu
+		"/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc", // Fedora
+		"/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+		"/System/Library/Fonts/Hiragino Sans GB.ttc",
+		"C:/Windows/Fonts/msyh.ttc",
+	},
+	{"/System/Library/Fonts/AppleSDGothicNeo.ttc", "C:/Windows/Fonts/malgun.ttf"},
 }
 
 // Font ids main registers: Primer's three weights and a monospace face.

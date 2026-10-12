@@ -54,6 +54,8 @@ main :: proc() {
 
 	faces := view.fonts()
 	defer delete(faces)
+	scripts := view.fallbacks(faces)
+	defer delete(scripts)
 
 	shell.run(
 		{
@@ -65,6 +67,7 @@ main :: proc() {
 			ui = view.view,
 			user = &m,
 			fonts = faces,
+			fallbacks = scripts,
 			clear = {255, 255, 255, 255},
 			data = app.data_host(h),
 		},

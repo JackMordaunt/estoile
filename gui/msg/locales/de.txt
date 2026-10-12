@@ -1,0 +1,274 @@
+# leita, Deutsch. Übersetzt aus en.txt; Schlüssel und Argumente wie dort.
+# Begriffe: Scan/scannen, Bereinigen (Reclaim), Papierkorb, Lizenz,
+# Testphase; die Diagramme heißen Sunburst, Treemap und Icicle.
+
+# Toolbar
+language = Sprache
+about = Über {0}
+stop = Stopp
+rescan = Neu scannen
+theme_light = Helles Design
+theme_dark = Dunkles Design
+export = Exportieren
+exporting = Wird exportiert…
+licence = Lizenz
+licence_free = Lizenz: kostenlos für private Nutzung
+
+# About
+version = Version {0}
+tagline = Blitzschnelle Datenträgersuche, mit Berichten.
+explainer = Sehen Sie schon während des Scans, was ein Laufwerk füllt, verfolgen Sie Änderungen seit dem letzten Scan, geben Sie sicher Speicher frei und reichen Sie Berichte weiter.
+free_personal = Kostenlos für private Nutzung.
+free_personal_trial = Kostenlos für private Nutzung. {0}
+close = Schließen
+
+# How the scan is going
+status_empty = Geben Sie einen Ordner an, um zu sehen, was den Speicherplatz belegt.
+scanning = Wird gescannt
+done = Fertig
+stopped = Gestoppt
+failed = Fehlgeschlagen
+scan_failed = Der Scan ist fehlgeschlagen
+slow_hint = Mit der Berechtigung, das Gerät zu öffnen, ginge das Lesen der eigenen Tabelle dieses Volumes weit schneller.
+count_items.one = {0} Element
+count_items = {0} Elemente
+count_free = {0} von {1} frei
+count_seconds = {0} s
+count_pending.one = {0} wartet auf übergeordneten Ordner
+count_pending = {0} warten auf übergeordneten Ordner
+
+# The location bar
+location = Ort
+location_placeholder = Ordner, Laufwerk oder Image zum Scannen
+
+# Panels
+resize_panels = Bereichsgröße ändern
+resize_lists = Listengröße ändern
+folded_away = eingeklappt
+points_wide.one = {0} Punkt breit
+points_wide = {0} Punkte breit
+split_contents = {0} % Inhalt
+contents = Inhalt
+listing_summary.one = {1} in {0} Element
+listing_summary = {1} in {0} Elementen
+listing_empty = Hier wurde noch nichts gefunden.
+listing_more.one = und {0} kleineres Element, {1}
+listing_more = und {0} kleinere Elemente, zusammen {1}
+share_of = Anteil von {0}
+largest_files = Größte Dateien
+largest_none = Noch keine gefunden.
+
+# Charts
+view = Ansicht
+mode_sunburst = Sunburst
+mode_treemap = Treemap
+mode_icicle = Icicle
+mode_reclaim = Bereinigen
+colour_by = Färben nach
+colour_folder = Ordner
+colour_type = Typ
+colour_change = Änderung
+coloured_by_folder = Gefärbt nach Ordner der obersten Ebene
+arc_share = {0} · {1} % von {2}
+click_to_open = zum Öffnen klicken
+click_to_go_up = klicken, um eine Ebene höher zu gehen
+chart_title.one = {1} von {2}, {3}, {0} Element
+chart_title = {1} von {2}, {3}, {0} Elemente
+chart_item = {0}, {1}, {2} % von {3}
+
+# What a file is, colouring by type
+kind_folder = Ordner
+kind_multimedia = Multimedia
+kind_image = Bild
+kind_archive = Archiv
+kind_document = Dokument
+kind_text = Text
+kind_binary = Binärdatei
+kind_cache = Cache
+kind_other = Sonstiges
+
+# Colouring by change
+change_shrank_much = Stark geschrumpft
+change_shrank = Geschrumpft
+change_same = Unverändert
+change_grew = Gewachsen
+change_grew_much = Stark gewachsen
+change_new = neu
+change_unchanged = unverändert
+change_since = {0} seitdem
+not_kept = Scans werden nicht aufbewahrt, daher gibt es nichts zum Vergleichen
+no_earlier = Noch kein früherer Scan dieses Ordners: Der nächste Scan wird mit diesem verglichen
+comparing_after = Vergleich folgt, sobald der Scan fertig ist
+compare_with_more = Vergleichen mit…
+compare_with = Vergleichen mit
+since = Seit {0}
+none = Keiner
+date_year = {0}. {1} {2}
+date_time = {0}. {1}, {2}
+month_1 = Jan.
+month_2 = Feb.
+month_3 = März
+month_4 = Apr.
+month_5 = Mai
+month_6 = Juni
+month_7 = Juli
+month_8 = Aug.
+month_9 = Sept.
+month_10 = Okt.
+month_11 = Nov.
+month_12 = Dez.
+
+# What can be done to an entry
+actions_for = Aktionen für {0}
+open = Öffnen
+locate = Anzeigen
+rename = Umbenennen
+trash = In den Papierkorb
+cancel = Abbrechen
+new_name = Neuer Name
+trash_title = {0} in den Papierkorb legen?
+trash_body = {0} wird mit seinem gesamten Inhalt in den Papierkorb verschoben und kann von dort wiederhergestellt werden.
+
+# Reclaim
+looking = Wird gesucht
+reclaim_after_scan = „Bereinigen“ sucht, sobald der Scan fertig ist.
+reclaim_nothing = Hier lässt sich nichts gefahrlos bereinigen.
+reclaim_explains = „Bereinigen“ findet, was Builds und Werkzeuge erzeugt haben und wieder erzeugen: installierte Abhängigkeiten, Build-Ausgaben, Caches.
+reclaim_total = Hier lassen sich {0} bereinigen
+reclaim_chosen.one = {1} in {0} Ordner ausgewählt
+reclaim_chosen = {1} in {0} Ordnern ausgewählt
+clean_up = Aufräumen
+reclaim_all = Alle: {0}
+empty_trash = Papierkorb leeren
+delete_title.one = {0} Ordner endgültig löschen?
+delete_title = {0} Ordner endgültig löschen?
+delete_body = Dadurch werden {0} frei. Nichts wird in den Papierkorb verschoben: Jeder Ordner entsteht von selbst neu, wenn das Projekt das nächste Mal gebaut oder installiert wird oder das Werkzeug wieder läuft.
+delete = Löschen
+empty_title = Papierkorb leeren?
+empty_body = {0} im Papierkorb werden endgültig gelöscht.
+empty = Leeren
+modified_recent = Geändert {0}, daher wohl in Gebrauch
+modified = Geändert {0}
+ago_today = heute
+ago_yesterday = gestern
+ago_days.one = vor {0} Tag
+ago_days = vor {0} Tagen
+ago_months.one = vor {0} Monat
+ago_months = vor {0} Monaten
+ago_years.one = vor {0} Jahr
+ago_years = vor {0} Jahren
+reclaim_dependencies = Installierte Abhängigkeiten
+reclaim_build_output = Build-Ausgaben
+reclaim_python = Python-Caches und -Umgebungen
+reclaim_package_cache = Paket-Downloads
+reclaim_app_cache = Anwendungs-Caches
+reclaim_trash = Papierkorb
+why_dependencies = Wird vom Paketmanager anhand des Projektmanifests neu installiert.
+why_build_output = Wird beim nächsten Build des Projekts neu erzeugt.
+why_python = Wird von Python und seinen Werkzeugen neu erzeugt; eine virtuelle Umgebung entsteht aus den Anforderungen des Projekts neu.
+why_package_cache = Wird erneut heruntergeladen, wenn ein Paket das nächste Mal gebraucht wird.
+why_app_cache = Anwendungen legen in ihrem Cache nur ab, was sie neu erzeugen können.
+why_trash = Bereits gelöscht; Leeren gibt den Speicher endgültig frei.
+
+# Exporting a report
+export_report = Bericht exportieren
+format = Format
+include_reclaim = Kandidaten zum Bereinigen einschließen
+include_reclaim_caption = Was gelöscht und neu erzeugt werden kann
+export_next = Wählen Sie als Nächstes den Speicherort; zunächst Ihren Ordner „Dokumente“.
+format_pdf = PDF-Dokument
+format_html = Webseite
+format_csv = CSV-Tabelle
+format_json = JSON-Daten
+caption_pdf = Seiten zum Drucken oder Anhängen an ein Ticket
+caption_html = Eine Seite, die sich in jedem Browser öffnen lässt
+caption_csv = Eine Zeile pro Eintrag, für eine Tabellenkalkulation
+caption_json = Alle Werte, für ein anderes Programm
+
+# The licence
+adding = Wird hinzugefügt…
+add_licence = Lizenz hinzufügen
+licensed_to = Lizenziert für {0}
+licence_details = {0} · Bestellung {1} · ausgestellt am {2}
+licence_terms = Scannen, die Diagramme und „Bereinigen“ sind für private Nutzung kostenlos. Berichte und Änderungsverfolgung erfordern eine Lizenz. Organisationen benötigen nach Ablauf der 30-tägigen Testphase für jede Nutzung eine Lizenz.
+trial_left.one = Sie können Berichte und Änderungsverfolgung noch {0} Tag testen.
+trial_left = Sie können Berichte und Änderungsverfolgung noch {0} Tage testen.
+buy_licence = Lizenz kaufen
+replace_licence = Lizenz ersetzen
+add_a_licence = Lizenz hinzufügen
+licence_caption = Der Lizenzschlüssel aus Ihrem Kaufbeleg oder eine Lizenz, die mit leita1. beginnt.
+licence_key = Lizenzschlüssel
+licence_to_add = Hinzuzufügende Lizenz
+licence_privacy = {0} sendet den Schlüssel einmalig an mordaunt.dev, um Ihre Lizenz abzurufen. Sonst wird nichts gesendet, weder jetzt noch später.
+open_licence_file = Lizenzdatei öffnen…
+trial_ended_title = Ihre 30-tägige Testphase für Berichte und Änderungsverfolgung ist abgelaufen
+trial_ended_body = Scannen, die Diagramme und „Bereinigen“ bleiben kostenlos. Mit einer Lizenz erhalten Sie Berichte und die Änderungen seit dem letzten Scan zurück.
+reports_locked = Nach Ablauf der 30-tägigen Testphase erfordert das Exportieren von Berichten eine Lizenz.
+change_locked = Nach Ablauf der 30-tägigen Testphase erfordert die Anzeige der Änderungen seit dem letzten Scan eine Lizenz. {0} bewahrt weiterhin jeden Scan auf, sodass alles verfügbar ist, sobald Sie eine hinzufügen.
+tier_supporter = Unterstützer
+tier_office = Büro, bis zu 10 Personen
+tier_team = Team, bis zu 50 Personen
+tier_site = Standort
+tier_multi_site = Mehrere Standorte
+licence_not_valid = Die Lizenz ist ungültig.
+licence_no_key = Die Lizenz kann nicht geprüft werden: Dieser Build von {0} akzeptiert keine Lizenzen.
+licence_malformed = Dies ist keine {0}-Lizenz; fügen Sie die ganze Zeile ein, von leita1. bis zum Ende.
+licence_newer = Die Lizenz gilt für eine neuere Version von {0}; aktualisieren Sie {0}, um sie zu verwenden.
+licence_signature = Die Lizenz wurde nicht von Librium signiert oder wurde verändert.
+licence_terms_missing = Die Lizenz gibt nicht an, für wen sie gilt oder was sie umfasst.
+licence_unreadable = Die Lizenzdatei konnte nicht gelesen werden.
+licence_unwritable = Die Lizenz konnte nicht gespeichert werden.
+not_a_key = Das ist kein Lizenzschlüssel: Fügen Sie den Schlüssel aus Ihrem Kaufbeleg ein oder eine Lizenz, die mit leita1. beginnt.
+cannot_connect = {0} konnte keine Verbindung zum Abrufen der Lizenz herstellen.
+server_slow = Der Lizenzserver hat nicht rechtzeitig geantwortet; versuchen Sie es erneut.
+server_unreachable = {0} konnte den Lizenzserver nicht erreichen. Prüfen Sie die Verbindung oder öffnen Sie stattdessen die Lizenzdatei aus Ihrem Kaufbeleg.
+key_refused = Der Lizenzschlüssel wurde nicht akzeptiert.
+server_busy = Der Lizenzserver kann gerade nicht antworten; versuchen Sie es später erneut.
+
+# What came of a request
+made_up = Nichts wurde geändert: Dieser Datenträger ist fiktiv, seine Dateien liegen nicht wirklich auf einem Datenträger
+trash_failed = {0} konnte nicht in den Papierkorb verschoben werden: {1}
+trashed = {0} wurde in den Papierkorb verschoben
+rename_failed = {0} konnte nicht umbenannt werden: {1}
+renamed = {0} wurde in {1} umbenannt
+gone_locate = Anzeigen nicht möglich: Der zugehörige Scan existiert nicht mehr
+gone_trash = Verschieben in den Papierkorb nicht möglich: Der zugehörige Scan existiert nicht mehr
+gone_rename = Umbenennen nicht möglich: Der zugehörige Scan existiert nicht mehr
+trashed_locate = Anzeigen nicht möglich: Das Element wurde in den Papierkorb verschoben
+trashed_trash = Verschieben in den Papierkorb nicht möglich: Das Element wurde bereits in den Papierkorb verschoben
+trashed_rename = Umbenennen nicht möglich: Das Element wurde in den Papierkorb verschoben
+top_trash = Die oberste Ebene des Scans kann von hier aus nicht in den Papierkorb verschoben werden
+top_rename = Die oberste Ebene des Scans kann von hier aus nicht umbenannt werden
+clean_gone = Aufräumen nicht möglich: Der zugehörige Scan existiert nicht mehr
+cleaned.one = {0} Ordner gelöscht und {1} freigegeben
+cleaned = {0} Ordner gelöscht und {1} freigegeben
+cleaned_partly.one = {0} Ordner gelöscht und {1} freigegeben; nicht löschbar: {2}
+cleaned_partly = {0} Ordner gelöscht und {1} freigegeben; nicht löschbar: {2}
+empty_gone = Papierkorb kann nicht geleert werden: Der zugehörige Scan existiert nicht mehr
+empty_not_trash = Papierkorb kann nicht geleert werden: Dies ist nicht der von „Bereinigen“ gefundene Papierkorb
+emptied = Papierkorb geleert und {0} freigegeben
+emptied_partly = Papierkorb geleert und {0} freigegeben; nicht löschbar: {1}
+export_unfinished = Bericht kann nicht exportiert werden: Der Scan ist nicht abgeschlossen
+export_no_folder = Bericht kann nicht exportiert werden: Es gibt keinen Dokumente- oder Benutzerordner zum Speichern
+save_failed_to = Der Bericht konnte nicht unter {0} gespeichert werden: {1}
+save_failed_in = Der Bericht konnte nicht in {0} gespeichert werden: {1}
+save_failed = Der Bericht konnte nicht gespeichert werden: {0}
+saved = Bericht unter {0} gespeichert
+report_no_font = keine Schrift für das PDF vorhanden: Installieren Sie Liberation Sans, Noto Sans oder DejaVu Sans
+report_write_failed = der Bericht konnte nicht geschrieben werden
+file_exists = etwas mit diesem Namen existiert bereits
+file_missing = es ist nicht mehr vorhanden
+file_denied = die Berechtigung wurde verweigert
+file_cross_device = es liegt auf einem anderen Dateisystem als der Papierkorb
+file_bad_name = dieser Name ist für eine Datei nicht zulässig
+file_not_directory = es ist kein Ordner
+file_unsupported = dieses System unterstützt das nicht
+file_other = das System hat den Vorgang abgelehnt
+name_empty = ein Name darf nicht leer sein
+name_dot = dieser Name bezeichnet den Ordner selbst
+name_slash = ein Name darf kein / enthalten
+name_nul = ein Name darf kein NUL enthalten
+name_reserved = ein Name darf kein \ : * ? " < > oder | enthalten
+cannot_scan = {0} kann nicht gescannt werden: {1}
+nothing_to_scan = hier lässt sich nichts scannen
+reader_failed = der Lesevorgang konnte nicht gestartet werden

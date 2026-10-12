@@ -12,6 +12,7 @@ import tok "jm:ui/primer/tokens"
 
 import "../../human"
 import mark "../mark"
+import "../msg"
 import "../query"
 
 /*
@@ -150,8 +151,35 @@ ease :: proc(gtx: ^ui.Ctx, m: ^Model, r: ^query.Rings_Result) -> []query.Arc {
 	return out
 }
 
-// SWITCHES_WIDTH is about what the two switches take with their labels.
+// SWITCHES_WIDTH is about what the two switches take with their English labels.
 SWITCHES_WIDTH :: f32(540)
+
+// SWITCH_LABELS are the switches' segments' labels.
+@(private)
+SWITCH_LABELS := [?]msg.Msg {
+	.Mode_Sunburst,
+	.Mode_Treemap,
+	.Mode_Icicle,
+	.Mode_Reclaim,
+	.Colour_Folder,
+	.Colour_Type,
+	.Colour_Change,
+}
+
+// switches_width is about what the two switches take with their labels in the
+// language in use: SWITCHES_WIDTH, scaled by how much longer or shorter its
+// labels are than English's.
+@(private)
+switches_width :: proc(gtx: ^ui.Ctx) -> f32 {
+	st := primer.text_style(.Small)
+	font := primer.font_for(gtx, st.weight)
+	here, there: f32
+	for key in SWITCH_LABELS {
+		here += design.layout_style(gtx, tr(key), st, font).width
+		there += design.layout_style(gtx, msg.tr(&english, key), st, font).width
+	}
+	return SWITCHES_WIDTH * here / there if there > 0 else SWITCHES_WIDTH
+}
 
 // rings_panel is the mode switch over the directory shown, drawn in the mode
 // chosen: for the sunburst, what the pointer is over, then the disc.
@@ -161,7 +189,7 @@ rings_panel :: proc(gtx: ^ui.Ctx, m: ^Model) {
 	// In a row, so the switch is as wide as its segments rather than the panel.
 	// Labelled where the column is wide enough, icons alone where it is not, and on
 	// two lines where even those do not fit.
-	compact := gtx.constraints.max.x < SWITCHES_WIDTH
+	compact := gtx.constraints.max.x < switches_width(gtx)
 	if ui.wrap(gtx, gap = 12, align = .Center) {
 		mode_switch(gtx, m, compact)
 		// Reclaim is a list, not a chart, and draws from an answer of its own: it

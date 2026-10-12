@@ -1,0 +1,287 @@
+# leita, italiano. Termini: scansione, Recupera (la modalità Reclaim), Cestino,
+# i grafici Sunburst, Treemap e Icicle (nomi di prodotto), licenza.
+
+# Toolbar
+language = Lingua
+about = Informazioni su {0}
+stop = Interrompi
+rescan = Ripeti scansione
+theme_light = Tema chiaro
+theme_dark = Tema scuro
+export = Esporta
+exporting = Esportazione…
+licence = Licenza
+licence_free = Licenza: gratuita per uso personale
+
+# About
+version = Versione {0}
+tagline = Ricerca istantanea sul disco, con report.
+explainer = Scopri cosa riempie qualsiasi unità durante la scansione, segui cosa è cambiato dall'ultima scansione, libera spazio in sicurezza e condividi report.
+free_personal = Gratuito per uso personale.
+free_personal_trial = Gratuito per uso personale. {0}
+close = Chiudi
+
+# How the scan is going
+status_empty = Indica una cartella per vedere cosa occupa il disco.
+scanning = Scansione in corso
+done = Completata
+stopped = Interrotta
+failed = Non riuscita
+scan_failed = La scansione non è riuscita
+slow_hint = Leggere direttamente la tabella del volume sarebbe molto più veloce, con il permesso di aprire il dispositivo.
+count_items.one = {0} elemento
+count_items.many = {0} di elementi
+count_items = {0} elementi
+count_free = {0} liberi su {1}
+count_seconds = {0} s
+count_pending.one = {0} in attesa della cartella superiore
+count_pending.many = {0} di elementi in attesa della cartella superiore
+count_pending = {0} in attesa della cartella superiore
+
+# The location bar
+location = Posizione
+location_placeholder = Una cartella, un'unità o un'immagine da scansionare
+
+# Panels
+resize_panels = Ridimensiona pannelli
+resize_lists = Ridimensiona elenchi
+folded_away = compresso
+points_wide.one = largo {0} punto
+points_wide.many = largo {0} di punti
+points_wide = largo {0} punti
+split_contents = {0}% contenuto
+contents = Contenuto
+listing_summary.one = {1} in {0} elemento
+listing_summary.many = {1} in {0} di elementi
+listing_summary = {1} in {0} elementi
+listing_empty = Ancora nulla qui.
+listing_more.one = e {0} elemento più piccolo, {1}
+listing_more.many = e {0} di elementi più piccoli, {1} in totale
+listing_more = e {0} elementi più piccoli, {1} in totale
+share_of = Quota di {0}
+largest_files = File più grandi
+largest_none = Ancora nessuno.
+
+# Charts
+view = Vista
+mode_sunburst = Sunburst
+mode_treemap = Treemap
+mode_icicle = Icicle
+mode_reclaim = Recupera
+colour_by = Colora per
+colour_folder = Cartella
+colour_type = Tipo
+colour_change = Variazione
+coloured_by_folder = Colorato per cartella principale
+arc_share = {0} · {1}% di {2}
+click_to_open = clic per aprire
+click_to_go_up = clic per salire
+chart_title.one = {1} di {2}, {3}, {0} elemento
+chart_title.many = {1} di {2}, {3}, {0} di elementi
+chart_title = {1} di {2}, {3}, {0} elementi
+chart_item = {0}, {1}, {2}% di {3}
+
+# What a file is, colouring by type
+kind_folder = Cartella
+kind_multimedia = Multimedia
+kind_image = Immagine
+kind_archive = Archivio
+kind_document = Documento
+kind_text = Testo
+kind_binary = Binario
+kind_cache = Cache
+kind_other = Altro
+
+# Colouring by change
+change_shrank_much = Molto ridotto
+change_shrank = Ridotto
+change_same = Invariato
+change_grew = Aumentato
+change_grew_much = Molto aumentato
+change_new = nuovo
+change_unchanged = invariato
+change_since = {0} da allora
+not_kept = Le scansioni non vengono conservate, quindi non c'è nulla con cui confrontare
+no_earlier = Ancora nessuna scansione precedente di questa cartella: la prossima scansione sarà confrontata con questa
+comparing_after = Il confronto avverrà al termine della scansione
+compare_with_more = Confronta con…
+compare_with = Confronta con
+since = Dal {0}
+none = Nessuna
+date_year = {0} {1} {2}
+date_time = {0} {1} {2}
+month_1 = gen
+month_2 = feb
+month_3 = mar
+month_4 = apr
+month_5 = mag
+month_6 = giu
+month_7 = lug
+month_8 = ago
+month_9 = set
+month_10 = ott
+month_11 = nov
+month_12 = dic
+
+# What can be done to an entry
+actions_for = Azioni per {0}
+open = Apri
+locate = Mostra
+rename = Rinomina
+trash = Sposta nel Cestino
+cancel = Annulla
+new_name = Nuovo nome
+trash_title = Spostare {0} nel Cestino?
+trash_body = {0} e tutto il suo contenuto verranno spostati nel Cestino, da cui potranno essere ripristinati.
+
+# Reclaim
+looking = Ricerca in corso
+reclaim_after_scan = Recupera cerca al termine della scansione.
+reclaim_nothing = Qui non c'è nulla da recuperare in sicurezza.
+reclaim_explains = Recupera trova ciò che build e strumenti hanno creato e ricreeranno: dipendenze installate, output di build, cache.
+reclaim_total = {0} recuperabili qui
+reclaim_chosen.one = {1} in {0} cartella selezionata
+reclaim_chosen.many = {1} in {0} di cartelle selezionate
+reclaim_chosen = {1} in {0} cartelle selezionate
+clean_up = Pulisci
+reclaim_all = Tutto: {0}
+empty_trash = Svuota Cestino
+delete_title.one = Eliminare definitivamente {0} cartella?
+delete_title.many = Eliminare definitivamente {0} di cartelle?
+delete_title = Eliminare definitivamente {0} cartelle?
+delete_body = Verranno liberati {0}. Nulla viene spostato nel Cestino: ogni cartella si ricrea da sé alla prossima build o installazione del progetto, o alla prossima esecuzione dello strumento.
+delete = Elimina
+empty_title = Svuotare il Cestino?
+empty_body = {0} nel Cestino verranno eliminati definitivamente.
+empty = Svuota
+modified_recent = Modificato {0}, quindi probabilmente in uso
+modified = Modificato {0}
+ago_today = oggi
+ago_yesterday = ieri
+ago_days.one = {0} giorno fa
+ago_days.many = {0} di giorni fa
+ago_days = {0} giorni fa
+ago_months.one = {0} mese fa
+ago_months.many = {0} di mesi fa
+ago_months = {0} mesi fa
+ago_years.one = {0} anno fa
+ago_years.many = {0} di anni fa
+ago_years = {0} anni fa
+reclaim_dependencies = Dipendenze installate
+reclaim_build_output = Output di build
+reclaim_python = Cache e ambienti Python
+reclaim_package_cache = Pacchetti scaricati
+reclaim_app_cache = Cache delle applicazioni
+reclaim_trash = Cestino
+why_dependencies = Reinstallate dal gestore di pacchetti a partire dal manifest del progetto.
+why_build_output = Ricreato dalla prossima build del progetto.
+why_python = Ricreati da Python e dai suoi strumenti; un ambiente virtuale si ricrea dai requisiti del progetto.
+why_package_cache = Scaricati di nuovo quando un pacchetto torna a servire.
+why_app_cache = Le applicazioni conservano nella cache solo ciò che possono ricreare.
+why_trash = Già eliminato; svuotarlo libera lo spazio definitivamente.
+
+# Exporting a report
+export_report = Esporta report
+format = Formato
+include_reclaim = Includi i candidati di Recupera
+include_reclaim_caption = Ciò che si può eliminare e ricreare
+export_next = Poi scegli dove salvarlo; per iniziare, nella cartella Documenti.
+format_pdf = Documento PDF
+format_html = Pagina web
+format_csv = Foglio di calcolo CSV
+format_json = Dati JSON
+caption_pdf = Pagine da stampare o allegare a un ticket
+caption_html = Una pagina che si apre in qualsiasi browser
+caption_csv = Una riga per voce, per un foglio di calcolo
+caption_json = Tutti i dati, per un altro programma
+
+# The licence
+adding = Aggiunta…
+add_licence = Aggiungi licenza
+licensed_to = Concessa in licenza a {0}
+licence_details = {0} · ordine {1} · emessa il {2}
+licence_terms = Scansione, grafici e Recupera sono gratuiti per uso personale. Report e monitoraggio delle modifiche richiedono una licenza. Un'organizzazione ne ha bisogno per qualsiasi uso al termine dei 30 giorni di valutazione.
+trial_left.one = Puoi provare report e monitoraggio delle modifiche ancora per {0} giorno.
+trial_left.many = Puoi provare report e monitoraggio delle modifiche ancora per {0} di giorni.
+trial_left = Puoi provare report e monitoraggio delle modifiche ancora per {0} giorni.
+buy_licence = Acquista una licenza
+replace_licence = Sostituisci la licenza
+add_a_licence = Aggiungi una licenza
+licence_caption = La chiave di licenza indicata nella ricevuta, o una licenza che inizia con leita1.
+licence_key = Chiave di licenza
+licence_to_add = Licenza da aggiungere
+licence_privacy = {0} invia la chiave una sola volta, a mordaunt.dev, per ottenere la licenza. Non invia nient'altro, né allora né in seguito.
+open_licence_file = Apri file di licenza…
+trial_ended_title = La prova di 30 giorni di report e monitoraggio delle modifiche è terminata
+trial_ended_body = Scansione, grafici e Recupera restano gratuiti. Una licenza riattiva i report e le modifiche dall'ultima scansione.
+reports_locked = La prova di 30 giorni è terminata: per esportare i report serve una licenza.
+change_locked = La prova di 30 giorni è terminata: per vedere cosa è cambiato dall'ultima scansione serve una licenza. {0} conserva comunque ogni scansione, quindi sarà tutto disponibile quando ne aggiungerai una.
+tier_supporter = Sostenitore
+tier_office = Ufficio, fino a 10 persone
+tier_team = Team, fino a 50 persone
+tier_site = Sede
+tier_multi_site = Multisede
+licence_not_valid = La licenza non è valida.
+licence_no_key = Impossibile verificare la licenza: questa build di {0} non accetta licenze.
+licence_malformed = Non è una licenza di {0}; incolla l'intera riga, da leita1. fino alla fine.
+licence_newer = La licenza è per una versione più recente di {0}; aggiorna {0} per usarla.
+licence_signature = La licenza non è firmata da Librium o è stata modificata.
+licence_terms_missing = La licenza non indica a chi è intestata né cosa copre.
+licence_unreadable = Impossibile leggere il file di licenza.
+licence_unwritable = Impossibile salvare la licenza.
+not_a_key = Non è una chiave di licenza: incolla la chiave indicata nella ricevuta, o una licenza che inizia con leita1.
+cannot_connect = {0} non è riuscito ad avviare una connessione per ottenere la licenza.
+server_slow = Il server delle licenze non ha risposto in tempo; riprova.
+server_unreachable = {0} non riesce a raggiungere il server delle licenze. Controlla la connessione o apri il file di licenza allegato alla ricevuta.
+key_refused = La chiave di licenza non è stata accettata.
+server_busy = Il server delle licenze non può rispondere al momento; riprova più tardi.
+
+# What came of a request
+made_up = Nessuna modifica: questo disco è simulato, quindi i suoi file non esistono su disco
+trash_failed = Impossibile spostare {0} nel Cestino: {1}
+trashed = {0} spostato nel Cestino
+rename_failed = Impossibile rinominare {0}: {1}
+renamed = {0} rinominato in {1}
+gone_locate = Impossibile mostrarlo: la scansione da cui proviene non esiste più
+gone_trash = Impossibile spostarlo nel Cestino: la scansione da cui proviene non esiste più
+gone_rename = Impossibile rinominarlo: la scansione da cui proviene non esiste più
+trashed_locate = Impossibile mostrarlo: è stato spostato nel Cestino
+trashed_trash = Impossibile spostarlo nel Cestino: è già stato spostato nel Cestino
+trashed_rename = Impossibile rinominarlo: è stato spostato nel Cestino
+top_trash = Impossibile spostare nel Cestino la radice della scansione da qui
+top_rename = Impossibile rinominare la radice della scansione da qui
+clean_gone = Impossibile pulire: la scansione da cui proviene non esiste più
+cleaned.one = Eliminata {0} cartella, liberati {1}
+cleaned.many = Eliminate {0} di cartelle, liberati {1}
+cleaned = Eliminate {0} cartelle, liberati {1}
+cleaned_partly.one = Eliminata {0} cartella, liberati {1}; impossibile eliminarne {2}
+cleaned_partly.many = Eliminate {0} di cartelle, liberati {1}; impossibile eliminarne {2}
+cleaned_partly = Eliminate {0} cartelle, liberati {1}; impossibile eliminarne {2}
+empty_gone = Impossibile svuotare il Cestino: la scansione da cui proviene non esiste più
+empty_not_trash = Impossibile svuotare il Cestino: non è il Cestino trovato da Recupera
+emptied = Cestino svuotato, liberati {0}
+emptied_partly = Cestino svuotato, liberati {0}; impossibile eliminarne {1}
+export_unfinished = Impossibile esportare il report: la scansione non è terminata
+export_no_folder = Impossibile esportare il report: non c'è una cartella Documenti né una cartella Inizio in cui salvarlo
+save_failed_to = Impossibile salvare il report in {0}: {1}
+save_failed_in = Impossibile salvare il report nella cartella {0}: {1}
+save_failed = Impossibile salvare il report: {0}
+saved = Report salvato in {0}
+report_no_font = nessun font con cui comporre un PDF: installa Liberation Sans, Noto Sans o DejaVu Sans
+report_write_failed = impossibile scrivere il report
+file_exists = esiste già un elemento con quel nome
+file_missing = non esiste più
+file_denied = permesso negato
+file_cross_device = si trova su un file system diverso da quello del Cestino
+file_bad_name = non è un nome valido per un file
+file_not_directory = non è una cartella
+file_unsupported = questo sistema non lo consente
+file_other = il sistema ha rifiutato l'operazione
+name_empty = il nome non può essere vuoto
+name_dot = quel nome indica la cartella stessa
+name_slash = il nome non può contenere /
+name_nul = il nome non può contenere NUL
+name_reserved = il nome non può contenere \ : * ? " < > o |
+cannot_scan = impossibile scansionare {0}: {1}
+nothing_to_scan = qui non c'è nulla da scansionare
+reader_failed = impossibile avviare il lettore

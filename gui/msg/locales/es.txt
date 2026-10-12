@@ -1,0 +1,290 @@
+# leita, Spanish (neutral). Translates en.txt; see it for what each argument is.
+#
+# Terms, kept the same everywhere: analizar/análisis (scan), Recuperar (Reclaim),
+# Papelera (Trash), the charts Proyección solar, Rectángulos and Carámbanos,
+# licencia (licence).
+
+# Toolbar
+language = Idioma
+about = Acerca de {0}
+stop = Detener
+rescan = Volver a analizar
+theme_light = Tema claro
+theme_dark = Tema oscuro
+export = Exportar
+exporting = Exportando…
+licence = Licencia
+licence_free = Licencia: gratis para uso personal
+
+# About
+version = Versión {0}
+tagline = Búsqueda instantánea en disco, con informes.
+explainer = Vea qué ocupa cualquier unidad mientras se analiza, siga lo que cambió desde el último análisis, libere espacio con seguridad y comparta informes.
+free_personal = Gratis para uso personal.
+free_personal_trial = Gratis para uso personal. {0}
+close = Cerrar
+
+# How the scan is going
+status_empty = Indique una carpeta para ver qué ocupa el disco.
+scanning = Analizando
+done = Listo
+stopped = Detenido
+failed = Error
+scan_failed = El análisis falló
+slow_hint = Leer la tabla propia de este volumen sería mucho más rápido, con permiso para abrir el dispositivo.
+count_items.one = {0} elemento
+count_items.many = {0} de elementos
+count_items = {0} elementos
+count_free = {0} libres de {1}
+count_seconds = {0} s
+count_pending.one = {0} a la espera de su carpeta superior
+count_pending.many = {0} a la espera de su carpeta superior
+count_pending = {0} a la espera de su carpeta superior
+
+# The location bar
+location = Ubicación
+location_placeholder = Carpeta, unidad o imagen que analizar
+
+# Panels
+resize_panels = Cambiar tamaño de los paneles
+resize_lists = Cambiar tamaño de las listas
+folded_away = plegado
+points_wide.one = {0} punto de ancho
+points_wide.many = {0} de puntos de ancho
+points_wide = {0} puntos de ancho
+split_contents = {0} % contenido
+contents = Contenido
+listing_summary.one = {1} en {0} elemento
+listing_summary.many = {1} en {0} de elementos
+listing_summary = {1} en {0} elementos
+listing_empty = Aún no se ha encontrado nada aquí.
+listing_more.one = y {0} elemento más pequeño, {1}
+listing_more.many = y {0} de elementos más pequeños, {1} en total
+listing_more = y {0} elementos más pequeños, {1} en total
+share_of = Proporción de {0}
+largest_files = Archivos más grandes
+largest_none = Aún no se ha encontrado ninguno.
+
+# Charts
+view = Vista
+mode_sunburst = Proyección solar
+mode_treemap = Rectángulos
+mode_icicle = Carámbanos
+mode_reclaim = Recuperar
+colour_by = Colorear por
+colour_folder = Carpeta
+colour_type = Tipo
+colour_change = Cambio
+coloured_by_folder = Coloreado por carpeta de primer nivel
+arc_share = {0} · {1} % de {2}
+click_to_open = clic para abrir
+click_to_go_up = clic para subir
+chart_title.one = {1} de {2}, {3}, {0} elemento
+chart_title.many = {1} de {2}, {3}, {0} de elementos
+chart_title = {1} de {2}, {3}, {0} elementos
+chart_item = {0}, {1}, {2} % de {3}
+
+# What a file is, colouring by type
+kind_folder = Carpeta
+kind_multimedia = Multimedia
+kind_image = Imagen
+kind_archive = Archivo comprimido
+kind_document = Documento
+kind_text = Texto
+kind_binary = Binario
+kind_cache = Caché
+kind_other = Otro
+
+# Colouring by change
+change_shrank_much = Disminuyó mucho
+change_shrank = Disminuyó
+change_same = Sin cambios
+change_grew = Aumentó
+change_grew_much = Aumentó mucho
+change_new = nuevo
+change_unchanged = sin cambios
+change_since = {0} desde entonces
+not_kept = Los análisis no se están guardando, así que no hay nada con qué comparar
+no_earlier = Aún no hay un análisis anterior de esta carpeta: el próximo se comparará con este
+comparing_after = Se comparará cuando termine el análisis
+compare_with_more = Comparar con…
+compare_with = Comparar con
+since = Desde el {0}
+none = Ninguno
+date_year = {0} {1} {2}
+date_time = {0} {1}, {2}
+month_1 = ene
+month_2 = feb
+month_3 = mar
+month_4 = abr
+month_5 = may
+month_6 = jun
+month_7 = jul
+month_8 = ago
+month_9 = sept
+month_10 = oct
+month_11 = nov
+month_12 = dic
+
+# What can be done to an entry
+actions_for = Acciones para {0}
+open = Abrir
+locate = Mostrar
+rename = Renombrar
+trash = Mover a la Papelera
+cancel = Cancelar
+new_name = Nombre nuevo
+trash_title = ¿Mover {0} a la Papelera?
+trash_body = {0} y todo su contenido se moverán a la Papelera, desde donde se pueden restaurar.
+
+# Reclaim
+looking = Buscando
+reclaim_after_scan = Recuperar busca cuando termina el análisis.
+reclaim_nothing = Aquí no hay nada que se pueda recuperar con seguridad.
+reclaim_explains = Recuperar encuentra lo que generan las compilaciones y herramientas y volverán a generar: dependencias instaladas, resultados de compilación, cachés.
+reclaim_total = Se pueden recuperar {0} aquí
+reclaim_chosen.one = {1} en {0} carpeta seleccionada
+reclaim_chosen.many = {1} en {0} de carpetas seleccionadas
+reclaim_chosen = {1} en {0} carpetas seleccionadas
+clean_up = Limpiar
+reclaim_all = Todo: {0}
+empty_trash = Vaciar Papelera
+delete_title.one = ¿Eliminar {0} carpeta definitivamente?
+delete_title.many = ¿Eliminar {0} de carpetas definitivamente?
+delete_title = ¿Eliminar {0} carpetas definitivamente?
+delete_body = Así se liberan {0}. Nada se mueve a la Papelera: cada elemento se regenera solo la próxima vez que se compile o instale el proyecto, o se ejecute la herramienta.
+delete = Eliminar
+empty_title = ¿Vaciar la Papelera?
+empty_body = Se eliminarán definitivamente {0} de la Papelera.
+empty = Vaciar
+modified_recent = Modificado {0}, así que probablemente está en uso
+modified = Modificado {0}
+ago_today = hoy
+ago_yesterday = ayer
+ago_days.one = hace {0} día
+ago_days.many = hace {0} de días
+ago_days = hace {0} días
+ago_months.one = hace {0} mes
+ago_months.many = hace {0} de meses
+ago_months = hace {0} meses
+ago_years.one = hace {0} año
+ago_years.many = hace {0} de años
+ago_years = hace {0} años
+reclaim_dependencies = Dependencias instaladas
+reclaim_build_output = Resultados de compilación
+reclaim_python = Cachés y entornos de Python
+reclaim_package_cache = Descargas de paquetes
+reclaim_app_cache = Cachés de aplicaciones
+reclaim_trash = Papelera
+why_dependencies = El gestor de paquetes las vuelve a instalar a partir del manifiesto del proyecto.
+why_build_output = La próxima compilación del proyecto los vuelve a generar.
+why_python = Python y sus herramientas los vuelven a generar; un entorno virtual se vuelve a crear a partir de los requisitos del proyecto.
+why_package_cache = Se vuelven a descargar cuando se necesita de nuevo un paquete.
+why_app_cache = Las aplicaciones solo guardan en su caché lo que pueden volver a generar.
+why_trash = Ya está eliminado; al vaciarla se libera el espacio definitivamente.
+
+# Exporting a report
+export_report = Exportar informe
+format = Formato
+include_reclaim = Incluir candidatos de Recuperar
+include_reclaim_caption = Lo que se puede eliminar y volver a generar
+export_next = A continuación, elija dónde guardarlo; de entrada, en su carpeta Documentos.
+format_pdf = Documento PDF
+format_html = Página web
+format_csv = Hoja de cálculo CSV
+format_json = Datos JSON
+caption_pdf = Páginas para imprimir o adjuntar a una incidencia
+caption_html = Una página que se abre en cualquier navegador
+caption_csv = Una fila por elemento, para una hoja de cálculo
+caption_json = Todas las cifras, para otro programa
+
+# The licence
+adding = Añadiendo…
+add_licence = Añadir licencia
+licensed_to = Con licencia para {0}
+licence_details = {0} · pedido {1} · emitida el {2}
+licence_terms = El análisis, los gráficos y Recuperar son gratis para uso personal. Los informes y el seguimiento de cambios requieren una licencia. Una organización necesita una para cualquier uso cuando terminan sus 30 días de evaluación.
+trial_left.one = Puede probar los informes y el seguimiento de cambios durante {0} día más.
+trial_left.many = Puede probar los informes y el seguimiento de cambios durante {0} de días más.
+trial_left = Puede probar los informes y el seguimiento de cambios durante {0} días más.
+buy_licence = Comprar una licencia
+replace_licence = Sustituir la licencia
+add_a_licence = Añadir una licencia
+licence_caption = La clave de licencia de su recibo, o una licencia que empiece por leita1.
+licence_key = Clave de licencia
+licence_to_add = Licencia que añadir
+licence_privacy = {0} envía la clave una sola vez, a mordaunt.dev, para obtener su licencia. No envía nada más, ni entonces ni después.
+open_licence_file = Abrir archivo de licencia…
+trial_ended_title = Su prueba de 30 días de los informes y el seguimiento de cambios ha terminado
+trial_ended_body = El análisis, los gráficos y Recuperar siguen siendo gratis. Una licencia recupera los informes y lo que cambió desde el último análisis.
+reports_locked = Exportar informes requiere una licencia ahora que la prueba de 30 días ha terminado.
+change_locked = Ver lo que cambió desde el último análisis requiere una licencia ahora que la prueba de 30 días ha terminado. {0} sigue guardando todos los análisis, así que todo estará ahí cuando añada una.
+tier_supporter = Colaborador
+tier_office = Oficina, hasta 10 personas
+tier_team = Equipo, hasta 50 personas
+tier_site = Sede
+tier_multi_site = Varias sedes
+licence_not_valid = La licencia no es válida.
+licence_no_key = No se puede comprobar la licencia: esta compilación de {0} no admite licencias.
+licence_malformed = La licencia no es una licencia de {0}; pegue la línea completa, desde leita1. hasta el final.
+licence_newer = La licencia es para una versión más reciente de {0}; actualice {0} para usarla.
+licence_signature = La licencia no está firmada por Librium o se ha modificado.
+licence_terms_missing = La licencia no indica para quién es ni qué cubre.
+licence_unreadable = No se pudo leer el archivo de licencia.
+licence_unwritable = No se pudo guardar la licencia.
+not_a_key = Eso no es una clave de licencia: pegue la clave de su recibo, o una licencia que empiece por leita1.
+cannot_connect = {0} no pudo iniciar una conexión para obtener la licencia.
+server_slow = El servidor de licencias no respondió a tiempo; vuelva a intentarlo.
+server_unreachable = {0} no pudo conectar con el servidor de licencias. Compruebe la conexión o abra el archivo de licencia de su recibo.
+key_refused = No se aceptó la clave de licencia.
+server_busy = El servidor de licencias no pudo responder en este momento; vuelva a intentarlo más tarde.
+
+# What came of a request
+made_up = No se cambió nada: este disco es simulado, así que sus archivos no están en el disco
+trash_failed = No se pudo mover {0} a la Papelera: {1}
+trashed = {0} se movió a la Papelera
+rename_failed = No se pudo renombrar {0}: {1}
+renamed = {0} se renombró como {1}
+gone_locate = No se pudo mostrar: el análisis del que procede ya no existe
+gone_trash = No se pudo mover a la Papelera: el análisis del que procede ya no existe
+gone_rename = No se pudo renombrar: el análisis del que procede ya no existe
+trashed_locate = No se pudo mostrar: se movió a la Papelera
+trashed_trash = No se pudo mover a la Papelera: ya se movió a la Papelera
+trashed_rename = No se pudo renombrar: se movió a la Papelera
+top_trash = No se puede mover la raíz del análisis a la Papelera desde aquí
+top_rename = No se puede renombrar la raíz del análisis desde aquí
+clean_gone = No se pudo limpiar: el análisis del que procede ya no existe
+cleaned.one = Se eliminó {0} carpeta y se liberaron {1}
+cleaned.many = Se eliminaron {0} de carpetas y se liberaron {1}
+cleaned = Se eliminaron {0} carpetas y se liberaron {1}
+cleaned_partly.one = Se eliminó {0} carpeta y se liberaron {1}; no se pudieron eliminar {2}
+cleaned_partly.many = Se eliminaron {0} de carpetas y se liberaron {1}; no se pudieron eliminar {2}
+cleaned_partly = Se eliminaron {0} carpetas y se liberaron {1}; no se pudieron eliminar {2}
+empty_gone = No se pudo vaciar la Papelera: el análisis del que procede ya no existe
+empty_not_trash = No se pudo vaciar la Papelera: no es la Papelera que encontró Recuperar
+emptied = Se vació la Papelera y se liberaron {0}
+emptied_partly = Se vació la Papelera y se liberaron {0}; no se pudieron eliminar {1}
+export_unfinished = No se pudo exportar un informe: el análisis no ha terminado
+export_no_folder = No se pudo exportar un informe: no hay carpeta Documentos ni carpeta personal donde guardarlo
+save_failed_to = No se pudo guardar el informe en {0}: {1}
+save_failed_in = No se pudo guardar el informe en {0}: {1}
+save_failed = No se pudo guardar el informe: {0}
+saved = Informe guardado en {0}
+report_no_font = no hay ninguna fuente para componer un PDF: instale Liberation Sans, Noto Sans o DejaVu Sans
+report_write_failed = no se pudo escribir el informe
+file_exists = ya existe algo con ese nombre
+file_missing = ya no existe
+file_denied = se denegó el permiso
+file_cross_device = está en un sistema de archivos distinto al de la Papelera
+file_bad_name = ese no es un nombre válido para un archivo
+file_not_directory = no es una carpeta
+file_unsupported = este sistema no lo admite
+file_other = el sistema lo rechazó
+name_empty = el nombre no puede estar vacío
+name_dot = ese nombre designa la propia carpeta
+name_slash = un nombre no puede contener /
+name_nul = un nombre no puede contener NUL
+name_reserved = un nombre no puede contener \ : * ? " < > ni |
+cannot_scan = no se puede analizar {0}: {1}
+nothing_to_scan = aquí no hay nada que se pueda analizar
+reader_failed = no se pudo iniciar el lector

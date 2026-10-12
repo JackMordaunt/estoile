@@ -1,0 +1,262 @@
+# leita, 日本語。en.txt の各キーを翻訳したもの。
+#
+# 用語: scan = スキャン、Reclaim = 容量の回復、Trash = ゴミ箱、
+# Sunburst = サンバースト、Treemap = ツリーマップ、Icicle = アイシクル、
+# licence = ライセンス。
+
+# Toolbar
+language = 言語
+about = {0} について
+stop = 停止
+rescan = 再スキャン
+theme_light = ライトテーマ
+theme_dark = ダークテーマ
+export = 書き出す
+exporting = 書き出し中…
+licence = ライセンス
+licence_free = ライセンス: 個人利用は無料
+
+# About
+version = バージョン {0}
+tagline = 瞬時のディスク検索とレポート。
+explainer = スキャンしながらドライブの中身を表示し、前回のスキャンからの変化を追跡し、安全に空き容量を増やし、レポートを共有できます。
+free_personal = 個人利用は無料です。
+free_personal_trial = 個人利用は無料です。{0}
+close = 閉じる
+
+# How the scan is going
+status_empty = ディレクトリを指定すると、ディスクを使っているものを表示します。
+scanning = スキャン中
+done = 完了
+stopped = 停止済み
+failed = 失敗
+scan_failed = スキャンに失敗しました
+slow_hint = デバイスを開く権限があれば、このボリューム自体のテーブルを読み取ってはるかに高速にスキャンできます。
+count_items = {0} 項目
+count_free = {1} 中 {0} 空き
+count_seconds = {0} 秒
+count_pending = {0} 項目が親フォルダーを待機中
+
+# The location bar
+location = 場所
+location_placeholder = スキャンするディレクトリ、ドライブ、イメージ
+
+# Panels
+resize_panels = パネルのサイズを変更
+resize_lists = リストのサイズを変更
+folded_away = 折りたたみ済み
+points_wide = 幅 {0} ポイント
+split_contents = 内容 {0}%
+contents = 内容
+listing_summary = {0} 項目、{1}
+listing_empty = まだ何も見つかっていません。
+listing_more = ほかに小さな {0} 項目、計 {1}
+share_of = {0} の割合
+largest_files = 最大のファイル
+largest_none = まだ見つかっていません。
+
+# Charts
+view = 表示
+mode_sunburst = サンバースト
+mode_treemap = ツリーマップ
+mode_icicle = アイシクル
+mode_reclaim = 容量の回復
+colour_by = 色分け
+colour_folder = フォルダー
+colour_type = 種類
+colour_change = 変化
+coloured_by_folder = 最上位フォルダーで色分け
+arc_share = {0} · {2} の {1}%
+click_to_open = クリックして開く
+click_to_go_up = クリックして上の階層へ
+chart_title = {2} の{1}、{3}、{0} 項目
+chart_item = {0}、{1}、{3} の {2}%
+
+# What a file is, colouring by type
+kind_folder = フォルダー
+kind_multimedia = マルチメディア
+kind_image = 画像
+kind_archive = アーカイブ
+kind_document = 書類
+kind_text = テキスト
+kind_binary = バイナリ
+kind_cache = キャッシュ
+kind_other = その他
+
+# Colouring by change
+change_shrank_much = 大きく減少
+change_shrank = 減少
+change_same = 変化なし
+change_grew = 増加
+change_grew_much = 大きく増加
+change_new = 新規
+change_unchanged = 変化なし
+change_since = その後 {0}
+not_kept = スキャンが保存されていないため、比較対象がありません
+no_earlier = このフォルダーの以前のスキャンはまだありません。次回のスキャンはこのスキャンと比較されます
+comparing_after = スキャンの完了後に比較します
+compare_with_more = 比較対象…
+compare_with = 比較対象
+since = {0} 以降
+none = なし
+date_year = {2}年{1}{0}日
+date_time = {1}{0}日 {2}
+month_1 = 1月
+month_2 = 2月
+month_3 = 3月
+month_4 = 4月
+month_5 = 5月
+month_6 = 6月
+month_7 = 7月
+month_8 = 8月
+month_9 = 9月
+month_10 = 10月
+month_11 = 11月
+month_12 = 12月
+
+# What can be done to an entry
+actions_for = {0} の操作
+open = 開く
+locate = 場所を表示
+rename = 名前を変更
+trash = ゴミ箱に入れる
+cancel = キャンセル
+new_name = 新しい名前
+trash_title = {0} をゴミ箱に入れますか?
+trash_body = {0} とその中身はすべてゴミ箱に移動され、あとで元に戻せます。
+
+# Reclaim
+looking = 検索中
+reclaim_after_scan = 容量の回復はスキャンの完了後に検索します。
+reclaim_nothing = ここには安全に削除できるものはありません。
+reclaim_explains = 容量の回復は、ビルドやツールが作成し、再び作成できるもの (インストール済みの依存関係、ビルド出力、キャッシュ) を見つけます。
+reclaim_total = ここで {0} を回復できます
+reclaim_chosen = {0} 個のフォルダー、{1} を選択中
+clean_up = クリーンアップ
+reclaim_all = すべての{0}
+empty_trash = ゴミ箱を空にする
+delete_title = {0} 個のフォルダーを完全に削除しますか?
+delete_body = {0} の空き容量が増えます。ゴミ箱には移動されません。各フォルダーは、次にプロジェクトをビルドまたはインストールしたとき、またはツールを実行したときに自動的に再作成されます。
+delete = 削除
+empty_title = ゴミ箱を空にしますか?
+empty_body = ゴミ箱の {0} が完全に削除されます。
+empty = 空にする
+modified_recent = {0}に変更されたため、使用中の可能性があります
+modified = {0}に変更
+ago_today = 今日
+ago_yesterday = 昨日
+ago_days = {0} 日前
+ago_months = {0} か月前
+ago_years = {0} 年前
+reclaim_dependencies = インストール済みの依存関係
+reclaim_build_output = ビルド出力
+reclaim_python = Python のキャッシュと環境
+reclaim_package_cache = パッケージのダウンロード
+reclaim_app_cache = アプリケーションのキャッシュ
+reclaim_trash = ゴミ箱
+why_dependencies = パッケージマネージャーがプロジェクトのマニフェストから再インストールします。
+why_build_output = プロジェクトの次回のビルドで再作成されます。
+why_python = Python とそのツールが再作成します。仮想環境はプロジェクトの requirements から再作成されます。
+why_package_cache = 次にパッケージが必要になったときに再ダウンロードされます。
+why_app_cache = アプリケーションは、再作成できるものだけをキャッシュに保存します。
+why_trash = 削除済みの項目です。空にすると容量が完全に解放されます。
+
+# Exporting a report
+export_report = レポートを書き出す
+format = フォーマット
+include_reclaim = 容量の回復の候補を含める
+include_reclaim_caption = 削除して再作成できるもの
+export_next = 次に保存先を選択します。最初は書類フォルダーが選択されています。
+format_pdf = PDF 書類
+format_html = Web ページ
+format_csv = CSV スプレッドシート
+format_json = JSON データ
+caption_pdf = 印刷やチケットへの添付用のページ
+caption_html = どのブラウザーでも開ける 1 ページ
+caption_csv = 1 項目 1 行のスプレッドシート用データ
+caption_json = 他のプログラム用の全データ
+
+# The licence
+adding = 追加中…
+add_licence = ライセンスを追加
+licensed_to = ライセンス所有者: {0}
+licence_details = {0} · 注文 {1} · 発行日 {2}
+licence_terms = スキャン、チャート、容量の回復は個人利用なら無料です。レポートと変化の追跡にはライセンスが必要です。組織での利用には、30 日間の評価期間の終了後、用途を問わずライセンスが必要です。
+trial_left = レポートと変化の追跡をあと {0} 日間お試しいただけます。
+buy_licence = ライセンスを購入
+replace_licence = ライセンスを置き換える
+add_a_licence = ライセンスを追加
+licence_caption = 領収書に記載のライセンスキー、または leita1. で始まるライセンス。
+licence_key = ライセンスキー
+licence_to_add = 追加するライセンス
+licence_privacy = {0} はライセンスを取得するため、キーを一度だけ mordaunt.dev に送信します。それ以外の情報は、その時もその後も一切送信しません。
+open_licence_file = ライセンスファイルを開く…
+trial_ended_title = レポートと変化の追跡の 30 日間の試用期間が終了しました
+trial_ended_body = スキャン、チャート、容量の回復は引き続き無料です。ライセンスを追加すると、レポートと前回のスキャンからの変化を再び利用できます。
+reports_locked = 30 日間の試用期間が終了したため、レポートの書き出しにはライセンスが必要です。
+change_locked = 30 日間の試用期間が終了したため、前回のスキャンからの変化を表示するにはライセンスが必要です。{0} はすべてのスキャンを保存し続けるため、ライセンスを追加すればすべて表示できます。
+tier_supporter = サポーター
+tier_office = オフィス (10 人まで)
+tier_team = チーム (50 人まで)
+tier_site = サイト
+tier_multi_site = マルチサイト
+licence_not_valid = ライセンスが無効です。
+licence_no_key = ライセンスを確認できません: このビルドの {0} はライセンスに対応していません。
+licence_malformed = {0} のライセンスではありません。leita1. から末尾まで 1 行全体を貼り付けてください。
+licence_newer = 新しいバージョンの {0} 用のライセンスです。使用するには {0} をアップデートしてください。
+licence_signature = Librium が署名したライセンスではないか、変更されています。
+licence_terms_missing = ライセンスに対象者または適用範囲が記載されていません。
+licence_unreadable = ライセンスファイルを読み込めませんでした。
+licence_unwritable = ライセンスを保存できませんでした。
+not_a_key = ライセンスキーではありません。領収書のキー、または leita1. で始まるライセンスを貼り付けてください。
+cannot_connect = {0} はライセンスを取得するための接続を開始できませんでした。
+server_slow = ライセンスサーバーが時間内に応答しませんでした。もう一度お試しください。
+server_unreachable = {0} はライセンスサーバーに接続できませんでした。接続を確認するか、代わりに領収書のライセンスファイルを開いてください。
+key_refused = ライセンスキーが受け付けられませんでした。
+server_busy = ライセンスサーバーが現在応答できません。しばらくしてからもう一度お試しください。
+
+# What came of a request
+made_up = 何も変更されていません: このディスクは架空のもので、ファイルは実際のディスク上にありません
+trash_failed = {0} をゴミ箱に移動できませんでした: {1}
+trashed = {0} をゴミ箱に移動しました
+rename_failed = {0} の名前を変更できませんでした: {1}
+renamed = {0} の名前を {1} に変更しました
+gone_locate = 場所を表示できませんでした: 元のスキャンがなくなっています
+gone_trash = ゴミ箱に移動できませんでした: 元のスキャンがなくなっています
+gone_rename = 名前を変更できませんでした: 元のスキャンがなくなっています
+trashed_locate = 場所を表示できませんでした: ゴミ箱に移動されています
+trashed_trash = ゴミ箱に移動できませんでした: すでにゴミ箱に移動されています
+trashed_rename = 名前を変更できませんでした: ゴミ箱に移動されています
+top_trash = スキャンの最上位はここからゴミ箱に移動できません
+top_rename = スキャンの最上位はここから名前を変更できません
+clean_gone = クリーンアップできませんでした: 元のスキャンがなくなっています
+cleaned = {0} 個のフォルダーを削除し、{1} を解放しました
+cleaned_partly = {0} 個のフォルダーを削除し、{1} を解放しました。{2} 個は削除できませんでした
+empty_gone = ゴミ箱を空にできませんでした: 元のスキャンがなくなっています
+empty_not_trash = ゴミ箱を空にできませんでした: 容量の回復で見つかったゴミ箱ではありません
+emptied = ゴミ箱を空にし、{0} を解放しました
+emptied_partly = ゴミ箱を空にし、{0} を解放しました。{1} 項目は削除できませんでした
+export_unfinished = レポートを書き出せませんでした: スキャンが完了していません
+export_no_folder = レポートを書き出せませんでした: 保存先の書類フォルダーまたはホームがありません
+save_failed_to = レポートを {0} に保存できませんでした: {1}
+save_failed_in = レポートを {0} 内に保存できませんでした: {1}
+save_failed = レポートを保存できませんでした: {0}
+saved = レポートを {0} に保存しました
+report_no_font = PDF の組版に使えるフォントがありません。Liberation Sans、Noto Sans、DejaVu Sans のいずれかをインストールしてください
+report_write_failed = レポートを書き込めませんでした
+file_exists = 同じ名前の項目がすでにあります
+file_missing = 項目が見つかりません
+file_denied = アクセス権がありません
+file_cross_device = ゴミ箱とは別のファイルシステム上にあります
+file_bad_name = ファイル名として使用できない名前です
+file_not_directory = ディレクトリではありません
+file_unsupported = このシステムでは実行できません
+file_other = システムに拒否されました
+name_empty = 名前を空にすることはできません
+name_dot = その名前はフォルダー自身を指します
+name_slash = 名前に / は使用できません
+name_nul = 名前に NUL は使用できません
+name_reserved = 名前に \ : * ? " < > | は使用できません
+cannot_scan = {0} をスキャンできません: {1}
+nothing_to_scan = スキャンできるものがありません
+reader_failed = 読み取りを開始できませんでした

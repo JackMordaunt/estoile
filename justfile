@@ -1,15 +1,16 @@
-# Standard recipes: build (debug), release, clean, test, install.
+# Standard recipes: build, run, clean, test, install.
 #
-#   just build      debug build with AddressSanitizer   -> build/debug/leita
-#   just release    optimised build                     -> build/release/leita
-#   just test       run every imported package's tests under ASan -> build/test/
-#   just check      type-check both modes without producing a binary
-#   just clean      remove build/
-#   just deps       fetch the jm submodule and the native libraries the window links
-#   just sqlite     fetch the jm submodule and build SQLite, all the command line links
-#   just gui [dir]  open the window on a directory, the home directory by default
-#   just hot [dir]  the same, the view reloaded in place on every edit
-#   just gui-test   run the window's tests, the host's on a real directory
+#   just build [release]      the command line and the window, debug with ASan by
+#                             default -> build/<mode>/leita, build/<mode>/app/Leita
+#   just run [release] [dir]  build, then open the window on a directory, the home
+#                             directory by default
+#   just test                 run every imported package's tests under ASan -> build/test/
+#   just check                type-check both modes without producing a binary
+#   just clean                remove build/
+#   just deps                 fetch the jm submodule and the native libraries the window links
+#   just sqlite               fetch the jm submodule and build SQLite, all the command line links
+#   just hot [dir]            run's debug window, the view reloaded in place on every edit
+#   just gui-test             run the window's tests, the host's on a real directory
 #
 # The debug allocator, flow, sqlite3, stream and ui come from the jm collection, pinned as
 # the jm submodule (https://mordaunt.dev/code/jm); JM=<path> builds against another
@@ -44,15 +45,32 @@ gui   := "Leita"
 default:
     @just --list --unsorted
 
-# Debug build with AddressSanitizer -> build/debug/leita
-build: sqlite
-    mkdir -p build/debug
-    {{odin}} build . -debug {{san}} {{flags}} -out:build/debug/{{bin}}{{exe}}
+# Debug with AddressSanitizer, or release optimised.
+#
+# Build the command line and the window: just build [release]
+build mode="debug": deps
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "{{mode}}" in
+    debug) opt="-debug {{san}}" ;;
+    release) opt="-o:speed" ;;
+    *) echo "build: the mode is debug or release, not {{mode}}" >&2; exit 1 ;;
+    esac
+    mkdir -p build/{{mode}}/app
+    {{odin}} build . $opt {{flags}} -out:build/{{mode}}/{{bin}}{{exe}}
+    {{odin}} build gui $opt {{flags}} -out:build/{{mode}}/app/{{gui}}{{exe}}
 
-# Optimised build -> build/release/leita
-release: sqlite
-    mkdir -p build/release
-    {{odin}} build . -o:speed {{flags}} -out:build/release/{{bin}}{{exe}}
+# A first argument of release builds and runs the release build.
+#
+# Build, then open the window on a directory: just run [release] [dir]
+[positional-arguments]
+run *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mode=debug
+    if [ "${1:-}" = release ] || [ "${1:-}" = debug ]; then mode=$1; shift; fi
+    just --justfile "{{justfile()}}" build "$mode"
+    exec build/$mode/app/{{gui}}{{exe}} "$@"
 
 # Run the tests of every package the binary imports, pdf among them, under ASan
 # -> build/test/
@@ -86,15 +104,6 @@ deps: sqlite
     ls ui/kb/lib/kb_text_shape.* >/dev/null 2>&1 || just kb
     ls ui/accesskit/lib/*accesskit* >/dev/null 2>&1 || just accesskit
     just sdl3
-
-# Build the window and open it on a directory, the home directory by default
-gui *args: gui-build
-    build/debug/app/{{gui}}{{exe}} {{args}}
-
-# Debug build of the window -> build/debug/app/Leita
-gui-build: deps
-    mkdir -p build/debug/app
-    {{odin}} build gui -debug {{san}} {{flags}} -out:build/debug/app/{{gui}}{{exe}}
 
 # The window with its view hot-reloaded. The host (gui/host) owns the window and
 # the scan; the view runs as gui/child in a subprocess, rebuilt here whenever an
@@ -138,11 +147,6 @@ hot *args: deps
     while [ ! -f build/hot/view.watch ]; do sleep 0.2; done
     build/debug/app/{{gui}}-host{{exe}} build/hot/view.watch {{args}}
 
-# Optimised build of the window -> build/release/app/Leita
-gui-release: deps
-    mkdir -p build/release/app
-    {{odin}} build gui -o:speed {{flags}} -out:build/release/app/{{gui}}{{exe}}
-
 # The view in a probe over the host on a real directory, the view's own suite,
 # the messages' (every language has every message), the platform package's, and
 # those of the packages only the window imports, search among them. Not -all-packages, which would run every jm:ui
@@ -168,7 +172,7 @@ clean:
 # Copy the release binary to a directory on PATH. An installed copy is replaced in
 # place; otherwise ~/.local/bin, ~/bin, GOBIN, GOPATH/bin, /usr/local/bin, else the
 # first writable PATH entry.
-install: release
+install: (build "release")
     #!/usr/bin/env bash
     set -euo pipefail
     dest=""

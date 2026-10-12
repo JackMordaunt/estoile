@@ -102,7 +102,7 @@ jobs:
           sudo mkdir -p /usr/share/fonts/liberation
           sudo ln -sf /usr/share/fonts/truetype/liberation/*.ttf /usr/share/fonts/liberation/
 
-      # SDL3 for jm:ui/shell, which gui/main.odin (gui-release) links.
+      # SDL3 for jm:ui/shell, which gui/main.odin (just build) links.
       # Ubuntu has no package for it, so it is built from source,
       # console-only since nothing here opens a window, and installed to
       # /usr/local/lib, which is on the default linker search path, so
@@ -232,8 +232,4 @@ jobs:
       - name: release
         run: |
           if [ "${{ runner.os }}" = Windows ]; then export SAN=; fi
-          just release
-      - name: gui-release
-        run: |
-          if [ "${{ runner.os }}" = Windows ]; then export SAN=; fi
-          just gui-release
+          just build release

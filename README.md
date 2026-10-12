@@ -158,8 +158,8 @@ leita is written in [Odin](https://odin-lang.org) and builds with
 [just](https://just.systems).
 
 ```sh
-just release       # build/release/leita
-just gui-release   # build/release/app/Leita
+just build release   # build/release/leita and build/release/app/Leita
+just run             # a debug build of the window, opened on the home directory
 just test
 ```
 

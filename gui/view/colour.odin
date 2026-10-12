@@ -7,6 +7,7 @@ import "jm:ui/primer"
 import tok "jm:ui/primer/tokens"
 
 import "../../kinds"
+import "../msg"
 import "../query"
 
 /*
@@ -31,6 +32,19 @@ Colouring :: enum u8 {
 
 // Kind is what an entry is, for colouring by type (package kinds).
 Kind :: kinds.Kind
+
+// KIND_NAMES are the kinds as a person reads them, a word each.
+KIND_NAMES := [Kind]msg.Msg {
+	.Folder     = .Kind_Folder,
+	.Multimedia = .Kind_Multimedia,
+	.Image      = .Kind_Image,
+	.Archive    = .Kind_Archive,
+	.Document   = .Kind_Document,
+	.Text       = .Kind_Text,
+	.Binary     = .Kind_Binary,
+	.Cache      = .Kind_Cache,
+	.Other      = .Kind_Other,
+}
 
 // kind_of is what a file is, by its name's extension, or what a directory is, by
 // its name.
@@ -172,18 +186,19 @@ legend_line_count :: proc(gtx: ^ui.Ctx, width: f32) -> int {
 		if legend_shown(kind) {
 			append(
 				&chips,
-				2 * CHIP_PAD + LEGEND_DOT + LEGEND_INSET + text(gtx, kinds.NAMES[kind], st, font),
+				2 * CHIP_PAD +
+				LEGEND_DOT +
+				LEGEND_INSET +
+				text(gtx, tr(KIND_NAMES[kind]), st, font),
 			)
 		}
 	}
 	// The longest the pill can say, then the scale.
 	changes := make([dynamic]f32, gtx.allocator)
-	append(
-		&changes,
-		2 * CHIP_PAD + text(gtx, "Since 30 Sep 23:59", st, font) + LEGEND_INSET + st.line_height,
-	)
+	longest := trf(gtx, .Since, date_text(30, .September, "23:59", .Date_Time, gtx.allocator))
+	append(&changes, 2 * CHIP_PAD + text(gtx, longest, st, font) + LEGEND_INSET + st.line_height)
 	for c in Change {
-		append(&changes, LEGEND_DOT + LEGEND_INSET + text(gtx, CHANGE_NAMES[c], st, font))
+		append(&changes, LEGEND_DOT + LEGEND_INSET + text(gtx, tr(CHANGE_NAMES[c]), st, font))
 	}
 	return max(lines_of(chips[:], width), lines_of(changes[:], width))
 }
@@ -224,12 +239,7 @@ legend_row :: proc(gtx: ^ui.Ctx, m: ^Model) {
 	case .Type:
 		legend(gtx, m)
 	case .Folder:
-		primer.text(
-			gtx,
-			"Coloured by top-level folder",
-			.Small,
-			color = primer.color(.Fg_Color_Muted),
-		)
+		primer.text(gtx, tr(.Coloured_By_Folder), .Small, color = primer.color(.Fg_Color_Muted))
 	case .Change:
 		change_legend(gtx, m)
 	}
@@ -280,7 +290,8 @@ chip :: proc(
 	hovered, clicked: bool,
 ) {
 	st := primer.text_style(.Small)
-	para := design.layout_style(gtx, kinds.NAMES[kind], st, primer.font_for(gtx, st.weight))
+	name := tr(KIND_NAMES[kind])
+	para := design.layout_style(gtx, name, st, primer.font_for(gtx, st.weight))
 	size := ops.Size{2 * CHIP_PAD + LEGEND_DOT + LEGEND_INSET + para.width, st.line_height}
 	p := ui.widget_open(gtx, loc = loc)
 	box := ops.Rect{0, 0, size.x, size.y}
@@ -303,12 +314,8 @@ chip :: proc(
 		ink,
 	)
 	design.listen(gtx, c.st, p.id, box, design.CLICK_KINDS, .Pointer)
-	ops.tag(gtx.scene, p.id, kinds.NAMES[kind])
-	ui.semantics(
-		gtx,
-		&p,
-		{role = .Checkbox, label = kinds.NAMES[kind], states = {.Checked} if on else {}},
-	)
+	ops.tag(gtx.scene, p.id, name)
+	ui.semantics(gtx, &p, {role = .Checkbox, label = name, states = {.Checked} if on else {}})
 	ui.widget_close(gtx, &p, {size = size})
 	return c.hovered, c.clicked
 }

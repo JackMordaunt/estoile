@@ -1,6 +1,5 @@
 package leita_view
 
-import "core:fmt"
 import "core:strings"
 import "core:time"
 import "core:unicode/utf8"
@@ -12,6 +11,7 @@ import tok "jm:ui/primer/tokens"
 
 import "../../human"
 import "../command"
+import "../msg"
 import "../query"
 
 /*
@@ -38,31 +38,18 @@ reclaim_panel :: proc(gtx: ^ui.Ctx, m: ^Model) {
 	)
 	if r == nil || r.generation != m.generation || !r.ready {
 		if ui.row(gtx, gap = 8, align = .Center) {
-			primer.spinner(gtx, .Small, label = "Looking")
-			primer.text(
-				gtx,
-				"Reclaim looks once the scan is done.",
-				color = primer.color(.Fg_Color_Muted),
-			)
+			primer.spinner(gtx, .Small, label = tr(.Looking))
+			primer.text(gtx, tr(.Reclaim_After_Scan), color = primer.color(.Fg_Color_Muted))
 		}
 		return
 	}
 	if len(r.groups) == 0 {
-		primer.text(gtx, "Nothing here is safe to reclaim.", weight = .Semibold)
-		primer.text(
-			gtx,
-			"Reclaim finds what builds and tools made and will make again: installed dependencies, build output, caches.",
-			.Small,
-			color = primer.color(.Fg_Color_Muted),
-		)
+		primer.text(gtx, tr(.Reclaim_Nothing), weight = .Semibold)
+		primer.text(gtx, tr(.Reclaim_Explains), .Small, color = primer.color(.Fg_Color_Muted))
 		return
 	}
 	here := crumb_path(gtx, m.trail[:]) if len(m.trail) > 0 else ""
-	primer.text(
-		gtx,
-		fmt.aprintf("%s can be reclaimed here", human.bytes(r.bytes), allocator = gtx.allocator),
-		weight = .Semibold,
-	)
+	primer.text(gtx, trf(gtx, .Reclaim_Total, human.bytes(r.bytes)), weight = .Semibold)
 
 	// The Trash is one thing with one action, so it stands above the list, always
 	// in view, rather than at the end of it to be scrolled to.
@@ -94,16 +81,10 @@ reclaim_panel :: proc(gtx: ^ui.Ctx, m: ^Model) {
 		ui.flexible(gtx, 1)
 		primer.text(
 			gtx,
-			fmt.aprintf(
-				"%s in %s %s chosen",
-				human.bytes(bytes),
-				human.count(u64(count)),
-				"folder" if count == 1 else "folders",
-				allocator = gtx.allocator,
-			),
+			trf(gtx, .Reclaim_Chosen, count, human.bytes(bytes)),
 			color = primer.color(.Fg_Color_Muted),
 		)
-		if primer.button(gtx, "Clean up", .Danger, leading = .Trash, inactive = count == 0) &&
+		if primer.button(gtx, tr(.Clean_Up), .Danger, leading = .Trash, inactive = count == 0) &&
 		   count > 0 {
 			m.clean_open = true
 		}
@@ -177,11 +158,7 @@ reclaim_row :: proc(gtx: ^ui.Ctx, i: int, user: rawptr) {
 		// The reason under the box rather than as its caption, so it is cut to
 		// the room the total leaves.
 		if ui.column(gtx, gap = 2) {
-			if primer.checkbox(
-				gtx,
-				&tick,
-				label = fmt.aprintf("All %s", g.name, allocator = gtx.allocator),
-			) {
+			if primer.checkbox(gtx, &tick, label = trf(gtx, .Reclaim_All, g.name)) {
 				for it in g.items {
 					m.reclaim_pick[it.node] = tick
 				}
@@ -209,7 +186,7 @@ trash_row :: proc(gtx: ^ui.Ctx, m: ^Model, g: query.Reclaim_Group) {
 	room :=
 		width -
 		text_width(gtx, total, .Medium, .Semibold) -
-		text_width(gtx, "Empty Trash", .Small) -
+		text_width(gtx, tr(.Empty_Trash), .Small) -
 		2 * 12 -
 		16
 	if ui.row(gtx, gap = 12, align = .Center) {
@@ -225,7 +202,7 @@ trash_row :: proc(gtx: ^ui.Ctx, m: ^Model, g: query.Reclaim_Group) {
 			)
 		}
 		primer.text(gtx, total, weight = .Semibold)
-		if primer.button(gtx, "Empty Trash", .Danger, .Small) {
+		if primer.button(gtx, tr(.Empty_Trash), .Danger, .Small) {
 			m.trash_node, m.trash_bytes, m.empty_open = g.items[0].node, g.bytes, true
 		}
 	}
@@ -337,18 +314,9 @@ reclaim_dialogs :: proc(gtx: ^ui.Ctx, m: ^Model) {
 	answer := primer.confirmation_dialog(
 		gtx,
 		&m.clean_open,
-		fmt.aprintf(
-			"Delete %s %s for good?",
-			human.count(u64(count)),
-			"folder" if count == 1 else "folders",
-			allocator = gtx.allocator,
-		),
-		fmt.aprintf(
-			"This frees %s. Nothing is moved to the Trash: each comes back by itself when the project is next built or installed, or the tool next runs.",
-			human.bytes(bytes),
-			allocator = gtx.allocator,
-		),
-		confirm_content = "Delete",
+		trf(gtx, .Delete_Title, count),
+		trf(gtx, .Delete_Body, human.bytes(bytes)),
+		confirm_content = tr(.Delete),
 		confirm_type = .Danger,
 	)
 	if answer == .Confirm {
@@ -380,13 +348,9 @@ reclaim_dialogs :: proc(gtx: ^ui.Ctx, m: ^Model) {
 	trash := primer.confirmation_dialog(
 		gtx,
 		&m.empty_open,
-		"Empty the Trash?",
-		fmt.aprintf(
-			"%s in the Trash will be deleted for good.",
-			human.bytes(m.trash_bytes),
-			allocator = gtx.allocator,
-		),
-		confirm_content = "Empty",
+		tr(.Empty_Title),
+		trf(gtx, .Empty_Body, human.bytes(m.trash_bytes)),
+		confirm_content = tr(.Empty),
 		confirm_type = .Danger,
 	)
 	if trash == .Confirm {
@@ -419,24 +383,21 @@ modified_caption :: proc(it: query.Candidate) -> string {
 		return ""
 	}
 	when_ := ago(time.time_to_unix(time.now()) - it.modified)
-	if it.recent {
-		return fmt.tprintf("Modified %s, so likely in use", when_)
-	}
-	return fmt.tprintf("Modified %s", when_)
+	return msg.trf(current(), .Modified_Recent if it.recent else .Modified, when_)
 }
 
-// ago is a span of seconds in the past, in words.
+// ago is a span of seconds in the past, in words, in the temp allocator.
 ago :: proc(seconds: i64) -> string {
 	day :: 24 * 60 * 60
 	switch {
 	case seconds < day:
-		return "today"
+		return tr(.Ago_Today)
 	case seconds < 2 * day:
-		return "yesterday"
+		return tr(.Ago_Yesterday)
 	case seconds < 60 * day:
-		return fmt.tprintf("%d days ago", seconds / day)
+		return msg.trf(current(), .Ago_Days, int(seconds / day))
 	case seconds < 2 * 365 * day:
-		return fmt.tprintf("%d months ago", seconds / (30 * day))
+		return msg.trf(current(), .Ago_Months, int(seconds / (30 * day)))
 	}
-	return fmt.tprintf("%d years ago", seconds / (365 * day))
+	return msg.trf(current(), .Ago_Years, int(seconds / (365 * day)))
 }

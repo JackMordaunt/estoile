@@ -10,6 +10,7 @@ import "jm:ui/primer"
 
 import "../command"
 import "../files"
+import "../msg"
 import "../query"
 
 /*
@@ -37,7 +38,7 @@ export_button :: proc(gtx: ^ui.Ctx, m: ^Model, prog: ^query.Progress_Result) {
 	state := design.Interaction.Live if prog.state == .Done else .Disabled
 	if primer.button(
 		gtx,
-		"Exporting…" if busy else "Export",
+		tr(.Exporting) if busy else tr(.Export),
 		leading = .Download,
 		loading = busy,
 		state = state,
@@ -45,7 +46,7 @@ export_button :: proc(gtx: ^ui.Ctx, m: ^Model, prog: ^query.Progress_Result) {
 		if unlocked(gtx) {
 			m.export_open = true
 		} else {
-			licence_show(m, REPORTS_LOCKED)
+			licence_show(m, msg.Msg.Reports_Locked)
 		}
 	}
 }
@@ -89,13 +90,13 @@ export_dialog :: proc(gtx: ^ui.Ctx, m: ^Model, prog: ^query.Progress_Result) {
 	}
 	cancel, export := false, false
 	buttons := [2]primer.Dialog_Button {
-		{content = "Cancel", clicked = &cancel},
-		{content = "Export", type = .Primary, clicked = &export},
+		{content = tr(.Cancel), clicked = &cancel},
+		{content = tr(.Export), type = .Primary, clicked = &export},
 	}
 	if primer.dialog(
 		gtx,
 		&m.export_open,
-		"Export report",
+		tr(.Export_Report),
 		prog.target,
 		footer = buttons[:],
 		width = .Medium,
@@ -115,23 +116,18 @@ export_dialog :: proc(gtx: ^ui.Ctx, m: ^Model, prog: ^query.Progress_Result) {
 				at = i
 			}
 		}
-		if primer.form_control(gtx, "Format", caption = FORMAT_CAPTIONS[m.export_format]) {
-			if primer.segmented_control(gtx, formats[:], &at, name = "Format") {
+		if primer.form_control(gtx, tr(.Format), caption = tr(FORMAT_CAPTIONS[m.export_format])) {
+			if primer.segmented_control(gtx, formats[:], &at, name = tr(.Format)) {
 				m.export_format = order[at]
 			}
 		}
 		primer.checkbox(
 			gtx,
 			&m.export_reclaim,
-			"Include Reclaim candidates",
-			caption = "What can be deleted and made again",
+			tr(.Include_Reclaim),
+			caption = tr(.Include_Reclaim_Caption),
 		)
-		primer.text(
-			gtx,
-			"Next, choose where to save it; your Documents folder to begin with.",
-			.Small,
-			color = primer.color(.Fg_Color_Muted),
-		)
+		primer.text(gtx, tr(.Export_Next), .Small, color = primer.color(.Fg_Color_Muted))
 	}
 	if cancel {
 		m.export_open = false
@@ -143,7 +139,7 @@ export_dialog :: proc(gtx: ^ui.Ctx, m: ^Model, prog: ^query.Progress_Result) {
 			{files.report_stem(prog.target, time.now()), command.EXTENSIONS[m.export_format]},
 			context.temp_allocator,
 		)
-		filter := [1]ui.Pick_Filter{FORMAT_FILTERS[m.export_format]}
+		filter := [1]ui.Pick_Filter{format_filter(m.export_format)}
 		ui.pick_save(gtx, EXPORT_PICK, name, prog.reports, filter[:])
 	}
 }
@@ -171,20 +167,36 @@ send_export :: proc(gtx: ^ui.Ctx, m: ^Model, prog: ^query.Progress_Result, path:
 @(private)
 EXPORT_PICK :: ops.Area_Id(0x6c65_6974_6170_696b) // "leitapik"
 
-// FORMAT_FILTERS are what the save dialog offers for each format.
+// format_filter is what the save dialog offers for format: its name in the
+// language in use, and its extensions.
 @(private)
-FORMAT_FILTERS := [command.Export_Format]ui.Pick_Filter {
-	.Pdf  = {"PDF document", "pdf"},
-	.Html = {"Web page", "html;htm"},
-	.Csv  = {"CSV spreadsheet", "csv"},
-	.Json = {"JSON data", "json"},
+format_filter :: proc(format: command.Export_Format) -> ui.Pick_Filter {
+	return {tr(FORMAT_NAMES[format]), FORMAT_EXTENSIONS[format]}
+}
+
+// FORMAT_NAMES name each format in the save dialog, and FORMAT_EXTENSIONS are
+// the extensions it filters to.
+@(private)
+FORMAT_NAMES := [command.Export_Format]msg.Msg {
+	.Pdf  = .Format_Pdf,
+	.Html = .Format_Html,
+	.Csv  = .Format_Csv,
+	.Json = .Format_Json,
+}
+
+@(private)
+FORMAT_EXTENSIONS := [command.Export_Format]string {
+	.Pdf  = "pdf",
+	.Html = "html;htm",
+	.Csv  = "csv",
+	.Json = "json",
 }
 
 // FORMAT_CAPTIONS say what each format is for.
 @(private)
-FORMAT_CAPTIONS := [command.Export_Format]string {
-	.Pdf  = "Pages to print or attach to a ticket",
-	.Html = "One page that opens in any browser",
-	.Csv  = "A row per entry, for a spreadsheet",
-	.Json = "Every figure, for another program",
+FORMAT_CAPTIONS := [command.Export_Format]msg.Msg {
+	.Pdf  = .Caption_Pdf,
+	.Html = .Caption_Html,
+	.Csv  = .Caption_Csv,
+	.Json = .Caption_Json,
 }

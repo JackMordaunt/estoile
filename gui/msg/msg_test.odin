@@ -36,3 +36,25 @@ pick_locale_takes_the_first_offered :: proc(t: ^testing.T) {
 	testing.expect_value(t, pick_locale({"fr"}, offer), i18n.Locale.English)
 	testing.expect_value(t, pick_locale({}, offer), i18n.Locale.English)
 }
+
+// A count picks its message's form and is grouped as the language groups it; a
+// message with no count is the same text whatever is passed.
+@(test)
+counts_pick_the_form_and_group_their_digits :: proc(t: ^testing.T) {
+	s := new(Strings)
+	defer free(s)
+	init(s, .English)
+	defer free_all(context.temp_allocator)
+	testing.expect_value(t, trf(s, .Count_Items, 1), "1 item")
+	testing.expect_value(t, trf(s, .Count_Items, 0), "0 items")
+	testing.expect_value(t, trf(s, .Count_Items, 813073), "813,073 items")
+	testing.expect_value(t, trf(s, .Listing_Summary, 2, "268.0 KiB"), "268.0 KiB in 2 items")
+	testing.expect_value(
+		t,
+		trf(s, .Cleaned_Partly, 0, "0 B", 1),
+		"Deleted 0 folders and freed 0 B; 1 could not be deleted",
+	)
+	testing.expect_value(t, tr(s, .Language), "Language")
+	use(s, .Chinese_Traditional)
+	testing.expect_value(t, locale(s), i18n.Locale.English) // not offered
+}

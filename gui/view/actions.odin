@@ -1,6 +1,5 @@
 package leita_view
 
-import "core:fmt"
 import "core:strings"
 
 import "jm:ui"
@@ -130,7 +129,7 @@ entry_menu :: proc(gtx: ^ui.Ctx, m: ^Model, anchor: ui.Last_Widget, at := ops.Po
 		gtx,
 		&m.menu_open,
 		anchor,
-		name = fmt.aprintf("Actions for %s", m.target.name, allocator = gtx.allocator),
+		name = trf(gtx, .Actions_For, m.target.name),
 	)
 	defer primer.action_menu_close(&menu)
 	if !menu.visible {
@@ -139,22 +138,22 @@ entry_menu :: proc(gtx: ^ui.Ctx, m: ^Model, anchor: ui.Last_Widget, at := ops.Po
 	t := m.target
 	if t.directory &&
 	   !t.hub &&
-	   primer.action_menu_item(&menu, "Open", leading = .File_Directory_Open_Fill) {
+	   primer.action_menu_item(&menu, tr(.Open), leading = .File_Directory_Open_Fill) {
 		open(m, t.node)
 	}
-	if primer.action_menu_item(&menu, "Locate", leading = .Link_External) {
+	if primer.action_menu_item(&menu, tr(.Locate), leading = .Link_External) {
 		ui.command(gtx, command.Command(command.Locate{entry = entry_of(m)}))
 	}
 	if t.hub {
 		return
 	}
-	if primer.action_menu_item(&menu, "Rename", leading = .Pencil) {
+	if primer.action_menu_item(&menu, tr(.Rename), leading = .Pencil) {
 		ui.text_set(&m.rename, t.name)
 		ui.text_select(&m.rename, 0, len(t.name))
 		m.rename_open, m.rename_focus = true, true
 	}
 	primer.action_menu_divider(&menu)
-	if primer.action_menu_item(&menu, "Trash", leading = .Trash, variant = .Danger) {
+	if primer.action_menu_item(&menu, tr(.Trash), leading = .Trash, variant = .Danger) {
 		m.trash_open = true
 	}
 }
@@ -181,13 +180,9 @@ dialogs :: proc(gtx: ^ui.Ctx, m: ^Model) {
 	answer := primer.confirmation_dialog(
 		gtx,
 		&m.trash_open,
-		fmt.aprintf("Trash %s?", m.target.name, allocator = gtx.allocator),
-		fmt.aprintf(
-			"%s and everything in it will be moved to the Trash, where it can be restored.",
-			m.target.name,
-			allocator = gtx.allocator,
-		),
-		confirm_content = "Trash",
+		trf(gtx, .Trash_Title, m.target.name),
+		trf(gtx, .Trash_Body, m.target.name),
+		confirm_content = tr(.Trash),
 		confirm_type = .Danger,
 	)
 	if answer == .Confirm {
@@ -196,18 +191,18 @@ dialogs :: proc(gtx: ^ui.Ctx, m: ^Model) {
 
 	cancel, rename := false, false
 	buttons := [2]primer.Dialog_Button {
-		{content = "Cancel", clicked = &cancel},
-		{content = "Rename", type = .Primary, clicked = &rename},
+		{content = tr(.Cancel), clicked = &cancel},
+		{content = tr(.Rename), type = .Primary, clicked = &rename},
 	}
 	if primer.dialog(
 		gtx,
 		&m.rename_open,
-		"Rename",
+		tr(.Rename),
 		m.target.name,
 		footer = buttons[:],
 		width = .Medium,
 	) {
-		field := primer.text_input(gtx, &m.rename, block = true, name = "New name")
+		field := primer.text_input(gtx, &m.rename, block = true, name = tr(.New_Name))
 		// The name is what the dialog is for, so typing goes straight into it. The
 		// menu that opened the dialog hands focus back to the sunburst a frame after
 		// it closes, so this asks until the field has it.
@@ -247,7 +242,7 @@ notice :: proc(gtx: ^ui.Ctx, m: ^Model, n: query.Notice) {
 		m.notice_seen = n.id
 		opts: primer.Toast_Options
 		if n.saved {
-			opts.action = "Locate"
+			opts.action = tr(.Locate)
 		}
 		toast := primer.toast_push(&m.toasts, n.text, .Error if n.failed else .Success, opts)
 		if n.saved {

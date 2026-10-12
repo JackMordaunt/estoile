@@ -28,12 +28,7 @@ ABOUT_MARK_SIZE :: 72
 // about_button is the toolbar's info button, which opens About.
 @(private)
 about_button :: proc(gtx: ^ui.Ctx, m: ^Model) {
-	if primer.icon_button(
-		gtx,
-		.Info,
-		fmt.aprintf("About %s", version.NAME, allocator = gtx.allocator),
-		.Invisible,
-	) {
+	if primer.icon_button(gtx, .Info, trf(gtx, .About, version.NAME), .Invisible) {
 		m.about_open = true
 	}
 }
@@ -45,11 +40,11 @@ about_dialog :: proc(gtx: ^ui.Ctx, m: ^Model) {
 		return
 	}
 	close := false
-	buttons := [1]primer.Dialog_Button{{content = "Close", clicked = &close}}
+	buttons := [1]primer.Dialog_Button{{content = tr(.Close), clicked = &close}}
 	if primer.dialog(
 		gtx,
 		&m.about_open,
-		fmt.aprintf("About %s", version.NAME, allocator = gtx.allocator),
+		trf(gtx, .About, version.NAME),
 		footer = buttons[:],
 		width = .Medium,
 	) {
@@ -60,17 +55,14 @@ about_dialog :: proc(gtx: ^ui.Ctx, m: ^Model) {
 				title(gtx, version.NAME)
 				primer.text(
 					gtx,
-					fmt.aprintf("Version %s", version.VERSION, allocator = gtx.allocator),
+					trf(gtx, .Version, version.VERSION),
 					.Small,
 					color = primer.color(.Fg_Color_Muted),
 				)
 			}
 		}
-		primer.text(gtx, "Instant disk search, with reports.", weight = .Semibold)
-		primer.text(
-			gtx,
-			"See what fills any drive as it scans, track what changed since the last scan, free space safely, and hand on reports.",
-		)
+		primer.text(gtx, tr(.Tagline), weight = .Semibold)
+		primer.text(gtx, tr(.Explainer))
 		if line := licence_line(gtx); line != "" {
 			primer.text(gtx, line, .Small, color = primer.color(.Fg_Color_Muted))
 		}
@@ -109,11 +101,7 @@ licence_line :: proc(gtx: ^ui.Ctx) -> string {
 	case r.licensed:
 		return licensed_to(gtx, r)
 	case r.trial_left > 0:
-		return fmt.aprintf(
-			"Free for personal use. %s",
-			trial_left(gtx, r),
-			allocator = gtx.allocator,
-		)
+		return trf(gtx, .Free_Personal_Trial, trial_left(gtx, r))
 	}
-	return "Free for personal use."
+	return tr(.Free_Personal)
 }

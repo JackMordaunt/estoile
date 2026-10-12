@@ -175,15 +175,7 @@ describe_chart :: proc(
 	}
 	t.chosen = chosen_id(&t, lit)
 
-	title := fmt.aprintf(
-		"%s of %s, %s, %s item%s",
-		chart,
-		t.here,
-		human.bytes(r.bytes),
-		human.count(u64(count[0])),
-		"" if count[0] == 1 else "s",
-		allocator = gtx.allocator,
-	)
+	title := trf(gtx, .Chart_Title, count[0], chart, t.here, human.bytes(r.bytes))
 	ui.semantics(gtx, p, {role = .Tree, label = title})
 
 	// Every item's words go in one buffer, so a layer of fifty makes one string
@@ -263,11 +255,17 @@ say_layer :: proc(t: ^Teller, slot: int, under: ops.Area_Id, level: u8) {
 			states += {.Selected}
 		}
 		share := r.bytes > 0 ? 100 * f64(a.bytes) / f64(r.bytes) : 0
-		strings.write_string(&t.words, a.name)
-		strings.write_string(&t.words, ", ")
-		human.write_bytes(&t.words, a.bytes)
-		fmt.sbprintf(&t.words, ", %.1f%% of ", share)
-		strings.write_string(&t.words, t.here)
+		strings.write_string(
+			&t.words,
+			trf(
+				t.gtx,
+				.Chart_Item,
+				a.name,
+				human.bytes(a.bytes),
+				fmt.tprintf("%.1f", share),
+				t.here,
+			),
+		)
 		if note := colour_note(t.gtx, t.m, r, at); note != "" {
 			strings.write_string(&t.words, ", ")
 			strings.write_string(&t.words, note)
@@ -280,9 +278,7 @@ say_layer :: proc(t: ^Teller, slot: int, under: ops.Area_Id, level: u8) {
 	if rest > 0 {
 		id := rest_id(t.chart, r, slot - 1)
 		states: ops.States = {.Selected} if id == t.chosen else {}
-		fmt.sbprintf(&t.words, "and %s smaller items, ", human.count(u64(rest)))
-		human.write_bytes(&t.words, rest_bytes)
-		strings.write_string(&t.words, " between them")
+		strings.write_string(&t.words, trf(t.gtx, .Listing_More, rest, human.bytes(rest_bytes)))
 		append(&t.items, Chart_Item{id, under, rest_box, level, states, len(t.words.buf)})
 	}
 }

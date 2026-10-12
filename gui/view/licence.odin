@@ -1,12 +1,13 @@
 package leita_view
 
-import "core:fmt"
 
 import "jm:ui"
 import "jm:ui/ops"
 import "jm:ui/primer"
 
+import "../../version"
 import "../command"
+import "../msg"
 import "../query"
 
 /*
@@ -30,7 +31,7 @@ licence_button :: proc(gtx: ^ui.Ctx, m: ^Model) {
 	if primer.icon_button(
 		gtx,
 		.Verified if licensed else .Key,
-		"Licence" if licensed else "Licence: free for personal use",
+		tr(.Licence) if licensed else tr(.Licence_Free),
 		.Invisible,
 	) {
 		licence_show(m)
@@ -40,7 +41,7 @@ licence_button :: proc(gtx: ^ui.Ctx, m: ^Model) {
 // licence_show opens the licence dialog, saying why first when a paid feature
 // sent the person there.
 @(private)
-licence_show :: proc(m: ^Model, why := "") {
+licence_show :: proc(m: ^Model, why: Maybe(msg.Msg) = nil) {
 	m.licence_open = true
 	m.licence_why = why
 	m.licence_waiting = nil
@@ -79,44 +80,35 @@ licence_dialog :: proc(gtx: ^ui.Ctx, m: ^Model) {
 	pasted := ui.text_string(&m.licence_text)
 	close, add := false, false
 	buttons := [2]primer.Dialog_Button {
-		{content = "Close", clicked = &close},
+		{content = tr(.Close), clicked = &close},
 		{
-			content = "Adding…" if r.activating else "Add licence",
+			content = tr(.Adding) if r.activating else tr(.Add_Licence),
 			type = .Primary,
 			clicked = &add,
 			loading = r.activating,
 			disabled = pasted == "" || r.activating,
 		},
 	}
-	if primer.dialog(gtx, &m.licence_open, "Licence", footer = buttons[:], width = .Medium) {
+	if primer.dialog(gtx, &m.licence_open, tr(.Licence), footer = buttons[:], width = .Medium) {
 		ui.column(gtx, gap = 16, align = .Fill)
-		if m.licence_why != "" && !r.unlocked {
-			primer.inline_message(gtx, m.licence_why, .Warning)
+		if why, ok := m.licence_why.?; ok && !r.unlocked {
+			primer.inline_message(gtx, locked_text(gtx, why), .Warning)
 		}
 		if r.licensed {
 			primer.heading(gtx, licensed_to(gtx, r), level = 2, variant = .Small)
 			primer.text(
 				gtx,
-				fmt.aprintf(
-					"%s · order %s · issued %s",
-					r.tier,
-					r.order,
-					r.issued,
-					allocator = gtx.allocator,
-				),
+				trf(gtx, .Licence_Details, r.tier, r.order, r.issued),
 				.Small,
 				color = primer.color(.Fg_Color_Muted),
 			)
 		} else {
-			primer.text(
-				gtx,
-				"Scanning, the charts and Reclaim are free for personal use. Reports and change tracking need a licence. An organisation needs one for any use once its 30-day evaluation ends.",
-			)
+			primer.text(gtx, tr(.Licence_Terms))
 			if r.trial_left > 0 {
 				primer.text(gtx, trial_left(gtx, r), .Small, color = primer.color(.Fg_Color_Muted))
 			}
 			if ui.row(gtx) {
-				if primer.button(gtx, "Buy a licence", .Primary, trailing = .Link_External) {
+				if primer.button(gtx, tr(.Buy_Licence), .Primary, trailing = .Link_External) {
 					ui.open_url(gtx, m.buy_url if m.buy_url != "" else BUY_URL)
 				}
 			}
@@ -124,27 +116,27 @@ licence_dialog :: proc(gtx: ^ui.Ctx, m: ^Model) {
 		problem := r.problem if m.licence_answered else ""
 		if primer.form_control(
 			gtx,
-			"Replace the licence" if r.licensed else "Add a licence",
-			caption = "The licence key from your receipt, or a licence beginning leita1.",
+			tr(.Replace_Licence) if r.licensed else tr(.Add_A_Licence),
+			caption = tr(.Licence_Caption),
 			validation = problem,
 		) {
 			primer.text_input(
 				gtx,
 				&m.licence_text,
-				placeholder = "Licence key",
+				placeholder = tr(.Licence_Key),
 				block = true,
 				validation = .Error if problem != "" else .None,
-				name = "Licence to add",
+				name = tr(.Licence_To_Add),
 			)
 		}
 		primer.text(
 			gtx,
-			"leita sends the key once, to mordaunt.dev, to fetch your licence. It sends nothing else, then or later.",
+			trf(gtx, .Licence_Privacy, version.NAME),
 			.Small,
 			color = primer.color(.Fg_Color_Muted),
 		)
 		if ui.row(gtx) {
-			if primer.button(gtx, "Open licence file…", leading = .File) {
+			if primer.button(gtx, tr(.Open_Licence_File), leading = .File) {
 				ui.pick_file(gtx, LICENCE_PICK)
 			}
 		}
@@ -160,18 +152,13 @@ licence_dialog :: proc(gtx: ^ui.Ctx, m: ^Model) {
 // licensed_to says whose licence leita runs under.
 @(private)
 licensed_to :: proc(gtx: ^ui.Ctx, r: ^query.Licence_Result) -> string {
-	return fmt.aprintf("Licensed to %s", r.licensee, allocator = gtx.allocator)
+	return trf(gtx, .Licensed_To, r.licensee)
 }
 
 // trial_left says how long the trial of the paid features has left.
 @(private)
 trial_left :: proc(gtx: ^ui.Ctx, r: ^query.Licence_Result) -> string {
-	return fmt.aprintf(
-		"You can try reports and change tracking for %d more %s.",
-		r.trial_left,
-		"day" if r.trial_left == 1 else "days",
-		allocator = gtx.allocator,
-	)
+	return trf(gtx, .Trial_Left, r.trial_left)
 }
 
 // send_licence offers text: a licence key, a licence, or the path of a file
@@ -198,11 +185,11 @@ trial_banner :: proc(gtx: ^ui.Ctx, m: ^Model) {
 	}
 	switch primer.banner(
 		gtx,
-		"Your 30-day trial of reports and change tracking has ended",
-		"Scanning, the charts and Reclaim stay free. A licence brings back reports and what changed since the last scan.",
+		tr(.Trial_Ended_Title),
+		tr(.Trial_Ended_Body),
 		.Upsell,
-		primary = "Buy a licence",
-		secondary = "Add a licence",
+		primary = tr(.Buy_Licence),
+		secondary = tr(.Add_A_Licence),
 		dismissible = true,
 	) {
 	case .Primary:
@@ -215,10 +202,12 @@ trial_banner :: proc(gtx: ^ui.Ctx, m: ^Model) {
 	}
 }
 
-// REPORTS_LOCKED and CHANGE_LOCKED say why Export and colouring by change open
-// the licence dialog once the trial is over.
-REPORTS_LOCKED :: "Exporting reports needs a licence now the 30-day trial has ended."
-CHANGE_LOCKED  :: "Seeing what changed since the last scan needs a licence now the 30-day trial has ended. leita still keeps every scan, so it is all there once you add one."
+// locked_text says why a paid feature opened the licence dialog once the trial
+// is over: .Reports_Locked for Export, .Change_Locked for colouring by change.
+@(private)
+locked_text :: proc(gtx: ^ui.Ctx, why: msg.Msg) -> string {
+	return trf(gtx, why, version.NAME)
+}
 
 // LICENCE_PICK is the area the file dialog answers, as EXPORT_PICK is.
 @(private)

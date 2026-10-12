@@ -1,6 +1,7 @@
 package leita_view
 
 import "core:fmt"
+import "core:strings"
 import "core:time"
 
 import "jm:ui"
@@ -10,6 +11,7 @@ import "jm:ui/primer"
 
 import "../../human"
 import "../command"
+import "../msg"
 import "../query"
 
 /*
@@ -67,12 +69,12 @@ CHANGE_DARK := [Change]ops.Color {
 	.Grew_Much   = {0xf6, 0x9d, 0x50, 255},
 }
 
-CHANGE_NAMES := [Change]string {
-	.Shrank_Much = "Shrank a lot",
-	.Shrank      = "Shrank",
-	.Same        = "Unchanged",
-	.Grew        = "Grew",
-	.Grew_Much   = "Grew a lot",
+CHANGE_NAMES := [Change]msg.Msg {
+	.Shrank_Much = .Change_Shrank_Much,
+	.Shrank      = .Change_Shrank,
+	.Same        = .Change_Same,
+	.Grew        = .Change_Grew,
+	.Grew_Much   = .Change_Grew_Much,
 }
 
 // change_of is how an entry holding bytes changed from was, -1 when the snapshot
@@ -115,7 +117,7 @@ delta_text :: proc(
 	case !compared:
 		return ""
 	case was < 0:
-		return "new" if bytes >= query.KEPT_MIN else ""
+		return tr(.Change_New) if bytes >= query.KEPT_MIN else ""
 	case u64(was) == bytes:
 		return ""
 	case bytes > u64(was):
@@ -132,11 +134,11 @@ change_note :: proc(gtx: ^ui.Ctx, bytes: u64, was: i64, compared: bool) -> strin
 	case !compared:
 		return ""
 	case d == "" && was >= 0:
-		return " · unchanged"
+		return strings.concatenate({" · ", tr(.Change_Unchanged)}, gtx.allocator)
 	case d == "":
 		return ""
 	}
-	return fmt.aprintf(" · %s since then", d, allocator = gtx.allocator)
+	return strings.concatenate({" · ", trf(gtx, .Change_Since, d)}, gtx.allocator)
 }
 
 // taken_text says when a snapshot was taken: today's by the time, this year's
@@ -146,24 +148,25 @@ taken_text :: proc(unix: i64, allocator := context.temp_allocator) -> string {
 	y, mon, d := time.date(t)
 	ny, _, _ := time.date(time.now())
 	h, mi, _ := time.clock(t)
-	months := [time.Month]string {
-		.January   = "Jan",
-		.February  = "Feb",
-		.March     = "Mar",
-		.April     = "Apr",
-		.May       = "May",
-		.June      = "Jun",
-		.July      = "Jul",
-		.August    = "Aug",
-		.September = "Sep",
-		.October   = "Oct",
-		.November  = "Nov",
-		.December  = "Dec",
-	}
 	if y != ny {
-		return fmt.aprintf("%d %s %d", d, months[mon], y, allocator = allocator)
+		return date_text(d, mon, fmt.tprint(y), .Date_Year, allocator)
 	}
-	return fmt.aprintf("%d %s %02d:%02d", d, months[mon], h, mi, allocator = allocator)
+	return date_text(d, mon, fmt.tprintf("%02d:%02d", h, mi), .Date_Time, allocator)
+}
+
+// date_text is day of month, then then, a year or a time, in the order and
+// words of the language in use, by pattern, .Date_Year or .Date_Time. The year
+// goes in as text: an int argument is grouped, as msg_test's 813,073 is.
+@(private)
+date_text :: proc(
+	day: int,
+	month: time.Month,
+	then: string,
+	pattern: msg.Msg,
+	allocator := context.temp_allocator,
+) -> string {
+	name := tr(msg.Msg(int(msg.Msg.Month_1) + int(month) - 1))
+	return msg.trf(current(), pattern, day, name, then, allocator = allocator)
 }
 
 /*
@@ -179,30 +182,21 @@ change_legend :: proc(gtx: ^ui.Ctx, m: ^Model) {
 	case h == nil || h.generation != m.generation:
 		return
 	case !h.kept:
-		primer.text(
-			gtx,
-			"Scans are not being kept, so there is nothing to compare with",
-			.Small,
-			color = muted,
-		)
+		primer.text(gtx, tr(.Not_Kept), .Small, color = muted)
 		return
 	case len(h.snapshots) == 0:
 		primer.text(
 			gtx,
-			"No earlier scan of this folder yet: the next scan will be compared with this one" if h.ready else "Comparing once the scan is done",
+			tr(.No_Earlier) if h.ready else tr(.Comparing_After),
 			.Small,
 			color = muted,
 		)
 		return
 	}
 	if ui.wrap(gtx, gap = LEGEND_GAP, line_gap = LEGEND_LINE_GAP, align = .Center) {
-		label := "Compare with…"
+		label := tr(.Compare_With_More)
 		if h.compared.id != 0 {
-			label = fmt.aprintf(
-				"Since %s",
-				taken_text(h.compared.taken),
-				allocator = gtx.allocator,
-			)
+			label = trf(gtx, .Since, taken_text(h.compared.taken))
 		}
 		if since_pill(gtx, label, m.since_open) {
 			m.since_open = !m.since_open
@@ -213,7 +207,7 @@ change_legend :: proc(gtx: ^ui.Ctx, m: ^Model) {
 			sc := ui.scope_open(gtx, c)
 			if ui.row(gtx, gap = LEGEND_INSET, align = .Center) {
 				swatch(gtx, change_colour(c))
-				primer.text(gtx, CHANGE_NAMES[c], .Small, color = muted)
+				primer.text(gtx, tr(CHANGE_NAMES[c]), .Small, color = muted)
 			}
 			ui.scope_close(&sc)
 		}
@@ -229,7 +223,7 @@ since_menu :: proc(gtx: ^ui.Ctx, m: ^Model, h: ^query.History_Result, anchor: ui
 		&m.since_open,
 		anchor,
 		selection = .Single,
-		name = "Compare with",
+		name = tr(.Compare_With),
 	)
 	defer primer.action_menu_close(&menu)
 	if !menu.visible {
@@ -246,7 +240,7 @@ since_menu :: proc(gtx: ^ui.Ctx, m: ^Model, h: ^query.History_Result, anchor: ui
 		}
 	}
 	primer.action_menu_divider(&menu)
-	if primer.action_menu_item(&menu, "None", selected = h.compared.id == 0) {
+	if primer.action_menu_item(&menu, tr(.None), selected = h.compared.id == 0) {
 		ui.command(gtx, command.Command(command.Baseline{m.generation, 0}))
 	}
 }

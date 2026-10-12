@@ -39,6 +39,7 @@ Command :: union {
 	Export,
 	Reveal,
 	Add_Licence,
+	Language,
 }
 
 // Scan reads what is at path, calling off any scan still running.
@@ -134,4 +135,11 @@ Reveal :: struct {
 Add_Licence :: struct {
 	text: Text,
 	file: bool,
+}
+
+// Language is the language the window is in, an i18n.Locale's value, which
+// this package does not import: the host words its notices and answers in it
+// from now on.
+Language :: struct {
+	locale: u8,
 }

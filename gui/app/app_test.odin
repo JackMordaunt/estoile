@@ -31,6 +31,7 @@ import "jm:ui/render"
 
 import "../../licence"
 import "../command"
+import "../msg"
 import "../query"
 import "../view"
 
@@ -439,7 +440,7 @@ a_right_click_moves_an_entry_to_the_trash_and_out_of_the_totals :: proc(t: ^test
 	said := fmt.tprintf("Moved %s to the Trash", name)
 	testing.expect(t, settle(&r, said), "the notice says so")
 	testing.expect(t, settle(&r, fmt.tprintf("arc %s", name), present = false), "its arc is gone")
-	testing.expect(t, settle(&r, "264.0 KiB in 1 items"), "the totals dropped")
+	testing.expect(t, settle(&r, "264.0 KiB in 1 item"), "the totals dropped")
 	testing.expect(t, !os.exists(fmt.tprintf("%s/%s", root, name)), "gone from the folder")
 	testing.expect(t, os.exists(landed), "in the Trash")
 	when ODIN_OS != .Darwin {
@@ -471,7 +472,7 @@ a_right_click_on_a_contents_row_trashes_it :: proc(t: ^testing.T) {
 	press_and_hand_on(&r)
 	testing.expect(t, ui.probe_click(&r.p, "Trash"), "the dialog asks first")
 	press_and_hand_on(&r)
-	testing.expect(t, settle(&r, "264.0 KiB in 1 items"), "the row is gone from the totals")
+	testing.expect(t, settle(&r, "264.0 KiB in 1 item"), "the row is gone from the totals")
 	testing.expect(t, os.exists(landed), "in the Trash")
 }
 
@@ -1674,8 +1675,12 @@ a_reader_opens_and_closes_a_folder_of_the_chart :: proc(t: ^testing.T) {
 a_made_up_disk_changes_nothing_on_disk :: proc(t: ^testing.T) {
 	s: Scan
 	s.engine = .Synthetic
+	words := new(msg.Strings)
+	defer free(words)
+	msg.init(words, .English)
 	d := Desk {
-		scan = &s,
+		scan  = &s,
+		words = words,
 	}
 	defer delete(d.notice.text)
 	requests := []command.Command {
@@ -2326,7 +2331,14 @@ reports_and_change_tracking_need_a_licence_after_the_trial :: proc(t: ^testing.T
 
 		testing.expect(t, ui.probe_click(&r.p, "Export"))
 		ui.probe_advance(&r.p, 20, 1.0 / 60)
-		testing.expect(t, ui.probe_tagged(&r.p, view.REPORTS_LOCKED), "Export says why")
+		testing.expect(
+			t,
+			ui.probe_tagged(
+				&r.p,
+				"Exporting reports needs a licence now the 30-day trial has ended.",
+			),
+			"Export says why",
+		)
 		testing.expect(t, !ui.probe_tagged(&r.p, "Export report"))
 		r.m.licence_open = false
 		ui.probe_advance(&r.p, 20, 1.0 / 60)
@@ -2335,7 +2347,10 @@ reports_and_change_tracking_need_a_licence_after_the_trial :: proc(t: ^testing.T
 		ui.probe_advance(&r.p, 20, 1.0 / 60)
 		testing.expect(
 			t,
-			ui.probe_tagged(&r.p, view.CHANGE_LOCKED),
+			ui.probe_tagged(
+				&r.p,
+				"Seeing what changed since the last scan needs a licence now the 30-day trial has ended. leita still keeps every scan, so it is all there once you add one.",
+			),
 			"colouring by change says why",
 		)
 		testing.expect_value(t, r.m.colour, view.Colouring.Folder)
@@ -2355,7 +2370,7 @@ reports_and_change_tracking_need_a_licence_after_the_trial :: proc(t: ^testing.T
 		)
 		testing.expect(
 			t,
-			settle(&r, "Exporting reports needs a licence now the 30-day trial has ended"),
+			settle(&r, "Exporting reports needs a licence now the 30-day trial has ended."),
 		)
 		testing.expect(t, !os.exists(fmt.tprintf("%s.json", reports)))
 	}

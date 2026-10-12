@@ -2,7 +2,6 @@ package leita_app
 
 import "core:fmt"
 import "core:os"
-import "core:strings"
 import "core:time"
 
 import "../../history"
@@ -13,6 +12,7 @@ import "../../survey"
 import "../../synth"
 import "../command"
 import "../files"
+import "../msg"
 import "../query"
 
 /*
@@ -33,95 +33,103 @@ act :: proc(d: ^Desk, c: ^command.Command) {
 	// A made-up disk's paths may name real files, /Applications/Xcode.app among
 	// them, which no request about the made-up ones may touch.
 	if d.scan != nil && d.scan.engine == .Synthetic {
-		tell(d, true, "Nothing was changed: this disk is made up, so its files are not on disk")
+		tell(d, true, .Made_Up)
 		return
 	}
 	done := make([dynamic]history.Action, context.temp_allocator)
 	defer audit(d, done[:])
 	#partial switch &c in c {
 	case command.Locate:
-		if path, ok := entry_path(d, c.entry, "locate"); ok {
+		if path, ok := entry_path(d, c.entry, .Locate); ok {
 			files.locate(path)
 		}
 	case command.Trash:
-		path, ok := entry_path(d, c.entry, "move to the Trash")
+		path, ok := entry_path(d, c.entry, .Trash)
 		if !ok {
 			return
 		}
 		bytes := held(d.scan, c.entry.node)
 		if err := files.trash(path); err != .None {
 			note(&done, .Trash, path, files.describe(err), bytes, true)
-			tell(
-				d,
-				true,
-				"Could not move %s to the Trash: %s",
-				name_of(d, c.entry),
-				files.describe(err),
-			)
+			tell(d, true, .Trash_Failed, name_of(d, c.entry), say(d, FILE_ERRORS[err]))
 			return
 		}
 		note(&done, .Trash, path, "", bytes, false)
 		survey.forget(&d.scan.roll, &d.scan.tree, c.entry.node)
-		tell(d, false, "Moved %s to the Trash", name_of(d, c.entry))
+		tell(d, false, .Trashed, name_of(d, c.entry))
 	case command.Clean:
 		clean(d, &c, &done)
 	case command.Empty_Trash:
 		empty_trash(d, c.entry, &done)
 	case command.Rename:
-		path, ok := entry_path(d, c.entry, "rename")
+		path, ok := entry_path(d, c.entry, .Rename)
 		if !ok {
 			return
 		}
 		name := command.text_of(&c.name)
-		if why := files.name_problem(name); why != "" {
-			tell(d, true, "Could not rename %s: %s", name_of(d, c.entry), why)
+		if fault := files.name_fault(name); fault != .None {
+			tell(d, true, .Rename_Failed, name_of(d, c.entry), say(d, NAME_FAULTS[fault]))
 			return
 		}
 		bytes := held(d.scan, c.entry.node)
 		if _, err := files.rename(path, name, context.temp_allocator); err != .None {
 			why := files.describe(err)
 			note(&done, .Rename, path, fmt.tprintf("to %s: %s", name, why), bytes, true)
-			tell(d, true, "Could not rename %s: %s", name_of(d, c.entry), why)
+			tell(d, true, .Rename_Failed, name_of(d, c.entry), say(d, FILE_ERRORS[err]))
 			return
 		}
 		note(&done, .Rename, path, name, bytes, false)
 		s := d.scan
 		was := name_of(d, c.entry)
 		scan.node(&s.tree, c.entry.node).name = scan.name_copy(&s.tree, name)
-		tell(d, false, "Renamed %s to %s", was, name)
+		tell(d, false, .Renamed, was, name)
 	}
 }
 
+// Doing is a request about an entry, for entry_path to say it could not do.
+Doing :: enum u8 {
+	Locate,
+	Trash,
+	Rename,
+}
+
 // entry_path is the path of the entry e names, or a notice saying why there is
-// none to `doing`.
-entry_path :: proc(d: ^Desk, e: command.Entry, doing: string) -> (string, bool) {
+// none to do it to.
+entry_path :: proc(d: ^Desk, e: command.Entry, doing: Doing) -> (string, bool) {
+	@(static, rodata)
+	GONE := [Doing]msg.Msg {
+		.Locate = .Gone_Locate,
+		.Trash  = .Gone_Trash,
+		.Rename = .Gone_Rename,
+	}
+	@(static, rodata)
+	TRASHED := [Doing]msg.Msg {
+		.Locate = .Trashed_Locate,
+		.Trash  = .Trashed_Trash,
+		.Rename = .Trashed_Rename,
+	}
+	@(static, rodata)
+	TOP := [Doing]msg.Msg {
+		.Locate = .Top_Trash, // never said: the top can be located
+		.Trash  = .Top_Trash,
+		.Rename = .Top_Rename,
+	}
 	s := d.scan
 	if s == nil || e.generation != d.generation || !s.grown || e.node >= s.roll.seen {
-		tell(d, true, "Could not %s it: the scan it came from is gone", doing)
+		tell(d, true, GONE[doing])
 		return "", false
 	}
 	if survey.removed(&s.roll, &s.tree, e.node) {
-		tell(d, true, "Could not %s it: it was moved to the Trash", doing)
+		tell(d, true, TRASHED[doing])
 		return "", false
 	}
-	if top, ok := root(s); ok && top == e.node && doing != "locate" {
-		tell(d, true, "Could not %s the top of the scan from here", doing)
+	if top, ok := root(s); ok && top == e.node && doing != .Locate {
+		tell(d, true, TOP[doing])
 		return "", false
 	}
 	return scan.path(&s.tree, e.node, context.temp_allocator), true
 }
 
-// tell replaces the notice the window is shown. The text is cloned from a
-// temporary rather than made by fmt.aprintf, whose string is shorter than the
-// builder block it lives in, so freeing it would name the wrong size.
-tell :: proc(d: ^Desk, failed: bool, format: string, args: ..any) {
-	delete(d.notice.text)
-	d.notice = {
-		id     = d.notice.id + 1,
-		failed = failed,
-		text   = strings.clone(fmt.tprintf(format, ..args)),
-	}
-}
 
 // note adds an action to done, taken now.
 note :: proc(
@@ -214,8 +222,8 @@ reclaim_answer :: proc(d: ^Desk, q: query.Reclaim) -> (r: query.Reclaim_Result) 
 	groups := make([dynamic]query.Reclaim_Group, context.temp_allocator)
 	for category in reclaim.Category {
 		g := query.Reclaim_Group {
-			name   = reclaim.CATEGORY_NAMES[category],
-			reason = reclaim.CATEGORY_REASONS[category],
+			name   = say(d, CATEGORY_NAMES[category]),
+			reason = say(d, CATEGORY_WHY[category]),
 			trash  = category == .Trash,
 		}
 		items := make([dynamic]query.Candidate, context.temp_allocator)
@@ -266,7 +274,7 @@ newest_modification :: proc(path: string) -> (modified: i64, is_dir: bool) {
 clean :: proc(d: ^Desk, c: ^command.Clean, done: ^[dynamic]history.Action) {
 	s := d.scan
 	if s == nil || c.generation != d.generation || !s.grown {
-		tell(d, true, "Could not clean up: the scan it came from is gone")
+		tell(d, true, .Clean_Gone)
 		return
 	}
 	deleted, failed, refused: int
@@ -296,15 +304,11 @@ clean :: proc(d: ^Desk, c: ^command.Clean, done: ^[dynamic]history.Action) {
 		deleted += 1
 		freed += bytes
 	}
-	tell(
-		d,
-		failed + refused > 0,
-		"Deleted %d %s and freed %s%s",
-		deleted,
-		"folder" if deleted == 1 else "folders",
-		human.bytes(freed),
-		fmt.tprintf("; %d could not be deleted", failed + refused) if failed + refused > 0 else "",
-	)
+	if failed + refused > 0 {
+		tell(d, true, .Cleaned_Partly, deleted, human.bytes(freed), failed + refused)
+	} else {
+		tell(d, false, .Cleaned, deleted, human.bytes(freed))
+	}
 }
 
 // empty_trash deletes what the Trash entry e holds, if Reclaim offered it as the
@@ -312,11 +316,11 @@ clean :: proc(d: ^Desk, c: ^command.Clean, done: ^[dynamic]history.Action) {
 empty_trash :: proc(d: ^Desk, e: command.Entry, done: ^[dynamic]history.Action) {
 	s := d.scan
 	if s == nil || e.generation != d.generation || !s.grown {
-		tell(d, true, "Could not empty the Trash: the scan it came from is gone")
+		tell(d, true, .Empty_Gone)
 		return
 	}
 	if category, offered := d.reclaimable[e.node]; !offered || category != .Trash {
-		tell(d, true, "Could not empty the Trash: it is not the Trash Reclaim found")
+		tell(d, true, .Empty_Not_Trash)
 		return
 	}
 	bytes := survey.total(&s.roll, e.node)
@@ -366,14 +370,8 @@ empty_trash :: proc(d: ^Desk, e: command.Entry, done: ^[dynamic]history.Action) 
 	}
 	freed := bytes - survey.total(&s.roll, e.node)
 	if failed > 0 {
-		tell(
-			d,
-			true,
-			"Emptied the Trash and freed %s; %d could not be deleted",
-			human.bytes(freed),
-			failed,
-		)
+		tell(d, true, .Emptied_Partly, human.bytes(freed), failed)
 	} else {
-		tell(d, false, "Emptied the Trash and freed %s", human.bytes(freed))
+		tell(d, false, .Emptied, human.bytes(freed))
 	}
 }

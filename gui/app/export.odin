@@ -33,21 +33,17 @@ export :: proc(d: ^Desk, c: command.Export) {
 	c := c
 	s := d.scan
 	if s == nil || c.generation != d.generation || !s.grown || s.state != .Done {
-		tell(d, true, "Could not export a report: the scan is not finished")
+		tell(d, true, .Export_Unfinished)
 		return
 	}
 	if !licence.unlocked(d.licensed, d.first_use) {
-		tell(d, true, "Exporting reports needs a licence now the 30-day trial has ended")
+		tell(d, true, .Reports_Locked)
 		return
 	}
 	chosen := command.text_of(&c.path)
 	folder := d.reports
 	if chosen == "" && folder == "" {
-		tell(
-			d,
-			true,
-			"Could not export a report: there is no Documents folder or home to save it in",
-		)
+		tell(d, true, .Export_No_Folder)
 		return
 	}
 
@@ -83,7 +79,7 @@ export :: proc(d: ^Desk, c: command.Export) {
 	if chosen != "" {
 		path = strings.clone(chosen)
 		if f, err = files.create_at(path); err != .None {
-			tell(d, true, "Could not save the report to %s: %s", path, files.describe(err))
+			tell(d, true, .Save_Failed_To, path, say(d, FILE_ERRORS[err]))
 			delete(path)
 			return
 		}
@@ -91,7 +87,7 @@ export :: proc(d: ^Desk, c: command.Export) {
 		stem := files.report_stem(r.target, time.now())
 		path, f, err = files.create_new(folder, stem, command.EXTENSIONS[c.format])
 		if err != .None {
-			tell(d, true, "Could not save the report in %s: %s", folder, files.describe(err))
+			tell(d, true, .Save_Failed_In, folder, say(d, FILE_ERRORS[err]))
 			return
 		}
 	}
@@ -102,10 +98,10 @@ export :: proc(d: ^Desk, c: command.Export) {
 	}
 	if written != .None {
 		os.remove(path)
-		tell(d, true, "Could not save the report: %s", report.ERROR_TEXT[written])
+		tell(d, true, .Save_Failed, say(d, REPORT_ERRORS[written]))
 		return
 	}
-	tell(d, false, "Saved report to %s", path)
+	tell(d, false, .Saved, path)
 	d.notice.saved = true
 	d.saved[d.notice.id] = strings.clone(path)
 }

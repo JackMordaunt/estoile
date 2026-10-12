@@ -55,15 +55,6 @@ TIER_NAMES := [Tier]string {
 	.Multi_Site = "multi_site",
 }
 
-// TIER_TITLES are the tiers as the window shows them.
-TIER_TITLES := [Tier]string {
-	.Supporter  = "Supporter",
-	.Office     = "Office, up to 10 people",
-	.Team       = "Team, up to 50 people",
-	.Site       = "Site",
-	.Multi_Site = "Multi-site",
-}
-
 // Licence is a licence's terms, once its signature is checked. Its strings are
 // owned; destroy frees them.
 Licence :: struct {
@@ -82,29 +73,6 @@ Error :: enum u8 {
 	Terms, // signed, but its terms do not say what this leita needs
 	Unreadable, // the file could not be read
 	Unwritable, // the file could not be written
-}
-
-// describe says what went wrong, for a sentence that begins "The licence …".
-describe :: proc(err: Error) -> string {
-	switch err {
-	case .None:
-		return "is valid"
-	case .No_Key:
-		return "cannot be checked: this build of leita takes no licences"
-	case .Malformed:
-		return "is not a leita licence; paste the whole line, from leita1. to its end"
-	case .Version:
-		return "is for a newer leita; update leita to use it"
-	case .Signature:
-		return "is not one Librium signed, or has been changed"
-	case .Terms:
-		return "does not say who it is for or what it covers"
-	case .Unreadable:
-		return "file could not be read"
-	case .Unwritable:
-		return "could not be saved"
-	}
-	return "is not valid"
 }
 
 // public_key is KEY, decoded; false when the build has none or it is not a key.

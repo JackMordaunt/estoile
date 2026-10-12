@@ -1,7 +1,310 @@
 # leita, English: the source language. Every other locale translates this
 # file's keys. A line is `key = text`; `key.one = text` is one plural form, and
 # a bare key is the `other` form. {0} to {9} are arguments, {{ a literal brace.
-# The product's name is never written here: it comes in as an argument.
+# The product's name is never written here: it comes in as an argument. A
+# message whose {0} is a count is plural.
+#
+# Terms, kept the same everywhere: scan (reading a disk), Reclaim (the mode
+# that finds what can be deleted and made again), Trash (the system's), the
+# three charts Sunburst, Treemap and Icicle, licence (British spelling).
 
 # Toolbar
 language = Language
+about = About {0}
+stop = Stop
+rescan = Rescan
+theme_light = Light theme
+theme_dark = Dark theme
+export = Export
+exporting = Exporting…
+licence = Licence
+licence_free = Licence: free for personal use
+
+# About
+version = Version {0}
+tagline = Instant disk search, with reports.
+explainer = See what fills any drive as it scans, track what changed since the last scan, free space safely, and hand on reports.
+free_personal = Free for personal use.
+free_personal_trial = Free for personal use. {0}
+close = Close
+
+# How the scan is going
+status_empty = Name a directory to see what is using the disk.
+scanning = Scanning
+done = Done
+stopped = Stopped
+failed = Failed
+scan_failed = The scan failed
+slow_hint = Reading this volume's own table would be far faster, given permission to open the device.
+# {0} items found so far
+count_items.one = {0} item
+count_items = {0} items
+# {0} free space, {1} the disk's size
+count_free = {0} free of {1}
+# {0} seconds, as 9.3
+count_seconds = {0} s
+count_pending.one = {0} waiting on a parent
+count_pending = {0} waiting on a parent
+
+# The location bar
+location = Location
+location_placeholder = A directory, drive or image to scan
+
+# Panels
+resize_panels = Resize panels
+resize_lists = Resize lists
+folded_away = folded away
+points_wide.one = {0} point wide
+points_wide = {0} points wide
+# {0} a percentage, the share of the column's height the contents take
+split_contents = {0}% contents
+contents = Contents
+# {0} the number of items, {1} their size
+listing_summary.one = {1} in {0} item
+listing_summary = {1} in {0} items
+listing_empty = Nothing found here yet.
+# {0} how many more, {1} their size
+listing_more.one = and {0} smaller item, {1}
+listing_more = and {0} smaller items, {1} between them
+# {0} a file or folder's name
+share_of = {0} share
+largest_files = Largest files
+largest_none = None found yet.
+
+# Charts
+view = View
+mode_sunburst = Sunburst
+mode_treemap = Treemap
+mode_icicle = Icicle
+mode_reclaim = Reclaim
+colour_by = Colour by
+colour_folder = Folder
+colour_type = Type
+colour_change = Change
+coloured_by_folder = Coloured by top-level folder
+# {0} a size, {1} a percentage, {2} the folder shown
+arc_share = {0} · {1}% of {2}
+click_to_open = click to open
+click_to_go_up = click to go up
+# A chart, for a screen reader: {0} how many items, {1} the chart's name, {2} the folder, {3} its size
+chart_title.one = {1} of {2}, {3}, {0} item
+chart_title = {1} of {2}, {3}, {0} items
+# An entry in a chart, for a screen reader: {0} its name, {1} its size, {2} a percentage, {3} the folder
+chart_item = {0}, {1}, {2}% of {3}
+
+# What a file is, colouring by type
+kind_folder = Folder
+kind_multimedia = Multimedia
+kind_image = Image
+kind_archive = Archive
+kind_document = Document
+kind_text = Text
+kind_binary = Binary
+kind_cache = Cache
+kind_other = Other
+
+# Colouring by change
+change_shrank_much = Shrank a lot
+change_shrank = Shrank
+change_same = Unchanged
+change_grew = Grew
+change_grew_much = Grew a lot
+change_new = new
+change_unchanged = unchanged
+# {0} a signed size, as +1.2 GiB
+change_since = {0} since then
+not_kept = Scans are not being kept, so there is nothing to compare with
+no_earlier = No earlier scan of this folder yet: the next scan will be compared with this one
+comparing_after = Comparing once the scan is done
+compare_with_more = Compare with…
+compare_with = Compare with
+# {0} when the scan compared with was taken
+since = Since {0}
+none = None
+# A date: {0} the day, {1} the month's short name, {2} the year
+date_year = {0} {1} {2}
+# A date this year: {0} the day, {1} the month's short name, {2} the time, as 23:59
+date_time = {0} {1} {2}
+month_1 = Jan
+month_2 = Feb
+month_3 = Mar
+month_4 = Apr
+month_5 = May
+month_6 = Jun
+month_7 = Jul
+month_8 = Aug
+month_9 = Sep
+month_10 = Oct
+month_11 = Nov
+month_12 = Dec
+
+# What can be done to an entry
+actions_for = Actions for {0}
+open = Open
+locate = Locate
+rename = Rename
+trash = Trash
+cancel = Cancel
+new_name = New name
+trash_title = Trash {0}?
+trash_body = {0} and everything in it will be moved to the Trash, where it can be restored.
+
+# Reclaim
+looking = Looking
+reclaim_after_scan = Reclaim looks once the scan is done.
+reclaim_nothing = Nothing here is safe to reclaim.
+reclaim_explains = Reclaim finds what builds and tools made and will make again: installed dependencies, build output, caches.
+reclaim_total = {0} can be reclaimed here
+# {0} how many folders, {1} their size
+reclaim_chosen.one = {1} in {0} folder chosen
+reclaim_chosen = {1} in {0} folders chosen
+clean_up = Clean up
+# {0} a group's name
+reclaim_all = All {0}
+empty_trash = Empty Trash
+delete_title.one = Delete {0} folder for good?
+delete_title = Delete {0} folders for good?
+# {0} a size
+delete_body = This frees {0}. Nothing is moved to the Trash: each comes back by itself when the project is next built or installed, or the tool next runs.
+delete = Delete
+empty_title = Empty the Trash?
+empty_body = {0} in the Trash will be deleted for good.
+empty = Empty
+# {0} when, as "3 days ago"
+modified_recent = Modified {0}, so likely in use
+modified = Modified {0}
+ago_today = today
+ago_yesterday = yesterday
+ago_days.one = {0} day ago
+ago_days = {0} days ago
+ago_months.one = {0} month ago
+ago_months = {0} months ago
+ago_years.one = {0} year ago
+ago_years = {0} years ago
+reclaim_dependencies = Installed dependencies
+reclaim_build_output = Build output
+reclaim_python = Python caches and environments
+reclaim_package_cache = Package downloads
+reclaim_app_cache = Application caches
+reclaim_trash = Trash
+why_dependencies = Installed again from the project's manifest by its package manager.
+why_build_output = Made again by the project's next build.
+why_python = Made again by Python and its tools; a virtual environment is created again from the project's requirements.
+why_package_cache = Downloaded again when a package is next needed.
+why_app_cache = Applications keep only what they can make again in their cache.
+why_trash = Already deleted; emptying it frees the space for good.
+
+# Exporting a report
+export_report = Export report
+format = Format
+include_reclaim = Include Reclaim candidates
+include_reclaim_caption = What can be deleted and made again
+export_next = Next, choose where to save it; your Documents folder to begin with.
+format_pdf = PDF document
+format_html = Web page
+format_csv = CSV spreadsheet
+format_json = JSON data
+caption_pdf = Pages to print or attach to a ticket
+caption_html = One page that opens in any browser
+caption_csv = A row per entry, for a spreadsheet
+caption_json = Every figure, for another program
+
+# The licence
+adding = Adding…
+add_licence = Add licence
+licensed_to = Licensed to {0}
+# {0} the tier, {1} the order, {2} the date issued
+licence_details = {0} · order {1} · issued {2}
+licence_terms = Scanning, the charts and Reclaim are free for personal use. Reports and change tracking need a licence. An organisation needs one for any use once its 30-day evaluation ends.
+trial_left.one = You can try reports and change tracking for {0} more day.
+trial_left = You can try reports and change tracking for {0} more days.
+buy_licence = Buy a licence
+replace_licence = Replace the licence
+add_a_licence = Add a licence
+licence_caption = The licence key from your receipt, or a licence beginning leita1.
+licence_key = Licence key
+licence_to_add = Licence to add
+# {0} the product's name
+licence_privacy = {0} sends the key once, to mordaunt.dev, to fetch your licence. It sends nothing else, then or later.
+open_licence_file = Open licence file…
+trial_ended_title = Your 30-day trial of reports and change tracking has ended
+trial_ended_body = Scanning, the charts and Reclaim stay free. A licence brings back reports and what changed since the last scan.
+reports_locked = Exporting reports needs a licence now the 30-day trial has ended.
+# {0} the product's name
+change_locked = Seeing what changed since the last scan needs a licence now the 30-day trial has ended. {0} still keeps every scan, so it is all there once you add one.
+tier_supporter = Supporter
+tier_office = Office, up to 10 people
+tier_team = Team, up to 50 people
+tier_site = Site
+tier_multi_site = Multi-site
+# Why a licence was not taken; {0} the product's name where named
+licence_not_valid = The licence is not valid.
+licence_no_key = The licence cannot be checked: this build of {0} takes no licences.
+licence_malformed = The licence is not a {0} licence; paste the whole line, from leita1. to its end.
+licence_newer = The licence is for a newer {0}; update {0} to use it.
+licence_signature = The licence is not one Librium signed, or has been changed.
+licence_terms_missing = The licence does not say who it is for or what it covers.
+licence_unreadable = The licence file could not be read.
+licence_unwritable = The licence could not be saved.
+not_a_key = That is not a licence key: paste the key from your receipt, or a licence beginning leita1.
+cannot_connect = {0} could not start a connection to fetch the licence.
+server_slow = The licence server did not answer in time; try again.
+server_unreachable = {0} could not reach the licence server. Check the connection, or open the licence file from your receipt instead.
+key_refused = The licence key was not accepted.
+server_busy = The licence server could not answer just now; try again later.
+
+# What came of a request: {0} a file or folder's name unless said
+made_up = Nothing was changed: this disk is made up, so its files are not on disk
+# {1} why, one of the file_ messages below
+trash_failed = Could not move {0} to the Trash: {1}
+trashed = Moved {0} to the Trash
+rename_failed = Could not rename {0}: {1}
+# {0} the old name, {1} the new
+renamed = Renamed {0} to {1}
+gone_locate = Could not locate it: the scan it came from is gone
+gone_trash = Could not move it to the Trash: the scan it came from is gone
+gone_rename = Could not rename it: the scan it came from is gone
+trashed_locate = Could not locate it: it was moved to the Trash
+trashed_trash = Could not move it to the Trash: it was moved to the Trash
+trashed_rename = Could not rename it: it was moved to the Trash
+top_trash = Could not move the top of the scan to the Trash from here
+top_rename = Could not rename the top of the scan from here
+clean_gone = Could not clean up: the scan it came from is gone
+# {0} how many folders, {1} the space freed
+cleaned.one = Deleted {0} folder and freed {1}
+cleaned = Deleted {0} folders and freed {1}
+# {0} how many folders, {1} the space freed, {2} how many could not be deleted
+cleaned_partly.one = Deleted {0} folder and freed {1}; {2} could not be deleted
+cleaned_partly = Deleted {0} folders and freed {1}; {2} could not be deleted
+empty_gone = Could not empty the Trash: the scan it came from is gone
+empty_not_trash = Could not empty the Trash: it is not the Trash Reclaim found
+# {0} the space freed
+emptied = Emptied the Trash and freed {0}
+# {0} the space freed, {1} how many could not be deleted
+emptied_partly = Emptied the Trash and freed {0}; {1} could not be deleted
+export_unfinished = Could not export a report: the scan is not finished
+export_no_folder = Could not export a report: there is no Documents folder or home to save it in
+# {0} a path, {1} why
+save_failed_to = Could not save the report to {0}: {1}
+save_failed_in = Could not save the report in {0}: {1}
+save_failed = Could not save the report: {0}
+saved = Saved report to {0}
+report_no_font = no font to set a PDF in: install Liberation Sans, Noto Sans or DejaVu Sans
+report_write_failed = could not write the report
+file_exists = something already has that name
+file_missing = it is no longer there
+file_denied = permission was denied
+file_cross_device = it is on another filesystem than the Trash
+file_bad_name = that is not a name a file can have
+file_not_directory = it is not a directory
+file_unsupported = this system cannot do that
+file_other = the system refused
+name_empty = a name cannot be empty
+name_dot = that name means a folder itself
+name_slash = a name cannot hold /
+name_nul = a name cannot hold a NUL
+name_reserved = a name cannot hold \ : * ? " < > or |
+# Why a scan could not start: {0} a path, {1} the system's reason
+cannot_scan = cannot scan {0}: {1}
+nothing_to_scan = nothing here can be scanned
+reader_failed = could not start the reader

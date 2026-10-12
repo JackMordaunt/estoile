@@ -8,6 +8,7 @@ import "jm:ui/design"
 import "jm:ui/ops"
 import "jm:ui/primer"
 
+import "../msg"
 import "../query"
 
 /*
@@ -41,10 +42,10 @@ Mode :: enum u8 {
 mode_switch :: proc(gtx: ^ui.Ctx, m: ^Model, compact := false) {
 	// In Mode's order: the selected segment's index is the mode.
 	modes := [?]primer.Segment {
-		{label = "Sunburst", icon = .Circle},
-		{label = "Treemap", icon = .Apps},
-		{label = "Icicle", icon = .Rows},
-		{label = "Reclaim", icon = .Trash},
+		{label = tr(.Mode_Sunburst), icon = .Circle},
+		{label = tr(.Mode_Treemap), icon = .Apps},
+		{label = tr(.Mode_Icicle), icon = .Rows},
+		{label = tr(.Mode_Reclaim), icon = .Trash},
 	}
 	#assert(len(modes) == len(Mode))
 	at := int(m.mode)
@@ -52,7 +53,7 @@ mode_switch :: proc(gtx: ^ui.Ctx, m: ^Model, compact := false) {
 		gtx,
 		modes[:],
 		&at,
-		name = "View",
+		name = tr(.View),
 		size = .Small,
 		hide_labels = compact,
 	) {
@@ -68,9 +69,9 @@ mode_switch :: proc(gtx: ^ui.Ctx, m: ^Model, compact := false) {
 colour_switch :: proc(gtx: ^ui.Ctx, m: ^Model, compact := false) {
 	// In Colouring's order, as the modes are.
 	colourings := [?]primer.Segment {
-		{label = "Folder", icon = .File_Directory},
-		{label = "Type", icon = .File},
-		{label = "Change", icon = .Diff},
+		{label = tr(.Colour_Folder), icon = .File_Directory},
+		{label = tr(.Colour_Type), icon = .File},
+		{label = tr(.Colour_Change), icon = .Diff},
 	}
 	#assert(len(colourings) == len(Colouring))
 	// The trial can end while leita is coloured by change.
@@ -82,12 +83,12 @@ colour_switch :: proc(gtx: ^ui.Ctx, m: ^Model, compact := false) {
 		gtx,
 		colourings[:],
 		&at,
-		name = "Colour by",
+		name = tr(.Colour_By),
 		size = .Small,
 		hide_labels = compact,
 	) {
 		if Colouring(at) == .Change && !unlocked(gtx) {
-			licence_show(m, CHANGE_LOCKED)
+			licence_show(m, msg.Msg.Change_Locked)
 		} else {
 			m.colour = Colouring(at)
 		}
@@ -321,12 +322,12 @@ Blocks :: struct {
 	framed: bool, // a directory is the frame its contents sit in
 	from:   Menu_From,
 	name:   string, // the chart's tag
-	title:  string, // what a screen reader calls it
+	title:  msg.Msg, // what a screen reader calls it
 	tag:    string, // the prefix of a first-level box's tag
 }
 
-TREEMAP :: Blocks{lay_boxes, true, .Treemap, "Treemap chart", "Treemap", "box"}
-ICICLE  :: Blocks{lay_icicle, false, .Icicle, "Icicle chart", "Icicle", "bar"}
+TREEMAP :: Blocks{lay_boxes, true, .Treemap, "Treemap chart", .Mode_Treemap, "box"}
+ICICLE  :: Blocks{lay_icicle, false, .Icicle, "Icicle chart", .Mode_Icicle, "bar"}
 
 // blocks_panel is a layout drawn as boxes, with the info block over it.
 @(private)
@@ -434,7 +435,7 @@ blocks :: proc(
 	room := ops.Rect{0, 0, size.x, size.y}
 	ops.input_area(gtx.scene, p.id, room, {.Press, .Move, .Enter, .Leave})
 	ops.tag(gtx.scene, p.id, k.name)
-	describe_chart(gtx, &p, m, r, boxes, at if lit == .Arc else -1, k.title)
+	describe_chart(gtx, &p, m, r, boxes, at if lit == .Arc else -1, tr(k.title))
 
 	if menu {
 		if i := box_at(boxes, m.pointer); i >= 0 {

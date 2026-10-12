@@ -6,6 +6,7 @@ import "jm:i18n"
 import "jm:ui"
 import "jm:ui/primer"
 
+import "../command"
 import "../msg"
 
 /*
@@ -34,11 +35,17 @@ english_init :: proc "contextless" () {
 	msg.init(&english, .English)
 }
 
+// current is the language in use on this thread: the frame's, or English.
+@(private)
+current :: proc() -> ^msg.Strings {
+	return words if words != nil else &english
+}
+
 // tr is key's text in the language in use: a string that lives as long as the
 // program.
 @(private)
 tr :: proc(key: msg.Msg) -> string {
-	return msg.tr(words if words != nil else &english, key)
+	return msg.tr(current(), key)
 }
 
 // trf is key's text in the language in use with args filled in, in the frame's
@@ -46,7 +53,7 @@ tr :: proc(key: msg.Msg) -> string {
 // the plural form.
 @(private)
 trf :: proc(gtx: ^ui.Ctx, key: msg.Msg, args: ..i18n.Arg) -> string {
-	return msg.trf(words if words != nil else &english, key, ..args, allocator = gtx.allocator)
+	return msg.trf(current(), key, ..args, allocator = gtx.allocator)
 }
 
 // language_button is the toolbar's globe and the menu of languages it opens.
@@ -79,6 +86,17 @@ language_button :: proc(gtx: ^ui.Ctx, m: ^Model) {
 			set_language(m, locale)
 		}
 	}
+}
+
+// tell_language sends the host the window's language, on the first frame and
+// on every change (the host's set_language, gui/app/words.odin).
+@(private)
+tell_language :: proc(gtx: ^ui.Ctx, m: ^Model) {
+	if told, ok := m.locale_told.?; ok && told == m.locale {
+		return
+	}
+	ui.command(gtx, command.Command(command.Language{locale = u8(m.locale)}))
+	m.locale_told = m.locale
 }
 
 // set_language puts locale in use from the next frame.

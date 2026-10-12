@@ -111,7 +111,7 @@ add_licence :: proc(d: ^Desk, c: ^command.Add_Licence) {
 	if c.file {
 		read, err := licence.read(text)
 		if err != .None {
-			licence_settle(d, strings.concatenate({"The licence ", licence.describe(err), "."}))
+			licence_settle(d, licence_problem(d, err))
 			return
 		}
 		take(d, read)
@@ -135,13 +135,19 @@ take :: proc(d: ^Desk, text: string) {
 	}
 	if err != .None {
 		licence.destroy(&l)
-		licence_settle(d, strings.concatenate({"The licence ", licence.describe(err), "."}))
+		licence_settle(d, licence_problem(d, err))
 		return
 	}
 	licence.destroy(&d.licence)
 	d.licence = l
 	d.licensed = true
 	licence_settle(d, "")
+}
+
+// licence_problem says why a licence was not taken, in the heap.
+@(private = "file")
+licence_problem :: proc(d: ^Desk, err: licence.Error) -> string {
+	return strings.clone(say(d, LICENCE_ERRORS[err], version.NAME))
 }
 
 // licence_settle ends an offer, with why it was not taken, "" when it was. problem is
@@ -157,21 +163,13 @@ licence_settle :: proc(d: ^Desk, problem: string) {
 @(private = "file")
 activate :: proc(d: ^Desk, key: string) {
 	if key == "" || len(key) > KEY_MAX || strings.index_any(key, " \t\r\n") >= 0 {
-		licence_settle(
-			d,
-			strings.clone(
-				"That is not a licence key: paste the key from your receipt, or a licence beginning leita1.",
-			),
-		)
+		licence_settle(d, strings.clone(say(d, .Not_A_Key)))
 		return
 	}
 	if d.client == nil {
 		client, err := http.start()
 		if err != .None {
-			licence_settle(
-				d,
-				strings.clone("leita could not start a connection to fetch the licence."),
-			)
+			licence_settle(d, strings.clone(say(d, .Cannot_Connect, version.NAME)))
 			return
 		}
 		d.client = client
@@ -191,10 +189,7 @@ activate :: proc(d: ^Desk, key: string) {
 		user_agent = "leita/" + version.VERSION,
 	}
 	if _, err := http.submit(d.client, req, activated, d.activations); err != .None {
-		licence_settle(
-			d,
-			strings.clone("leita could not start a connection to fetch the licence."),
-		)
+		licence_settle(d, strings.clone(say(d, .Cannot_Connect, version.NAME)))
 		return
 	}
 	d.activating = true
@@ -220,14 +215,9 @@ take_activation :: proc(d: ^Desk, a: ^Activated) {
 	body := strings.trim_space(command.text_of(&a.body))
 	switch {
 	case a.err == .Timed_Out:
-		licence_settle(d, strings.clone("The licence server did not answer in time; try again."))
+		licence_settle(d, strings.clone(say(d, .Server_Slow)))
 	case a.err != .None:
-		licence_settle(
-			d,
-			strings.clone(
-				"leita could not reach the licence server. Check the connection, or open the licence file from your receipt instead.",
-			),
-		)
+		licence_settle(d, strings.clone(say(d, .Server_Unreachable, version.NAME)))
 	case a.status >= 200 && a.status < 300 && a.whole:
 		take(d, body)
 	case a.status >= 400 && a.status < 500:
@@ -237,14 +227,11 @@ take_activation :: proc(d: ^Desk, a: ^Activated) {
 			line = line[:i]
 		}
 		if line == "" {
-			line = "The licence key was not accepted."
+			line = say(d, .Key_Refused)
 		}
 		licence_settle(d, strings.clone(line[:min(len(line), MESSAGE_MAX)]))
 	case:
-		licence_settle(
-			d,
-			strings.clone("The licence server could not answer just now; try again later."),
-		)
+		licence_settle(d, strings.clone(say(d, .Server_Busy)))
 	}
 }
 
@@ -259,7 +246,7 @@ licence_answer :: proc(d: ^Desk) -> query.Licence_Result {
 	}
 	if d.licensed {
 		r.licensee = d.licence.licensee
-		r.tier = licence.TIER_TITLES[d.licence.tier]
+		r.tier = say(d, TIER_TITLES[d.licence.tier])
 		r.order = d.licence.order
 		r.issued = d.licence.issued
 	}

@@ -11,7 +11,6 @@ import "jm:ui/primer"
 import tok "jm:ui/primer/tokens"
 
 import "../../human"
-import "../../kinds"
 import mark "../mark"
 import "../query"
 
@@ -266,16 +265,21 @@ info :: proc(gtx: ^ui.Ctx, m: ^Model, drawn, laid: ^query.Rings_Result, u: Hit, 
 		name = a.name
 		kind: string
 		if note := colour_note(gtx, m, laid, at); note != "" {
-			kind = fmt.aprintf(" · %s", note, allocator = gtx.allocator)
+			kind = strings.concatenate({" · ", note}, gtx.allocator)
 		}
-		detail = fmt.aprintf(
-			"%s · %.1f%% of %s%s%s",
-			human.bytes(a.bytes),
-			share,
-			base_name(here),
-			kind,
-			a.directory ? " · click to open" : "",
-			allocator = gtx.allocator,
+		detail = strings.concatenate(
+			{
+				trf(
+					gtx,
+					.Arc_Share,
+					human.bytes(a.bytes),
+					fmt.tprintf("%.1f", share),
+					base_name(here),
+				),
+				kind,
+				strings.concatenate({" · ", tr(.Click_To_Open)}, gtx.allocator) if a.directory else "",
+			},
+			gtx.allocator,
 		)
 		path = arc_path(gtx, laid, at)
 	case .Hub, .Nothing:
@@ -285,7 +289,7 @@ info :: proc(gtx: ^ui.Ctx, m: ^Model, drawn, laid: ^query.Rings_Result, u: Hit, 
 			"%s%s%s",
 			human.bytes(drawn.bytes),
 			change_note(gtx, drawn.bytes, drawn.was, drawn.compared) if m.colour == .Change else "",
-			up ? " · click to go up" : "",
+			strings.concatenate({" · ", tr(.Click_To_Go_Up)}, gtx.allocator) if up else "",
 			allocator = gtx.allocator,
 		)
 		// The bar says where the centre is; the line stays, empty, so the block
@@ -311,7 +315,7 @@ colour_note :: proc(gtx: ^ui.Ctx, m: ^Model, r: ^query.Rings_Result, at: int) ->
 	a := r.arcs[at]
 	#partial switch m.colour {
 	case .Type:
-		return kinds.NAMES[kind_in(r, at)]
+		return tr(KIND_NAMES[kind_in(r, at)])
 	case .Change:
 		return strings.trim_prefix(change_note(gtx, a.bytes, a.was, r.compared), " · ")
 	}
@@ -466,7 +470,7 @@ sunburst :: proc(
 
 	ops.input_area(gtx.scene, p.id, ops.Rect{0, 0, side, side}, {.Press, .Move, .Enter, .Leave})
 	ops.tag(gtx.scene, p.id, "Sunburst chart")
-	describe_chart(gtx, &p, m, r, boxes, hovered, "Sunburst")
+	describe_chart(gtx, &p, m, r, boxes, hovered, tr(.Mode_Sunburst))
 
 	if menu {
 		switch u, at := hit_at(r, b, m.pointer); u {

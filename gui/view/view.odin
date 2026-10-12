@@ -174,15 +174,16 @@ Model :: struct {
 	licence_text:     ui.Text_State,
 	licence_waiting:  Maybe(u32),
 	licence_answered: bool,
-	licence_why:      string, // the paid feature that opened it, "" for none; static //review:ignore odin-destroy-incomplete always a constant, never allocated
+	licence_why:      Maybe(msg.Msg), // why a paid feature opened it, nil for none
 	trial_seen:       bool, // the trial banner was dismissed, until leita next starts
 	buy_url:          string,
 	about_open:       bool, // the About dialog (about.odin)
-	// The language in use and its text, and whether the menu of languages is
-	// open (language.odin).
+	// The language in use and its text, whether the menu of languages is open,
+	// and the language the host was last told (language.odin).
 	locale:           i18n.Locale,
 	strings:          ^msg.Strings,
 	language_open:    bool,
+	locale_told:      Maybe(i18n.Locale),
 }
 
 // model_init readies m to show path in locale, English unless the caller says.
@@ -226,6 +227,7 @@ view :: proc(gtx: ^ui.Ctx, user: rawptr) {
 	primer.use(&m.scheme, theme)
 	primer.use_fonts(FONTS)
 	words = m.strings
+	tell_language(gtx, m)
 	ops.fill(
 		gtx.scene,
 		ops.Rect{0, 0, gtx.constraints.max.x, gtx.constraints.max.y},
@@ -320,9 +322,8 @@ drag out of it brings the column back. A double click folds or unfolds it.
 */
 @(private)
 side_grip :: proc(gtx: ^ui.Ctx, m: ^Model) {
-	value :=
-		"folded away" if m.side_closed else fmt.aprintf("%d points wide", int(side_width(m)), allocator = gtx.allocator)
-	g := grip(gtx, .Horizontal, "Resize panels", value)
+	value := tr(.Folded_Away) if m.side_closed else trf(gtx, .Points_Wide, int(side_width(m)))
+	g := grip(gtx, .Horizontal, tr(.Resize_Panels), value)
 	most := max(gtx.viewport.x - SUNBURST_MIN - GRIP - PAD, SIDE_MIN)
 	switch {
 	case g.double:
@@ -358,12 +359,7 @@ side :: proc(gtx: ^ui.Ctx, m: ^Model) {
 	if ui.sized(gtx, {min = {0, top}, max = {ui.INF, top}}) {
 		listing(gtx, m)
 	}
-	g := grip(
-		gtx,
-		.Vertical,
-		"Resize lists",
-		fmt.aprintf("%d%% contents", int(100 * top / room), allocator = gtx.allocator),
-	)
+	g := grip(gtx, .Vertical, tr(.Resize_Lists), trf(gtx, .Split_Contents, int(100 * top / room)))
 	switch {
 	case g.double:
 		m.split = 0
@@ -391,12 +387,12 @@ toolbar :: proc(gtx: ^ui.Ctx, m: ^Model, prog: ^query.Progress_Result) {
 	export_button(gtx, m, prog)
 	switch {
 	case prog != nil && prog.state == .Scanning:
-		if primer.button(gtx, "Stop", .Danger, leading = .Square_Fill) {
+		if primer.button(gtx, tr(.Stop), .Danger, leading = .Square_Fill) {
 			ui.command(gtx, command.Command(command.Stop{}))
 		}
 	case prog != nil && prog.target != "":
 		// Scanning the same place again picks up what changed on disk since.
-		if primer.icon_button(gtx, .Sync, "Rescan", .Invisible) {
+		if primer.icon_button(gtx, .Sync, tr(.Rescan), .Invisible) {
 			ui.command(gtx, command.Command(command.Scan{path = command.text_make(prog.target)}))
 		}
 	}
@@ -406,7 +402,7 @@ toolbar :: proc(gtx: ^ui.Ctx, m: ^Model, prog: ^query.Progress_Result) {
 	if primer.icon_button(
 		gtx,
 		m.dark ? .Sun : .Moon,
-		m.dark ? "Light theme" : "Dark theme",
+		tr(.Theme_Light) if m.dark else tr(.Theme_Dark),
 		.Invisible,
 	) {
 		m.dark = !m.dark
@@ -418,23 +414,19 @@ toolbar :: proc(gtx: ^ui.Ctx, m: ^Model, prog: ^query.Progress_Result) {
 @(private)
 status :: proc(gtx: ^ui.Ctx, m: ^Model, prog: ^query.Progress_Result) {
 	if prog == nil || prog.generation == 0 {
-		primer.text(
-			gtx,
-			"Name a directory to see what is using the disk.",
-			color = primer.color(.Fg_Color_Muted),
-		)
+		primer.text(gtx, tr(.Status_Empty), color = primer.color(.Fg_Color_Muted))
 		return
 	}
 	if ui.row(gtx, gap = 8, align = .Center) {
 		switch prog.state {
 		case .Scanning:
-			primer.spinner(gtx, .Small, label = "Scanning")
+			primer.spinner(gtx, .Small, label = tr(.Scanning))
 		case .Done:
-			primer.label(gtx, "Done", .Success)
+			primer.label(gtx, tr(.Done), .Success)
 		case .Stopped:
-			primer.label(gtx, "Stopped", .Attention)
+			primer.label(gtx, tr(.Stopped), .Attention)
 		case .Failed:
-			primer.label(gtx, "Failed", .Danger)
+			primer.label(gtx, tr(.Failed), .Danger)
 		case .Idle:
 		}
 		primer.text(gtx, counters(gtx, prog), color = primer.color(.Fg_Color_Muted))
@@ -442,40 +434,33 @@ status :: proc(gtx: ^ui.Ctx, m: ^Model, prog: ^query.Progress_Result) {
 	notice(gtx, m, prog.notice)
 	trial_banner(gtx, m)
 	if prog.state == .Failed && prog.problem != "" {
-		primer.banner(gtx, "The scan failed", prog.problem, .Critical)
+		primer.banner(gtx, tr(.Scan_Failed), prog.problem, .Critical)
 	}
 	if prog.slow {
-		primer.inline_message(
-			gtx,
-			"Reading this volume's own table would be far faster, given permission to open the device.",
-			.Warning,
-			.Small,
-		)
+		primer.inline_message(gtx, tr(.Slow_Hint), .Warning, .Small)
 	}
 }
 
 // counters is what the scan has found, in one line.
 @(private)
 counters :: proc(gtx: ^ui.Ctx, prog: ^query.Progress_Result) -> string {
-	sb := strings.builder_make(gtx.allocator)
-	fmt.sbprintf(&sb, "%s items · %s", human.count(prog.nodes), human.bytes(prog.bytes))
+	parts := make([dynamic]string, gtx.allocator)
+	append(&parts, trf(gtx, .Count_Items, int(prog.nodes)), human.bytes(prog.bytes))
 	// The disk beside what the scan found, so the two can be read together.
 	if prog.disk_total > 0 {
-		fmt.sbprintf(
-			&sb,
-			" · %s free of %s",
-			human.bytes(prog.disk_free),
-			human.bytes(prog.disk_total),
+		append(
+			&parts,
+			trf(gtx, .Count_Free, human.bytes(prog.disk_free), human.bytes(prog.disk_total)),
 		)
 	}
-	fmt.sbprintf(&sb, " · %.1f s", prog.seconds)
+	append(&parts, trf(gtx, .Count_Seconds, fmt.tprintf("%.1f", prog.seconds)))
 	if prog.engine != "" {
-		fmt.sbprintf(&sb, " · %s", prog.engine)
+		append(&parts, prog.engine)
 	}
 	if prog.pending > 0 {
-		fmt.sbprintf(&sb, " · %s waiting on a parent", human.count(u64(prog.pending)))
+		append(&parts, trf(gtx, .Count_Pending, prog.pending))
 	}
-	return strings.to_string(sb)
+	return strings.join(parts[:], " · ", gtx.allocator)
 }
 
 // --- the directory shown -------------------------------------------------------
@@ -484,7 +469,7 @@ counters :: proc(gtx: ^ui.Ctx, prog: ^query.Progress_Result) -> string {
 listing :: proc(gtx: ^ui.Ctx, m: ^Model) {
 	ui.column(gtx, gap = 8, align = .Fill)
 	if ui.inset(gtx, {right = PAD}) {
-		primer.heading(gtx, "Contents", level = 2, variant = .Small)
+		primer.heading(gtx, tr(.Contents), level = 2, variant = .Small)
 	}
 	r := need_held(
 		gtx,
@@ -502,12 +487,12 @@ listing :: proc(gtx: ^ui.Ctx, m: ^Model) {
 	if ui.inset(gtx, {right = PAD}) {
 		primer.text(
 			gtx,
-			fmt.aprintf(
-				"%s in %s items%s",
-				human.bytes(r.bytes),
-				human.count(u64(len(r.entries) + r.more)),
-				change_note(gtx, r.bytes, r.was, r.compared) if m.colour == .Change else "",
-				allocator = gtx.allocator,
+			strings.concatenate(
+				{
+					trf(gtx, .Listing_Summary, len(r.entries) + r.more, human.bytes(r.bytes)),
+					change_note(gtx, r.bytes, r.was, r.compared) if m.colour == .Change else "",
+				},
+				gtx.allocator,
 			),
 			.Small,
 			color = primer.color(.Fg_Color_Muted),
@@ -519,7 +504,7 @@ listing :: proc(gtx: ^ui.Ctx, m: ^Model) {
 		ui.inset(gtx, {right = PAD})
 		if ui.column(gtx, gap = 2, align = .Fill) {
 			if len(r.entries) == 0 {
-				primer.text(gtx, "Nothing found here yet.", color = primer.color(.Fg_Color_Muted))
+				primer.text(gtx, tr(.Listing_Empty), color = primer.color(.Fg_Color_Muted))
 			}
 			for e in r.entries {
 				if entry(gtx, m, e, r.bytes, r.compared) {
@@ -529,12 +514,7 @@ listing :: proc(gtx: ^ui.Ctx, m: ^Model) {
 			if r.more > 0 {
 				primer.text(
 					gtx,
-					fmt.aprintf(
-						"and %s smaller items, %s between them",
-						human.count(u64(r.more)),
-						human.bytes(r.more_bytes),
-						allocator = gtx.allocator,
-					),
+					trf(gtx, .Listing_More, r.more, human.bytes(r.more_bytes)),
 					.Small,
 					color = primer.color(.Fg_Color_Muted),
 				)
@@ -572,7 +552,7 @@ entry :: proc(
 		gtx,
 		share,
 		bg = e.directory ? .Bg_Color_Accent_Emphasis : .Bg_Color_Neutral_Emphasis,
-		label = fmt.aprintf("%s share", e.name, allocator = gtx.allocator),
+		label = trf(gtx, .Share_Of, e.name),
 	)
 	if ui.sized(gtx, {min = {SIZE_WIDTH, 0}, max = {SIZE_WIDTH, ui.INF}}) {
 		if ui.column(gtx, align = .End) {
@@ -593,7 +573,7 @@ entry :: proc(
 largest :: proc(gtx: ^ui.Ctx, m: ^Model) {
 	ui.column(gtx, gap = 8, align = .Fill)
 	if ui.inset(gtx, {right = PAD}) {
-		primer.heading(gtx, "Largest files", level = 2, variant = .Small)
+		primer.heading(gtx, tr(.Largest_Files), level = 2, variant = .Small)
 	}
 	r, _ := ui.need(gtx, query.Largest{generation = m.generation}, query.Largest_Result)
 	if r == nil {
@@ -601,7 +581,7 @@ largest :: proc(gtx: ^ui.Ctx, m: ^Model) {
 	}
 	if len(r.files) == 0 {
 		if ui.inset(gtx, {right = PAD}) {
-			primer.text(gtx, "None found yet.", .Small, color = primer.color(.Fg_Color_Muted))
+			primer.text(gtx, tr(.Largest_None), .Small, color = primer.color(.Fg_Color_Muted))
 		}
 		return
 	}

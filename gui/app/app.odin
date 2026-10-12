@@ -55,6 +55,7 @@ import "../../synth"
 import "../../walk"
 import "../command"
 import "../files"
+import "../msg"
 import "../query"
 
 // TICK is how often a running scan is folded and its answers sent: often enough
@@ -121,6 +122,7 @@ Desk :: struct {
 	scan:            ^Scan,
 	live:            map[ui.Need_Key]Query,
 	notice:          query.Notice, // its text owned
+	words:           ^msg.Strings, // what the host says, in the window's language (words.odin)
 	// What Reclaim last offered, by node: Clean deletes only these.
 	reclaimable:     map[u32]reclaim.Category,
 	// The scans kept (history.odin), nil when none are; the snapshot this scan
@@ -193,8 +195,10 @@ init :: proc(
 		inbox   = &h.inbox,
 		wake    = wake,
 		live    = make(map[ui.Need_Key]Query, allocator),
+		words   = new(msg.Strings, allocator),
 		reports = strings.clone(reports, allocator) if reports != "" else files.reports_folder(allocator),
 	}
+	msg.init(h.desk.words, .English)
 	history_open(&h.desk, kept)
 	licence_open(
 		&h.desk,
@@ -258,6 +262,7 @@ stop :: proc(h: ^Host) {
 	delete(h.desk.live)
 	delete(h.desk.reclaimable)
 	delete(h.desk.notice.text)
+	free(h.desk.words)
 	delete(h.desk.reports)
 	for _, path in h.desk.saved {
 		delete(path)
@@ -405,6 +410,9 @@ desk_step :: proc(d: ^Desk, v: Desk_In) {
 		case command.Add_Licence:
 			add_licence(d, &c)
 			answer_all(d)
+		case command.Language:
+			set_language(d, c)
+			answer_all(d)
 		case command.Locate, command.Trash, command.Rename, command.Clean, command.Empty_Trash:
 			act(d, &e)
 			if d.scan != nil {
@@ -439,7 +447,7 @@ scan_begin :: proc(d: ^Desk, path: string) {
 
 	target, choice, err := scan.resolve(path)
 	if err != nil {
-		s.problem = strings.clone(fmt.tprintf("cannot scan %s: %v", path, err))
+		s.problem = strings.clone(say(d, .Cannot_Scan, path, fmt.tprint(err)))
 		return
 	}
 	s.resolved = true
@@ -447,7 +455,7 @@ scan_begin :: proc(d: ^Desk, path: string) {
 	s.engine = choice.engine
 	s.slow = choice.permission_would_help
 	if choice.engine == .None {
-		s.problem = strings.clone("nothing here can be scanned")
+		s.problem = strings.clone(say(d, .Nothing_To_Scan))
 		return
 	}
 	s.fill.wcfg = walk.Config {
@@ -468,7 +476,7 @@ scan_begin :: proc(d: ^Desk, path: string) {
 	s.reader = thread.create_and_start_with_poly_data(&s.fill, reader_main, init_context = context)
 	if s.reader == nil {
 		sync.atomic_store(&s.fill.scanning, false)
-		s.problem = strings.clone("could not start the reader")
+		s.problem = strings.clone(say(d, .Reader_Failed))
 		return
 	}
 	s.state = .Scanning

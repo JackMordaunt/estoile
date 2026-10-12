@@ -259,11 +259,11 @@ trail :: proc(gtx: ^ui.Ctx, m: ^Model, steps: []Step, here: string, loc := #call
 	ops.clip_pop(gtx.scene)
 	ops.stroke(gtx.scene, well, primer.color(.Border_Color_Default), {width = 1})
 
-	ops.tag(gtx.scene, p.id, "Location")
+	ops.tag(gtx.scene, p.id, tr(.Location))
 	ui.semantics(
 		gtx,
 		&p,
-		{role = .Navigation, label = "Location", value = ui.frame_string(gtx, here)},
+		{role = .Navigation, label = tr(.Location), value = ui.frame_string(gtx, here)},
 	)
 	ui.widget_close(gtx, &p, {size = {width, LOCATION_HEIGHT}})
 }
@@ -286,10 +286,10 @@ location_field :: proc(gtx: ^ui.Ctx, m: ^Model, have: bool) {
 	field := primer.text_input(
 		gtx,
 		&m.path,
-		placeholder = "A directory, drive or image to scan",
+		placeholder = tr(.Location_Placeholder),
 		leading = .File_Directory,
 		block = true,
-		name = "Location",
+		name = tr(.Location),
 	)
 	if m.edit_focus {
 		if field.focused {

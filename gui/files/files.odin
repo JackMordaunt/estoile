@@ -58,24 +58,34 @@ describe :: proc(e: Error) -> string {
 	return "the system refused"
 }
 
-// name_problem is why name cannot be a file's new name, or "" if it can.
-name_problem :: proc(name: string) -> string {
+// Name_Fault is why a name cannot be a file's new name, which the window words.
+Name_Fault :: enum u8 {
+	None,
+	Empty,
+	Dot, // . or .., which name a folder itself
+	Slash,
+	Nul,
+	Reserved, // one of \ : * ? " < > | on Windows
+}
+
+// name_fault is why name cannot be a file's new name, or None if it can.
+name_fault :: proc(name: string) -> Name_Fault {
 	switch {
 	case strings.trim_space(name) == "":
-		return "a name cannot be empty"
+		return .Empty
 	case name == "." || name == "..":
-		return "that name means a folder itself"
+		return .Dot
 	case strings.contains_rune(name, '/'):
-		return "a name cannot hold /"
+		return .Slash
 	case strings.contains_rune(name, 0):
-		return "a name cannot hold a NUL"
+		return .Nul
 	}
 	when ODIN_OS == .Windows {
 		if strings.contains_any(name, `\:*?"<>|`) {
-			return `a name cannot hold \ : * ? " < > or |`
+			return .Reserved
 		}
 	}
-	return ""
+	return .None
 }
 
 /*
@@ -129,7 +139,7 @@ empty_tree :: proc(path: string) -> (failed: int) {
 // rename gives the entry at path the new name in the same folder, refusing with
 // Exists rather than replacing whatever already has it.
 rename :: proc(path, name: string, allocator := context.allocator) -> (to: string, err: Error) {
-	if name_problem(name) != "" {
+	if name_fault(name) != .None {
 		return "", .Bad_Name
 	}
 	dir := path[:max(strings.last_index_any(path, SEPARATORS), 0)]

@@ -38,9 +38,12 @@ resolve :: proc(
 	t.allocator = allocator
 	t.input = strings.clone(input, allocator)
 
-	path := input
-	if is_drive_spec(input) {
-		path = strings.concatenate({input[:1], `:\`}, context.temp_allocator)
+	// The tree joins what it finds with `\`, and a path shown with both,
+	// C:\Users\me/photos\a.jpg, splits wrongly into the location bar's steps: so
+	// a slash typed or passed in is `\` from here on.
+	path, _ := strings.replace_all(input, "/", `\`, context.temp_allocator)
+	if is_drive_spec(path) {
+		path = strings.concatenate({path[:1], `:\`}, context.temp_allocator)
 	}
 	wpath := win.utf8_to_wstring(path, context.temp_allocator)
 
@@ -65,12 +68,16 @@ resolve :: proc(
 		target_destroy(&t)
 		return {}, {}, .Target_Not_Found
 	}
-	mount, mount_err := win.wstring_to_utf8(win.wstring(&mount_buf[0]), -1, allocator)
+	// Converted in the temp allocator and cloned: given -1, wstring_to_utf8_alloc
+	// (core/sys/windows/util.odin) allocates room for the NUL and slices it off the
+	// string, so target_destroy would free C:\ as 3 bytes of a 4-byte block, which
+	// the debug allocator caught on a Windows runner.
+	mount, mount_err := win.wstring_to_utf8(win.wstring(&mount_buf[0]), -1, context.temp_allocator)
 	if mount_err != nil {
 		target_destroy(&t)
 		return {}, {}, .Out_Of_Memory
 	}
-	t.mount = mount
+	t.mount = strings.clone(mount, allocator)
 
 	fs_buf: [win.MAX_PATH]u16
 	if GetVolumeInformationW(

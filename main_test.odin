@@ -55,8 +55,8 @@ a_report_of_a_directory_reads_back :: proc(t: ^testing.T) {
 	// path compared below matches what the report names on every OS.
 	info, stat_err := os.stat(dir, context.temp_allocator)
 	testing.expect(t, stat_err == nil, "the temp directory is not there")
-	dir = strings.trim_right(info.fullpath, "/")
-	root := fmt.tprintf("%s/leita_report_cli", dir)
+	dir = strings.trim_right(info.fullpath, `/\`)
+	root := fmt.tprintf("%s%sleita_report_cli", dir, scan.SEPARATOR)
 	os.remove_all(root)
 	defer os.remove_all(root)
 	testing.expect(t, os.make_directory(root) == nil, "could not make the root")

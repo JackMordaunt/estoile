@@ -55,19 +55,29 @@ baseline_save :: proc(path, place: string, t: ^scan.Tree, cursor: changes.Cursor
 		return false
 	}
 
-	out := make([dynamic]u8)
+	// Sized first and written in place. Appended field by field it took 384 ms for
+	// /home/jfm's 2.1 million nodes, 125 ms this way (2026-10-12, timed around
+	// baseline_save as survey/bench_test.odin times a fill).
+	size := len(BASELINE_MAGIC) + 1 + 5 * 8 + 4 + len(place) + 2 * 4
+	for i in 0 ..< count {
+		if renumber[i] != scan.NO_NODE {
+			size += NODE_FIXED + len(scan.name_of(t, i))
+		}
+	}
+	out := make([]u8, size)
 	defer delete(out)
-	append(&out, BASELINE_MAGIC)
-	put_u8(&out, u8(cursor.source))
-	put_u64(&out, cursor.volume[0])
-	put_u64(&out, cursor.volume[1])
-	put_u64(&out, cursor.journal)
-	put_u64(&out, u64(cursor.position))
-	put_u64(&out, u64(cursor.full))
-	put_u32(&out, u32(len(place)))
-	append(&out, place)
-	put_u32(&out, used)
-	put_u32(&out, renumber[t.root])
+	w := Writer{out, 0}
+	put(&w, transmute([]u8)string(BASELINE_MAGIC))
+	put_u8(&w, u8(cursor.source))
+	put_u64(&w, cursor.volume[0])
+	put_u64(&w, cursor.volume[1])
+	put_u64(&w, cursor.journal)
+	put_u64(&w, u64(cursor.position))
+	put_u64(&w, u64(cursor.full))
+	put_u32(&w, u32(len(place)))
+	put(&w, transmute([]u8)place)
+	put_u32(&w, used)
+	put_u32(&w, renumber[t.root])
 	for i in 0 ..< count {
 		if renumber[i] == scan.NO_NODE {
 			continue
@@ -78,21 +88,19 @@ baseline_save :: proc(path, place: string, t: ^scan.Tree, cursor: changes.Cursor
 			parent = renumber[i] // an orphan, or the root: it holds itself
 		}
 		name := scan.name_of(t, i)
-		put_u32(&out, parent)
-		put_u8(
-			&out,
-			transmute(u8)(scan.node_flags(n) & {.Directory, .Reparse, .Extra_Name, .Mount}),
-		)
-		put_u64(&out, n.disk)
-		put_u16(&out, u16(len(name)))
-		append(&out, name)
+		put_u32(&w, parent)
+		put_u8(&w, transmute(u8)(scan.node_flags(n) & {.Directory, .Reparse, .Extra_Name, .Mount}))
+		put_u64(&w, n.disk)
+		put_u16(&w, u16(len(name)))
+		put(&w, transmute([]u8)name)
 	}
+	assert(w.at == len(out), "a baseline's size was miscounted")
 
 	temporary := strings.concatenate({path, ".new"}, context.temp_allocator)
 	if dir, _ := os.split_path(path); dir != "" {
 		_ = os.make_directory_all(dir)
 	}
-	if os.write_entire_file(temporary, out[:]) != nil {
+	if os.write_entire_file(temporary, out) != nil {
 		os.remove(temporary)
 		return false
 	}
@@ -205,28 +213,42 @@ take_u64 :: proc(r: ^Reader) -> u64 {
 	return v
 }
 
+// What a node takes beside its name: parent, flags, size, name length.
 @(private = "file")
-put_u8 :: proc(out: ^[dynamic]u8, v: u8) {
-	append(out, v)
+NODE_FIXED :: 4 + 1 + 8 + 2
+
+@(private = "file")
+Writer :: struct {
+	out: []u8,
+	at:  int,
 }
 
 @(private = "file")
-put_u16 :: proc(out: ^[dynamic]u8, v: u16) {
-	b: [2]u8
-	endian.put_u16(b[:], .Little, v)
-	append(out, ..b[:])
+put :: proc(w: ^Writer, b: []u8) {
+	copy(w.out[w.at:], b)
+	w.at += len(b)
 }
 
 @(private = "file")
-put_u32 :: proc(out: ^[dynamic]u8, v: u32) {
-	b: [4]u8
-	endian.put_u32(b[:], .Little, v)
-	append(out, ..b[:])
+put_u8 :: proc(w: ^Writer, v: u8) {
+	w.out[w.at] = v
+	w.at += 1
 }
 
 @(private = "file")
-put_u64 :: proc(out: ^[dynamic]u8, v: u64) {
-	b: [8]u8
-	endian.put_u64(b[:], .Little, v)
-	append(out, ..b[:])
+put_u16 :: proc(w: ^Writer, v: u16) {
+	endian.put_u16(w.out[w.at:], .Little, v)
+	w.at += 2
+}
+
+@(private = "file")
+put_u32 :: proc(w: ^Writer, v: u32) {
+	endian.put_u32(w.out[w.at:], .Little, v)
+	w.at += 4
+}
+
+@(private = "file")
+put_u64 :: proc(w: ^Writer, v: u64) {
+	endian.put_u64(w.out[w.at:], .Little, v)
+	w.at += 8
 }

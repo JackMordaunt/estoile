@@ -115,6 +115,21 @@ copy_dir :: proc(d: Dir, w: ^Worker) -> (nodes, bytes: u64, ok: bool) {
 		return list_dir(d, w)
 	}
 	base := u.base
+	// Every slot at once: one atomic add on the tree's counter a directory rather
+	// than one a node. A slot left over by a file a probe found gone stays unused, as
+	// a slot a reader claimed and never wrote does.
+	count: u32
+	for c := u.index.first[d.base]; c != scan.NO_NODE; c = u.index.next[c] {
+		count += 1
+	}
+	if count == 0 {
+		return 0, 0, true
+	}
+	slot, claim_err := scan.claim(&w.writer, count)
+	if claim_err != nil {
+		w.err = .Out_Of_Memory
+		return 0, 0, false
+	}
 	for c := u.index.first[d.base]; c != scan.NO_NODE; c = u.index.next[c] {
 		b := scan.node(base, c)
 		flags := scan.node_flags(b) & {.Directory, .Reparse, .Extra_Name, .Mount}
@@ -135,11 +150,6 @@ copy_dir :: proc(d: Dir, w: ^Worker) -> (nodes, bytes: u64, ok: bool) {
 			disk = now
 		}
 
-		slot, claim_err := scan.claim(&w.writer, 1)
-		if claim_err != nil {
-			w.err = .Out_Of_Memory
-			return nodes, bytes, false
-		}
 		n := scan.node(w.writer.tree, slot)
 		n.parent = d.index
 		n.name = scan.intern(&w.writer, name)
@@ -158,6 +168,7 @@ copy_dir :: proc(d: Dir, w: ^Worker) -> (nodes, bytes: u64, ok: bool) {
 			}
 			append(&w.found, Dir{index = slot, path = child, base = c, job = job_of(u, c)})
 		}
+		slot += 1
 	}
 	return nodes, bytes, true
 }

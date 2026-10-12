@@ -57,6 +57,7 @@ keep :: proc(d: ^Desk) {
 		&s.roll,
 		top,
 		sync.atomic_load(&s.tree.nodes_done),
+		{s.disk_total, s.disk_free},
 	)
 	if err != nil {
 		fmt.eprintln("leita: could not keep the scan:", err)

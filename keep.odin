@@ -32,7 +32,7 @@ Kept :: struct {
 
 /*
 keep_scan compares the finished scan in t with the last kept of the same place in
-the store at path, and keeps it, for "" doing neither. What it reads, and what
+the store at path, and keeps it with the disk it was on, for "" doing neither. What it reads, and what
 any error it meets says, is in the temp allocator.
 */
 keep_scan :: proc(
@@ -40,6 +40,7 @@ keep_scan :: proc(
 	t: ^scan.Tree,
 	roll: ^survey.Rollup,
 	engine: scan.Engine,
+	disk := history.Disk{},
 ) -> (
 	k: Kept,
 ) {
@@ -63,7 +64,7 @@ keep_scan :: proc(
 			k.bytes = snap.bytes
 		}
 	}
-	if _, err := history.keep(&st, k.place, t, roll, top, t.nodes_done); err != nil {
+	if _, err := history.keep(&st, k.place, t, roll, top, t.nodes_done, disk); err != nil {
 		k.problem = history.describe(err)
 	}
 	return

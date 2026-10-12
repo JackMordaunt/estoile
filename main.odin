@@ -292,10 +292,14 @@ scan_and_say :: proc(opt: Options, kept := "", licensee := "", locked := false) 
 		print_largest(&t, &roll, .files)
 		print_largest(&t, &roll, .directories)
 	}
-	k := keep_scan(kept, &t, &roll, engine.engine)
+	space := report.space_of(&f)
+	disk: history.Disk
+	if sp, ok := space.?; ok {
+		disk = {sp.total, sp.free}
+	}
+	k := keep_scan(kept, &t, &roll, engine.engine, disk)
 	say_kept(k, survey.total(&roll, t.root) if t.root < roll.seen else 0, quiet)
 
-	space := report.space_of(&f)
 	thresholds_set := opt.warn_used > 0 || opt.fail_used > 0 || min_free > 0
 	th, _, known := report.threshold_of(
 		space,

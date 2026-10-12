@@ -1,7 +1,7 @@
 /*
 Package history is what leita remembers of the scans it has finished: for each,
-when it was taken, its totals, and the size of every entry under its top that held
-at least KEPT_MIN, so a later scan of the same place can say what grew and what
+when it was taken, its totals, the disk it was on and what of that was free, and
+the size of every entry under its top that held at least KEPT_MIN, so a later scan of the same place can say what grew and what
 shrank since. It lives in one SQLite file in the user's data folder (default_path).
 
 An entry is named by its path under the top, its names joined by "/" whatever the
@@ -46,12 +46,21 @@ Store :: struct {
 }
 
 // Snapshot is one finished scan as remembered: when it was taken, in Unix
-// seconds, and the totals of its top.
+// seconds, the totals of its top, and the disk it was on.
 Snapshot :: struct {
 	id:    i64,
 	taken: i64,
 	bytes: u64,
 	items: u64,
+	disk:  Disk,
+}
+
+// Disk is the size of the filesystem a scan was on and what of it was free to
+// the user then. Both are zero when that was not known: a raw device or an
+// image has no mounted filesystem to ask, and a snapshot kept before the disk
+// was kept does not say.
+Disk :: struct {
+	total, free: u64,
 }
 
 // Action is one change leita made on disk, or tried to: taken in Unix seconds,
@@ -96,7 +105,9 @@ SCHEMA :: `
 		top TEXT NOT NULL,
 		taken INTEGER NOT NULL,
 		bytes INTEGER NOT NULL,
-		items INTEGER NOT NULL);
+		items INTEGER NOT NULL,
+		disk_total INTEGER NOT NULL DEFAULT 0,
+		disk_free INTEGER NOT NULL DEFAULT 0);
 	CREATE INDEX IF NOT EXISTS snapshot_top ON snapshot(top, taken);
 	CREATE TABLE IF NOT EXISTS entry(
 		snapshot INTEGER NOT NULL REFERENCES snapshot(id) ON DELETE CASCADE,
@@ -132,7 +143,42 @@ open :: proc(st: ^Store, path: string) -> sqlite3.Error {
 		sqlite3.close(&db)
 		return err
 	}
+	if err := migrate(db); err != nil {
+		sqlite3.close(&db)
+		return err
+	}
 	st.db = db
+	return nil
+}
+
+// ADDED_COLUMNS is each column added to snapshot since the store was first made,
+// and the statement that adds it. A store made before gains them when it is
+// opened, keeping all it holds; its snapshots read as not knowing the disk.
+@(private)
+ADDED_COLUMNS := [?][2]string {
+	{"disk_total", "ALTER TABLE snapshot ADD COLUMN disk_total INTEGER NOT NULL DEFAULT 0"},
+	{"disk_free", "ALTER TABLE snapshot ADD COLUMN disk_free INTEGER NOT NULL DEFAULT 0"},
+}
+
+// migrate adds to snapshot each column in ADDED_COLUMNS that it does not have
+// yet, so opening a store any number of times is the same as opening it once.
+@(private)
+migrate :: proc(db: sqlite3.Db) -> sqlite3.Error {
+	rows := sqlite3.query(
+		db,
+		"SELECT name FROM pragma_table_info('snapshot')",
+		allocator = context.temp_allocator,
+	) or_return
+	has := make(map[string]bool, context.temp_allocator)
+	for sqlite3.next(&rows) {
+		has[sqlite3.text(rows, 0)] = true
+	}
+	sqlite3.finish(&rows) or_return
+	for column in ADDED_COLUMNS {
+		if !has[column[0]] {
+			sqlite3.exec(db, column[1]) or_return
+		}
+	}
 	return nil
 }
 
@@ -149,9 +195,9 @@ describe :: proc(err: sqlite3.Error) -> string {
 }
 
 /*
-save remembers a scan of top taken at taken: its totals and entries, which the
-caller has already cut to those holding at least KEPT_MIN. It forgets the oldest
-snapshots of top past KEPT, and returns the new one's id.
+save remembers a scan of top taken at taken: its totals, the disk it was on, and
+its entries, which the caller has already cut to those holding at least KEPT_MIN.
+It forgets the oldest snapshots of top past KEPT, and returns the new one's id.
 */
 save :: proc(
 	st: ^Store,
@@ -159,6 +205,7 @@ save :: proc(
 	taken: i64,
 	bytes, items: u64,
 	entries: []Entry,
+	disk := Disk{},
 ) -> (
 	id: i64,
 	err: sqlite3.Error,
@@ -168,18 +215,22 @@ save :: proc(
 		taken:        i64,
 		bytes, items: u64,
 		entries:      []Entry,
+		disk:         Disk,
 		id:           i64,
 	}
-	s := Save{top, taken, bytes, items, entries, 0}
+	s := Save{top, taken, bytes, items, entries, disk, 0}
 	body :: proc(db: sqlite3.Db, user: rawptr) -> sqlite3.Error {
 		s := (^Save)(user)
 		sqlite3.exec_args(
 			db,
-			"INSERT INTO snapshot(top, taken, bytes, items) VALUES (?, ?, ?, ?)",
+			`INSERT INTO snapshot(top, taken, bytes, items, disk_total, disk_free)
+				VALUES (?, ?, ?, ?, ?, ?)`,
 			s.top,
 			s.taken,
 			i64(s.bytes),
 			i64(s.items),
+			i64(s.disk.total),
+			i64(s.disk.free),
 		) or_return
 		s.id = sqlite3.last_id(db)
 		stmt := sqlite3.prepare(
@@ -256,7 +307,8 @@ list :: proc(
 ) {
 	rows := sqlite3.query(
 		st.db,
-		"SELECT id, taken, bytes, items FROM snapshot WHERE top = ? ORDER BY taken DESC, id DESC",
+		`SELECT id, taken, bytes, items, disk_total, disk_free FROM snapshot
+			WHERE top = ? ORDER BY taken DESC, id DESC`,
 		top,
 		allocator = context.temp_allocator,
 	) or_return
@@ -269,6 +321,7 @@ list :: proc(
 				taken = sqlite3.integer(rows, 1),
 				bytes = u64(sqlite3.integer(rows, 2)),
 				items = u64(sqlite3.integer(rows, 3)),
+				disk = {u64(sqlite3.integer(rows, 4)), u64(sqlite3.integer(rows, 5))},
 			},
 		)
 	}

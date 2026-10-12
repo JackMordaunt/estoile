@@ -15,9 +15,9 @@ scans and the command line's make one timeline of each place.
 
 /*
 keep keeps the finished scan in t from its top: under place, taken now, its
-totals, and every entry under top holding at least KEPT_MIN. items is how many
-nodes the scan found. The rollup must be linked (survey.Rollup.linked) and
-advanced over all of t.
+totals, the disk it was on, and every entry under top holding at least
+KEPT_MIN. items is how many nodes the scan found. The rollup must be linked
+(survey.Rollup.linked) and advanced over all of t.
 */
 keep :: proc(
 	st: ^Store,
@@ -26,6 +26,7 @@ keep :: proc(
 	roll: ^survey.Rollup,
 	top: u32,
 	items: u64,
+	disk := Disk{},
 ) -> (
 	id: i64,
 	err: sqlite3.Error,
@@ -41,6 +42,7 @@ keep :: proc(
 		survey.total(roll, top),
 		items,
 		entries[:],
+		disk,
 	)
 }
 

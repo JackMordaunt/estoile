@@ -1,5 +1,6 @@
 package leita_history
 
+import "core:os"
 import "core:path/filepath"
 import "core:testing"
 
@@ -29,7 +30,7 @@ a_snapshot_comes_back_as_it_was_saved :: proc(t: ^testing.T) {
 
 	snaps, _ := list(&st, "/home/ann")
 	testing.expect_value(t, len(snaps), 1)
-	testing.expect_value(t, snaps[0], Snapshot{id, 1000, 5 << 20, 42})
+	testing.expect_value(t, snaps[0], Snapshot{id, 1000, 5 << 20, 42, {}})
 	other, _ := list(&st, "/home/bob")
 	testing.expect_value(t, len(other), 0)
 }
@@ -193,4 +194,46 @@ test_a_baseline_lives_beside_the_store :: proc(t: ^testing.T) {
 		"two places share a baseline",
 	)
 	testing.expect_value(t, baseline_path("", "/home/me", context.temp_allocator), "")
+}
+
+// A snapshot keeps the disk it was on; a store made before the disk was kept
+// gains the columns when opened, its snapshots reading as not knowing the disk,
+// and opening it again changes nothing.
+@(test)
+a_snapshot_keeps_its_disk_and_an_older_store_gains_it :: proc(t: ^testing.T) {
+	dir, derr := os.make_directory_temp("", "leita-history-*", context.temp_allocator)
+	testing.expect(t, derr == nil)
+	defer os.remove_all(dir)
+	path, _ := filepath.join({dir, "history.db"}, context.temp_allocator)
+	{
+		db, err := sqlite3.open(path, {}, context.temp_allocator)
+		testing.expect(t, err == nil)
+		testing.expect(
+			t,
+			sqlite3.exec(
+				db,
+				`CREATE TABLE snapshot(id INTEGER PRIMARY KEY, top TEXT NOT NULL,
+					taken INTEGER NOT NULL, bytes INTEGER NOT NULL, items INTEGER NOT NULL);
+				INSERT INTO snapshot(top, taken, bytes, items) VALUES ('/srv', 10, 7, 1);`,
+			) ==
+			nil,
+		)
+		sqlite3.close(&db)
+	}
+	for _ in 0 ..< 2 {
+		st: Store
+		testing.expect(t, open(&st, path) == nil)
+		snaps, _ := list(&st, "/srv")
+		testing.expect_value(t, len(snaps), 1)
+		testing.expect_value(t, snaps[0].disk, Disk{})
+		close(&st)
+	}
+	st: Store
+	testing.expect(t, open(&st, path) == nil)
+	defer close(&st)
+	_, err := save(&st, "/srv", 20, 9, 1, {{"", 9}}, Disk{100 << 30, 40 << 30})
+	testing.expect(t, err == nil)
+	snaps, _ := list(&st, "/srv")
+	testing.expect_value(t, snaps[0].disk, Disk{100 << 30, 40 << 30})
+	testing.expect_value(t, snaps[1].taken, 10)
 }

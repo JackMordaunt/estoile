@@ -33,9 +33,11 @@ Lock :: struct {
 // does when the process ends, as flock(2) has it.
 lock :: proc(path: string) -> (l: Lock, result: Lock_Result) {
 	fd := posix.open(
-		strings.clone_to_cstring(path, context.temp_allocator),
-		{.RDWR, .CREAT},
-		{.IRUSR, .IWUSR},
+	strings.clone_to_cstring(path, context.temp_allocator),
+	// Close on exec: a process started meanwhile, here or by a thread beside
+	// this one, would otherwise hold the open file, and the lock, past unlock.
+	{.RDWR, .CREAT, .CLOEXEC},
+	{.IRUSR, .IWUSR},
 	)
 	if fd < 0 {
 		return {fd = -1}, .Failed

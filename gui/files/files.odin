@@ -106,10 +106,19 @@ delete_tree :: proc(path: string) -> (failed: int, err: Error) {
 	switch {
 	case serr != nil:
 		return 0, .Missing
-	case info.type != .Directory:
+	case info.type != .Directory, is_link(path):
 		return 0, .Not_Directory
 	}
 	return empty_tree(path) + (0 if os.remove(path) == nil else 1), .None
+}
+
+when ODIN_OS != .Windows {
+	// is_link is false wherever lstat has already said whether path is a link.
+	// Windows asks for itself (platform_windows.odin).
+	@(private)
+	is_link :: proc(path: string) -> bool {
+		return false
+	}
 }
 
 // empty_tree deletes everything in the directory at path, counting what it could

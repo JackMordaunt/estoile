@@ -35,6 +35,29 @@ trash :: proc(path: string) -> Error {
 	return .None
 }
 
+/*
+is_link says whether path is a symbolic link or a junction, as the listing
+delete_tree walks says of what it holds. core:os's lstat cannot be asked: it
+reads a link through a handle opened on the link and then drops its reparse tag
+(core/os/stat_windows.odin), so it calls a link to a directory a directory, and
+delete_tree given one emptied what it points at. The entry's own find data
+carries the tag.
+*/
+@(private)
+is_link :: proc(path: string) -> bool {
+	data: win32.WIN32_FIND_DATAW
+	h := win32.FindFirstFileW(win32.utf8_to_wstring(path, context.temp_allocator), &data)
+	if h == win32.INVALID_HANDLE_VALUE {
+		return false
+	}
+	win32.FindClose(h)
+	if data.dwFileAttributes & win32.FILE_ATTRIBUTE_REPARSE_POINT == 0 {
+		return false
+	}
+	tag := data.dwReserved0
+	return tag == win32.IO_REPARSE_TAG_SYMLINK || tag == win32.IO_REPARSE_TAG_MOUNT_POINT
+}
+
 // reveal opens Explorer with path selected.
 @(private)
 reveal :: proc(path: string) {

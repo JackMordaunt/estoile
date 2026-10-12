@@ -30,15 +30,18 @@ Monitoring :: struct {
 	own_host:  bool, // host was made by monitor_open, to be freed
 	argv:      []string,
 	scheduler: string, // the host's describe, kept
+	paths:     monitor.Paths, // beside the history store, for a place's baseline
 	changed:   u32,
 	problem:   string,
 	note:      string,
 }
 
-// monitor_open readies monitoring: on the system's scheduler running this
-// binary, unless the caller gives a scheduler of its own and what it runs.
-monitor_open :: proc(d: ^Desk, scheduler: ^schedule.Host, argv: []string) {
+// monitor_open readies monitoring beside the history store at kept: on the
+// system's scheduler running this binary, unless the caller gives a scheduler
+// of its own and what it runs.
+monitor_open :: proc(d: ^Desk, kept: string, scheduler: ^schedule.Host, argv: []string) {
 	mo := &d.monitoring
+	mo.paths = monitor.paths_beside(kept)
 	if scheduler != nil {
 		mo.host = scheduler^
 	} else {
@@ -68,6 +71,10 @@ monitor_close :: proc(d: ^Desk) {
 	}
 	delete(mo.argv)
 	delete(mo.scheduler)
+	delete(mo.paths.settings)
+	delete(mo.paths.history)
+	delete(mo.paths.lock)
+	delete(mo.paths.licence)
 	delete(mo.problem)
 	delete(mo.note)
 	mo^ = {}
@@ -162,7 +169,8 @@ unwatch :: proc(d: ^Desk, c: ^command.Unwatch) {
 		monitor_settle(d, say(d, .Monitor_Unkept))
 		return
 	}
-	if _, err := settings.unwatch(d.settings, command.text_of(&c.path)); err != nil {
+	if _, err := monitor.forget(d.settings, d.monitoring.paths, command.text_of(&c.path));
+	   err != nil {
 		monitor_settle(d, say(d, .Monitor_Unkept))
 		return
 	}

@@ -253,7 +253,7 @@ init :: proc(
 		licence_key,
 		activate_url,
 	)
-	monitor_open(&h.desk, scheduler, monitor_argv)
+	monitor_open(&h.desk, kept, scheduler, monitor_argv)
 
 	p := stream.make_pipeline(allocator, cap = 64)
 	h.p = p

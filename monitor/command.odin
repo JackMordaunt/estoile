@@ -191,7 +191,7 @@ remove :: proc(c: Context, path: string, w: io.Writer) -> int {
 	defer settings.close(&st)
 	// The place as given first, so one no longer there can still be removed.
 	for place in ([]string{path, place_of(path)}) {
-		found, err := settings.unwatch(&st, place)
+		found, err := forget(&st, c.paths, place)
 		if err != nil {
 			fmt.wprintfln(w, "error: cannot stop watching %s: %s", place, history.describe(err))
 			return EXIT_FAILED
@@ -284,7 +284,13 @@ list :: proc(c: Context, w: io.Writer) -> int {
 		case last.problem != "":
 			fmt.wprintfln(w, "  %s  failed: %s", when_(last.started), last.problem)
 		case:
-			fmt.wprintfln(w, "  %s  %s", when_(last.started), human.bytes(last.bytes))
+			fmt.wprintfln(
+				w,
+				"  %s  %s, %s",
+				when_(last.started),
+				human.bytes(last.bytes),
+				how_read(last),
+			)
 		}
 	}
 	return 0

@@ -12,12 +12,14 @@ import "../survey"
 import "../walk"
 
 /*
-How the monitor reads a watched place: the same scan the command line runs,
-through scan.resolve and survey.fill_run, at the gentle pace, folded once at the
-end. This is the one place the monitor learns what a place holds, so a faster
-way to the same answer, such as a change journal read since the last run, takes
-the place of survey_place without the rest of the run changing: whatever reads
-the place hands back a Place_Scan whose tree and rollup history.keep takes.
+How the monitor reads a watched place: the scan the command line runs, through
+scan.resolve and survey.fill_run, at the gentle pace, folded once at the end,
+but kept between runs as the place's baseline (history.baseline_path). Each run
+after the first updates the last tree from what the system says changed since,
+and reads the place whole only when that cannot be trusted, saying why
+(survey/update.odin). This is the one place the monitor learns what a place
+holds: whatever reads it hands back a Place_Scan whose tree and rollup
+history.keep takes.
 */
 
 // Place_Scan is a watched place as one scan of it found it. It is heap allocated
@@ -33,16 +35,19 @@ Place_Scan :: struct {
 	roll:     survey.Rollup,
 	fill:     survey.Fill,
 	top:      u32,
+	updated:  bool, // updated from the baseline rather than read whole
+	why:      string, // why it was read whole, a constant from survey, "" for no reason given
 	resolved: bool, // fill.target holds a target to destroy
 	grown:    bool, // tree was initialised
 }
 
 /*
-survey_place scans path to the end at the gentle pace, and returns what it
-found, or nil and why not, in the temp allocator. The caller frees what it
-found with place_scan_destroy.
+survey_place scans path to the end at the gentle pace, from its baseline when
+it has one, keeping the result there, and returns what it found, or nil and
+why not, in the temp allocator. The caller frees what it found with
+place_scan_destroy.
 */
-survey_place :: proc(path: string) -> (s: ^Place_Scan, problem: string) {
+survey_place :: proc(path, baseline: string) -> (s: ^Place_Scan, problem: string) {
 	s = new(Place_Scan)
 	s.path = strings.clone(path)
 	s.started = time.now()
@@ -73,7 +78,10 @@ survey_place :: proc(path: string) -> (s: ^Place_Scan, problem: string) {
 	s.fill.engine = choice.engine
 	s.fill.opts = ntfs.Read_Options{}
 	s.fill.tree = &s.tree
+	s.fill.baseline = baseline
 	survey.fill_run(&s.fill)
+	s.updated = s.fill.how == .Updated
+	s.why = s.fill.why
 	s.duration = time.tick_since(start)
 	if why := survey.problem(&s.fill); why != "" {
 		place_scan_destroy(s)

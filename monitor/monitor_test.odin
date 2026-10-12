@@ -180,11 +180,11 @@ a_run_scans_what_is_due_and_keeps_it_in_history :: proc(t: ^testing.T) {
 	_, out = run_monitor(&b, "run")
 	testing.expect_value(t, out, "")
 	testing.expect_value(t, snapshot_count(t, &b), 1)
-	_, _ = run_monitor(&b, "run", "--all")
-	testing.expect_value(t, snapshot_count(t, &b), 2)
+	_, out = run_monitor(&b, "run", "--all")
+	testing.expectf(t, snapshot_count(t, &b) == 2, "after --all: %s", out)
 	b.c.now = time.time_add(b.c.now, 24 * time.Hour)
-	_, _ = run_monitor(&b, "run")
-	testing.expect_value(t, snapshot_count(t, &b), 3)
+	_, out = run_monitor(&b, "run")
+	testing.expectf(t, snapshot_count(t, &b) == 3, "a day later: %s", out)
 
 	st: settings.Store
 	testing.expect(t, settings.open(&st, b.c.paths.settings) == nil)
@@ -195,6 +195,16 @@ a_run_scans_what_is_due_and_keeps_it_in_history :: proc(t: ^testing.T) {
 	testing.expect_value(t, runs[0].problem, "")
 	_, out = run_monitor(&b, "list")
 	testing.expect(t, strings.contains(out, "2.0 MiB"), out)
+
+	// The first run read the place whole and kept it as the baseline the next
+	// update from; stopping watching it deletes the baseline, not the history.
+	testing.expect(t, !runs[2].updated)
+	baseline := history.baseline_path(b.c.paths.history, place_of(b.place), context.temp_allocator)
+	testing.expect(t, os.exists(baseline), "the baseline is kept")
+	code, _ = run_monitor(&b, "remove", b.place)
+	testing.expect_value(t, code, 0)
+	testing.expect(t, !os.exists(baseline), "and goes with the place")
+	testing.expect_value(t, snapshot_count(t, &b), 3)
 }
 
 @(test)

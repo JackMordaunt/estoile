@@ -14,7 +14,11 @@ package leita_monitor
 
 import "core:fmt"
 import "core:io"
+import "core:os"
+import "core:strings"
 import "core:time"
+
+import "jm:sqlite3"
 
 import "../history"
 import "../human"
@@ -33,7 +37,7 @@ Paths :: struct {
 paths_beside :: proc(kept: string, allocator := context.allocator) -> Paths {
 	return {
 		settings = licence.path_beside(kept, allocator, settings.FILE),
-		history = kept,
+		history = strings.clone(kept, allocator),
 		lock = licence.path_beside(kept, allocator, LOCK_FILE),
 		licence = licence.path_beside(kept, allocator),
 	}
@@ -126,7 +130,14 @@ run :: proc(opt: Options, w: io.Writer) -> int {
 			code = EXIT_FAILED
 			continue
 		}
-		fmt.wprintfln(w, "%s: %s in %.1f s", watch.place, human.bytes(r.bytes), r.seconds)
+		fmt.wprintfln(
+			w,
+			"%s: %s in %.1f s, %s",
+			watch.place,
+			human.bytes(r.bytes),
+			r.seconds,
+			how_read(r),
+		)
 	}
 	return code
 }
@@ -137,7 +148,10 @@ run :: proc(opt: Options, w: io.Writer) -> int {
 scan_one :: proc(opt: Options, watch: settings.Watch) -> (r: settings.Run) {
 	r.place = watch.place
 	r.started = time.to_unix_seconds(opt.now)
-	s, problem := survey_place(watch.place)
+	s, problem := survey_place(
+		watch.place,
+		history.baseline_path(opt.paths.history, watch.place, context.temp_allocator),
+	)
 	if s == nil {
 		r.problem = problem
 		return
@@ -145,6 +159,8 @@ scan_one :: proc(opt: Options, watch: settings.Watch) -> (r: settings.Run) {
 	defer place_scan_destroy(s)
 	r.seconds = time.duration_seconds(s.duration)
 	r.bytes = bytes(s)
+	r.updated = s.updated
+	r.why = s.why
 	if sp, ok := s.space.?; ok {
 		r.disk_total, r.disk_free = sp.total, sp.free
 	}
@@ -168,4 +184,35 @@ keep :: proc(path: string, s: ^Place_Scan) -> string {
 		return fmt.tprintf("cannot keep the scan: %s", history.describe(err))
 	}
 	return ""
+}
+
+// how_read says how a run read its place: updated from the last tree, or
+// whole and why, in the temp allocator.
+how_read :: proc(r: settings.Run) -> string {
+	switch {
+	case r.updated:
+		return "updated from the last scan"
+	case r.why != "":
+		return fmt.tprintf("read whole: %s", r.why)
+	}
+	return "read whole"
+}
+
+/*
+forget stops watching place and deletes what was kept for its next run, its
+baseline, and says whether it was watched. The scans kept in history stay.
+*/
+forget :: proc(
+	st: ^settings.Store,
+	paths: Paths,
+	place: string,
+) -> (
+	found: bool,
+	err: sqlite3.Error,
+) {
+	found = settings.unwatch(st, place) or_return
+	if found {
+		os.remove(history.baseline_path(paths.history, place, context.temp_allocator))
+	}
+	return
 }

@@ -318,15 +318,15 @@ the_bar_holds_still_as_the_search_opens_and_closes :: proc(t: ^testing.T) {
 	defer searching_close(&s)
 	p := &s.h.p
 	settle(p)
-	was := ui.probe_bounds(p, "Monitoring")
-	testing.expect(t, was.w > 0, "the bar has its Monitoring button")
+	was := ui.probe_bounds(p, "Settings")
+	testing.expect(t, was.w > 0, "the bar has its Settings button")
 	magnifier := ui.probe_bounds(p, "Search")
 
 	still :: proc(t: ^testing.T, p: ^ui.Probe, was: ops.Rect, switching: string) {
 		for i in 0 ..< 3 {
 			ui.probe_frame(p)
-			at := ui.probe_bounds(p, "Monitoring")
-			testing.expectf(t, at == was, "%s, frame %d: Monitoring at %v, not %v", switching, i, at, was)
+			at := ui.probe_bounds(p, "Settings")
+			testing.expectf(t, at == was, "%s, frame %d: Settings at %v, not %v", switching, i, at, was)
 		}
 	}
 	ui.probe_key(p, .F, {.Ctrl})

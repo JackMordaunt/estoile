@@ -32,7 +32,7 @@ and you can start exploring while the rest arrives.
 
 ## Reports that make the case
 
-Turn any scan into a report from the Export button: **PDF** for the person who signs
+Turn any scan into a report from **Export** in the settings menu: **PDF** for the person who signs
 off on a new disk, **HTML** to share, **CSV** for a spreadsheet, **JSON** for
 your own tools. Each report lists the largest folders and files, how full
 the disk is, and what can be cleaned up.
@@ -51,8 +51,8 @@ keeps every scan either way, so your history is all there when you add one.
 ## Scheduled scans
 
 Have leita scan the places you care about every hour, day or week while it is
-closed, so change tracking has a steady record. Open **Monitoring** (the pulse
-in the toolbar), add a place, and turn on **Scheduled scans**. Each scan runs
+closed, so change tracking has a steady record. Open **Monitoring** (in the
+settings menu, the gear in the toolbar), add a place, and turn on **Scheduled scans**. Each scan runs
 gently, at low priority, and is kept like any other.
 
 leita keeps nothing running: it hands one hourly entry to your system's own
@@ -145,7 +145,7 @@ your own computer, your own studies, and unpaid hobby or open-source work.
 
 **Reports, change tracking and scheduled scans need a licence.** They work
 for 30 days from the first time you run leita, so you can try them first. To add a licence,
-click the key in the toolbar and paste the licence key from your receipt.
+choose **Licence** in the settings menu and paste the licence key from your receipt.
 
 **Organisations need a commercial licence for any use.** This applies to
 businesses, sole traders, schools, charities and government. You can

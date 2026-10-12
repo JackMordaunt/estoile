@@ -4,6 +4,7 @@
 # Sunburst 旭日图，Treemap 树状图，Icicle 冰柱图，licence 许可证。
 
 # Toolbar
+settings = 设置
 language = 语言
 about = 关于 {0}
 stop = 停止

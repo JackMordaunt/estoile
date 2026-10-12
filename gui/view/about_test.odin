@@ -16,13 +16,13 @@ about_frame :: proc(gtx: ^ui.Ctx, user: rawptr) {
 	primer.use(&scheme, .Light)
 	primer.use_fonts(FONTS)
 	if ui.row(gtx, gap = 8) {
-		about_button(gtx, m)
+		settings_menu(gtx, m, nil)
 	}
 	about_dialog(gtx, m)
 	notices_dialog(gtx, m)
 }
 
-// The toolbar's info button opens About, which names the product, its version
+// About in the settings menu opens About, which names the product, its version
 // and its maker and links to its page; Close closes it.
 @(test)
 about_names_the_product_and_its_maker :: proc(t: ^testing.T) {
@@ -39,7 +39,7 @@ about_names_the_product_and_its_maker :: proc(t: ^testing.T) {
 	defer render.headless_destroy(&h)
 
 	testing.expect(t, !ui.probe_tagged(&h.p, "© Librium LLC"), "closed to begin with")
-	testing.expect(t, ui.probe_click(&h.p, "About leita"))
+	testing.expect(t, choose(&h.p, &m, "About leita"))
 	ui.probe_advance(&h.p, 10, 1.0 / 60)
 	testing.expect(t, m.about_open)
 	testing.expect(t, ui.probe_tagged(&h.p, "© Librium LLC"), "the maker")
@@ -65,7 +65,7 @@ about_opens_the_licences_of_what_leita_is_built_on :: proc(t: ^testing.T) {
 	render.headless_init(&h, about_frame, &m, {900, 700}, fonts)
 	defer render.headless_destroy(&h)
 
-	testing.expect(t, ui.probe_click(&h.p, "About leita"))
+	testing.expect(t, choose(&h.p, &m, "About leita"))
 	ui.probe_advance(&h.p, 10, 1.0 / 60)
 	testing.expect(t, ui.probe_click_top(&h.p, "Open-source licences"))
 	ui.probe_advance(&h.p, 10, 1.0 / 60)

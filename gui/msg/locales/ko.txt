@@ -2,6 +2,7 @@
 # 트리맵, 아이시클, 라이선스.
 
 # Toolbar
+settings = 설정
 language = 언어
 about = {0} 정보
 stop = 중지

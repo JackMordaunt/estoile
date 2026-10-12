@@ -14,7 +14,7 @@ import "../msg"
 import "../query"
 
 /*
-Monitoring, a paid feature. The toolbar's pulse opens a dialog with one switch,
+Monitoring, a paid feature. Monitoring in the settings menu opens a dialog with one switch,
 Scheduled scans, that hands the monitor to the system's scheduler or takes it
 back, then the places watched, each with how often it is scanned and how its
 last scan went, and a field to watch another, which opens holding the place
@@ -22,15 +22,14 @@ scanned now. Once the trial is over without a licence, the dialog says so and
 only lets monitoring be turned off and places removed.
 */
 
-// monitor_button is the toolbar's pulse, which opens the Monitoring dialog.
+// monitor_show opens the Monitoring dialog, its field holding the place
+// scanned now unless something is typed there.
 @(private)
-monitor_button :: proc(gtx: ^ui.Ctx, m: ^Model, prog: ^query.Progress_Result) {
-	if primer.icon_button(gtx, .Pulse, tr(.Monitoring), .Invisible) {
-		m.monitor_open = true
-		m.monitor_answered = false
-		if ui.text_string(&m.watch_text) == "" && prog != nil {
-			ui.text_set(&m.watch_text, prog.target)
-		}
+monitor_show :: proc(m: ^Model, prog: ^query.Progress_Result) {
+	m.monitor_open = true
+	m.monitor_answered = false
+	if ui.text_string(&m.watch_text) == "" && prog != nil {
+		ui.text_set(&m.watch_text, prog.target)
 	}
 }
 

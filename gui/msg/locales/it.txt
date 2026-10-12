@@ -2,6 +2,7 @@
 # i grafici Sunburst, Treemap e Icicle (nomi di prodotto), licenza.
 
 # Toolbar
+settings = Impostazioni
 language = Lingua
 about = Informazioni su {0}
 stop = Interrompi

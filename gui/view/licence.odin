@@ -11,7 +11,7 @@ import "../msg"
 import "../query"
 
 /*
-The licence. The toolbar's key opens a dialog that says whose licence leita
+The licence. Licence in the settings menu opens a dialog that says whose licence leita
 runs under, or that it runs free for personal use with a link to buy one. The
 key from the shop's receipt is pasted into its field, or a licence itself, or a
 licence is opened from a file; the host exchanges a key for its licence, checks
@@ -23,19 +23,17 @@ not take it. The key is the one thing leita sends, once, and the dialog says so.
 // for the shop's sandbox.
 BUY_URL :: "https://mordaunt.dev/leita/buy"
 
-// licence_button is the toolbar's key, which opens the licence dialog.
+// licence_item is the settings menu's Licence, named for the licence leita runs
+// under. Returns true on the frame it is chosen.
 @(private)
-licence_button :: proc(gtx: ^ui.Ctx, m: ^Model) {
+licence_item :: proc(gtx: ^ui.Ctx, menu: ^primer.Action_Menu) -> bool {
 	r, _ := ui.need(gtx, query.Licence{}, query.Licence_Result)
 	licensed := r != nil && r.licensed
-	if primer.icon_button(
-		gtx,
-		.Verified if licensed else .Key,
+	return primer.action_menu_item(
+		menu,
 		tr(.Licence) if licensed else tr(.Licence_Free),
-		.Invisible,
-	) {
-		licence_show(m)
-	}
+		leading = .Verified if licensed else .Key,
+	)
 }
 
 // licence_show opens the licence dialog, saying why first when a paid feature

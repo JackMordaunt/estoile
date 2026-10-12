@@ -24,7 +24,7 @@ export_frame :: proc(gtx: ^ui.Ctx, user: rawptr) {
 	primer.use(&scheme, .Light)
 	primer.use_fonts(FONTS)
 	if ui.row(gtx, gap = 8) {
-		export_button(gtx, &c.m, &c.prog)
+		settings_menu(gtx, &c.m, &c.prog)
 	}
 	export_dialog(gtx, &c.m, &c.prog)
 }
@@ -56,14 +56,15 @@ export_asks_for_a_format_and_sends_it :: proc(t: ^testing.T) {
 	render.headless_init(&h, export_frame, &c, {800, 600}, fonts)
 	defer render.headless_destroy(&h)
 
-	ui.probe_click(&h.p, "Export")
+	choose(&h.p, &c.m, "Export")
 	ui.probe_advance(&h.p, 10, 1.0 / 60)
 	testing.expect(t, !c.m.export_open, "a scan still running cannot be exported")
+	testing.expect(t, ui.probe_click(&h.p, "Settings"), "the menu closes")
 
 	c.prog.state = .Done
 	ui.probe_frame(&h.p)
-	testing.expect(t, ui.probe_click(&h.p, "Export"))
-	ui.probe_advance(&h.p, 20, 1.0 / 60)
+	testing.expect(t, choose(&h.p, &c.m, "Export"))
+	ui.probe_advance(&h.p, 10, 1.0 / 60)
 	testing.expect(t, c.m.export_open, "a finished scan can")
 	testing.expect(t, ui.probe_tagged(&h.p, "Pages to print or attach to a ticket"), "PDF first")
 
@@ -74,7 +75,7 @@ export_asks_for_a_format_and_sends_it :: proc(t: ^testing.T) {
 
 	testing.expect(t, ui.probe_click_top(&h.p, "Export"), "the dialog's Export")
 	testing.expect(t, !c.m.export_open, "the dialog closed")
-	testing.expect(t, sent_export(&h) == nil, "nothing sent before the save dialog answers")
+	testing.expect(t, sent(&h.p, command.Export) == nil, "nothing sent before the save dialog answers")
 	q, asked := ui.probe_picking(&h.p)
 	testing.expect(t, asked, "the save dialog opened")
 	testing.expect_value(t, q.kind, ui.Pick_Kind.Save)
@@ -97,36 +98,23 @@ export_asks_for_a_format_and_sends_it :: proc(t: ^testing.T) {
 		reclaim    = true,
 		path       = command.text_make("/home/me/mine.json"),
 	}
-	testing.expect_value(t, sent_export(&h), Maybe(command.Export)(want))
+	testing.expect_value(t, sent(&h.p, command.Export), Maybe(command.Export)(want))
 
 	// No save dialog: the same Export, to no path, for the host to name.
 	ui.probe_advance(&h.p, 2, 1.0 / 60)
 	c.prog.notice.id += 1 // the first export's notice
 	ui.probe_advance(&h.p, 2, 1.0 / 60)
-	testing.expect(t, ui.probe_click(&h.p, "Export"), "the toolbar's Export")
-	ui.probe_advance(&h.p, 20, 1.0 / 60)
+	testing.expect(t, choose(&h.p, &c.m, "Export"), "the menu's Export")
+	ui.probe_advance(&h.p, 10, 1.0 / 60)
 	testing.expect(t, ui.probe_click_top(&h.p, "Export"), "the dialog's Export")
 	testing.expect(t, ui.probe_pick_fail(&h.p))
 	ui.probe_frame(&h.p)
 	want.path = {}
-	testing.expect_value(t, sent_export(&h), Maybe(command.Export)(want))
+	testing.expect_value(t, sent(&h.p, command.Export), Maybe(command.Export)(want))
 }
 
-// sent_export is the Export the last frame sent, if it sent one.
-@(private = "file")
-sent_export :: proc(h: ^render.Headless) -> (sent: Maybe(command.Export)) {
-	for cmd in ui.probe_commands(&h.p) {
-		if v, ok := ui.command_as(cmd, command.Command); ok {
-			if e, is_export := v.(command.Export); is_export {
-				sent = e
-			}
-		}
-	}
-	return
-}
-
-// From the dialog's Export until the host's notice, the toolbar's Export reads
-// Exporting… and is heard as a disabled button, and a click on it opens nothing;
+// From the dialog's Export until the host's notice, the menu's Export reads
+// Exporting… and is heard as loading, and choosing it opens nothing;
 // the notice ends it whether the report was saved or not, and whether or not
 // the window heard the host begin. A cancelled save dialog ends it with nothing
 // sent.
@@ -152,10 +140,10 @@ export_is_busy_until_its_notice :: proc(t: ^testing.T) {
 	render.headless_init(&h, export_frame, &c, {800, 600}, fonts)
 	defer render.headless_destroy(&h)
 
-	send :: proc(t: ^testing.T, h: ^render.Headless) {
+	send :: proc(t: ^testing.T, h: ^render.Headless, c: ^Export_Case) {
 		ui.probe_frame(&h.p)
-		testing.expect(t, ui.probe_click(&h.p, "Export"), "the toolbar's Export")
-		ui.probe_advance(&h.p, 20, 1.0 / 60)
+		testing.expect(t, choose(&h.p, &c.m, "Export"), "the menu's Export")
+		ui.probe_advance(&h.p, 10, 1.0 / 60)
 		testing.expect(t, ui.probe_click_top(&h.p, "Export"), "the dialog's Export")
 		ui.probe_advance(&h.p, 20, 1.0 / 60)
 	}
@@ -164,13 +152,19 @@ export_is_busy_until_its_notice :: proc(t: ^testing.T) {
 		ui.probe_advance(&h.p, 2, 1.0 / 60)
 	}
 	busy :: proc(t: ^testing.T, h: ^render.Headless, c: ^Export_Case, want: bool, why: string) {
+		testing.expect(t, ui.probe_click(&h.p, "Settings"))
+		ui.probe_advance(&h.p, 10, 1.0 / 60)
+		defer {
+			ui.probe_key(&h.p, .Escape)
+			ui.probe_advance(&h.p, 10, 1.0 / 60)
+		}
 		testing.expectf(t, ui.probe_tagged(&h.p, "Exporting…") == want, "busy %v: %s", want, why)
 		testing.expectf(t, ui.probe_tagged(&h.p, "Export") == !want, "idle %v: %s", !want, why)
 		said := ui.probe_semantics(&h.p, context.temp_allocator)
 		testing.expectf(
 			t,
 			// The report spells the ellipsis as an escape.
-			strings.contains(said, `button "Exporting\u2026" disabled`) == want,
+			strings.contains(said, `menu item "Exporting\u2026 Loading"`) == want,
 			"%s:\n%s",
 			why,
 			said,
@@ -179,18 +173,18 @@ export_is_busy_until_its_notice :: proc(t: ^testing.T) {
 			// A second Export cannot be asked for while one runs.
 			ui.probe_click(&h.p, "Exporting…")
 			ui.probe_advance(&h.p, 20, 1.0 / 60)
-			testing.expect(t, !c.m.export_open, "the busy button opens no dialog")
+			testing.expect(t, !c.m.export_open, "the busy item opens no dialog")
 		}
 	}
 
 	busy(t, &h, &c, false, "nothing asked for yet")
-	send(t, &h)
+	send(t, &h, &c)
 	busy(t, &h, &c, true, "asking where")
 	pick(t, &h, "")
 	busy(t, &h, &c, false, "cancelled")
-	testing.expect(t, sent_export(&h) == nil, "a cancel sends nothing")
+	testing.expect(t, sent(&h.p, command.Export) == nil, "a cancel sends nothing")
 
-	send(t, &h)
+	send(t, &h, &c)
 	pick(t, &h, "/home/me/r.csv")
 	busy(t, &h, &c, true, "sent, before the host has said anything")
 	c.prog.exporting = true
@@ -206,7 +200,7 @@ export_is_busy_until_its_notice :: proc(t: ^testing.T) {
 	busy(t, &h, &c, false, "saved")
 
 	// A failure the window never saw begin ends it as well.
-	send(t, &h)
+	send(t, &h, &c)
 	pick(t, &h, "/home/me/r.csv")
 	busy(t, &h, &c, true, "sent again")
 	c.prog.notice = {

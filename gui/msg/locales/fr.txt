@@ -5,6 +5,7 @@
 # Rayons de soleil, Compartimentage et Stalactites, licence.
 
 # Toolbar
+settings = Paramètres
 language = Langue
 about = À propos de {0}
 stop = Arrêter

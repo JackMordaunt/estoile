@@ -5,6 +5,7 @@
 # licence = ライセンス。
 
 # Toolbar
+settings = 設定
 language = 言語
 about = {0} について
 stop = 停止

@@ -302,11 +302,9 @@ a_rescan_starts_over_at_the_top :: proc(t: ^testing.T) {
 
 	// Scanning again renumbers the tree, so the view goes back to the top. The
 	// listing can be answered before the scan ends, and Rescan replaces Stop only
-	// once it has; the toolbar then lays out over a few frames, and the click
-	// waits for it.
-	testing.expect(t, settle(&r, "Rescan"), "the scan finished")
-	ui.probe_advance(&r.p, 10, 1.0 / 60)
-	testing.expect(t, ui.probe_click(&r.p, "Rescan"))
+	// once it has.
+	testing.expect(t, settle(&r, "Done"), "the scan finished")
+	testing.expect(t, choose(&r, "Rescan"))
 	hand_on(&r)
 	testing.expect(t, settle(&r, "268.0 KiB in 2 items"), "the top is listed again")
 	testing.expect(t, r.m.generation > first, "a new generation")
@@ -380,6 +378,29 @@ press_and_hand_on :: proc(r: ^Rig) {
 	hand_on(r)
 	ui.probe_frame(&r.p)
 	hand_on(r)
+}
+
+// open_settings opens the toolbar's settings menu, unless it is open, in the
+// window's language. The toolbar settles first: a press lands where the last
+// frame drew.
+@(private = "file")
+open_settings :: proc(r: ^Rig) -> bool {
+	if r.m.settings_open {
+		return true
+	}
+	gear := msg.tr(r.m.strings, .Settings) if r.m.strings != nil else "Settings"
+	ui.probe_advance(&r.p, 10, 1.0 / 60)
+	if !ui.probe_click(&r.p, gear) {
+		return false
+	}
+	ui.probe_advance(&r.p, 10, 1.0 / 60)
+	return true
+}
+
+// choose chooses item in the settings menu.
+@(private = "file")
+choose :: proc(r: ^Rig, item: string) -> bool {
+	return open_settings(r) && ui.probe_click_top(&r.p, item)
 }
 
 @(test)
@@ -889,13 +910,13 @@ a_deep_path_shows_its_deepest_steps :: proc(t: ^testing.T) {
 	ui.probe_advance(&r.p, 10, 1.0 / 60)
 
 	bar := ui.probe_bounds(&r.p, "Location")
-	rescan := ui.probe_bounds(&r.p, "Rescan")
+	gear := ui.probe_bounds(&r.p, "Settings")
 	testing.expectf(
 		t,
-		bar.x + bar.w <= rescan.x,
-		"the bar ends at %v, before the Rescan button at %v",
+		bar.x + bar.w <= gear.x,
+		"the bar ends at %v, before the Settings button at %v",
 		bar.x + bar.w,
-		rescan.x,
+		gear.x,
 	)
 	deepest := ui.probe_bounds(&r.p, "fourth_level_directory")
 	top := ui.probe_bounds(&r.p, filepath.base(filepath.dir(root)))
@@ -1111,7 +1132,7 @@ every_window_size_lays_out_without_a_clash :: proc(t: ^testing.T) {
 				r.p.size = {width, height}
 				ui.probe_advance(&r.p, 30, 1.0 / 60)
 				at := fmt.tprintf("%v at %vx%v", colour, width, height)
-				tool := []string{"leita", "Location", "Rescan", "Dark theme"}
+				tool := []string{"leita", "Location", "Search", "Settings"}
 				for i in 0 ..< len(tool) {
 					for j in i + 1 ..< len(tool) {
 						a, b := ui.probe_bounds(&r.p, tool[i]), ui.probe_bounds(&r.p, tool[j])
@@ -1147,10 +1168,10 @@ every_window_size_lays_out_without_a_clash :: proc(t: ^testing.T) {
 					disc.y + disc.h,
 				)
 				testing.expectf(t, disc.w >= 120, "%s: the disc is only %v wide", at, disc.w)
-				dark := ui.probe_bounds(&r.p, "Dark theme")
+				gear := ui.probe_bounds(&r.p, "Settings")
 				testing.expectf(
 					t,
-					dark.x + dark.w <= width + 0.5,
+					gear.w > 0 && gear.x + gear.w <= width + 0.5,
 					"%s: the toolbar runs past the window",
 					at,
 				)
@@ -1522,10 +1543,9 @@ a_rescan_is_compared_with_the_scan_before :: proc(t: ^testing.T) {
 	// Progress is answered apart from history, so Rescan may not have replaced
 	// Stop yet; and the legend's new line lays out over a few frames. The click
 	// waits for both.
-	testing.expect(t, settle(&r, "Rescan"), "the scan finished")
-	ui.probe_advance(&r.p, 10, 1.0 / 60)
+	testing.expect(t, settle(&r, "Done"), "the scan finished")
 	first := r.m.generation
-	testing.expect(t, ui.probe_click(&r.p, "Rescan"))
+	testing.expect(t, choose(&r, "Rescan"))
 	hand_on(&r)
 	testing.expect(
 		t,
@@ -1919,7 +1939,7 @@ export_writes_a_report_of_each_format :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(after), len(before) + 1)
 }
 
-// The toolbar's Export opens a dialog for the format, then the save dialog in
+// The settings menu's Export opens a dialog for the format, then the save dialog in
 // the reports folder with a name for the target, filtered to the format; the
 // report goes where the person chose, over what was there, which the save
 // dialog asked them about, and the notice of the file saved offers Locate.
@@ -1938,8 +1958,7 @@ the_export_dialog_saves_a_report_where_chosen_and_offers_locate :: proc(t: ^test
 	defer rig_close(&r)
 	testing.expect(t, settle(&r, "Done"))
 
-	ui.probe_advance(&r.p, 10, 1.0 / 60)
-	testing.expect(t, ui.probe_click(&r.p, "Export"), "the toolbar offers Export")
+	testing.expect(t, choose(&r, "Export"), "the menu offers Export")
 	ui.probe_advance(&r.p, 20, 1.0 / 60)
 	testing.expect(t, ui.probe_tagged(&r.p, "Export report"), "the dialog opened")
 	testing.expect(t, ui.probe_tagged(&r.p, "Pages to print or attach to a ticket"), "PDF first")
@@ -1962,8 +1981,9 @@ the_export_dialog_saves_a_report_where_chosen_and_offers_locate :: proc(t: ^test
 	if len(q.filters) == 1 {
 		testing.expect_value(t, q.filters[0], ui.Pick_Filter{"Web page", "html;htm"})
 	}
-	ui.probe_frame(&r.p)
+	testing.expect(t, open_settings(&r))
 	testing.expect(t, ui.probe_tagged(&r.p, "Exporting…"), "busy while it asks where")
+	r.m.settings_open = false
 
 	testing.expect(t, ui.probe_pick(&r.p, chosen))
 	ui.probe_frame(&r.p)
@@ -1983,7 +2003,7 @@ the_export_dialog_saves_a_report_where_chosen_and_offers_locate :: proc(t: ^test
 }
 
 // A cancelled save dialog ends the export: nothing is written, nothing is said,
-// and the toolbar reads Export again.
+// and the menu reads Export again.
 @(test)
 a_cancelled_save_dialog_exports_nothing :: proc(t: ^testing.T) {
 	root := fixture(t, "export_cancel")
@@ -1997,11 +2017,10 @@ a_cancelled_save_dialog_exports_nothing :: proc(t: ^testing.T) {
 	defer rig_close(&r)
 	testing.expect(t, settle(&r, "Done"))
 
-	ui.probe_advance(&r.p, 10, 1.0 / 60)
-	testing.expect(t, ui.probe_click(&r.p, "Export"), "the toolbar offers Export")
+	testing.expect(t, choose(&r, "Export"), "the menu offers Export")
 	ui.probe_advance(&r.p, 20, 1.0 / 60)
 	testing.expect(t, ui.probe_click_top(&r.p, "Export"), "the dialog's Export")
-	ui.probe_frame(&r.p)
+	testing.expect(t, open_settings(&r))
 	testing.expect(t, ui.probe_tagged(&r.p, "Exporting…"), "busy while it asks where")
 	testing.expect(t, ui.probe_pick(&r.p, ""), "the save dialog was open")
 	// The answer lands in one frame, which asks for the next to show it.
@@ -2009,6 +2028,7 @@ a_cancelled_save_dialog_exports_nothing :: proc(t: ^testing.T) {
 	hand_on(&r)
 	testing.expect(t, settle(&r, "Exporting…", present = false), "no longer busy")
 	testing.expect(t, ui.probe_tagged(&r.p, "Export"), "Export again")
+	r.m.settings_open = false
 	ui.probe_advance(&r.p, 60, 1.0 / 60)
 	hand_on(&r)
 	testing.expect(t, !shows_notice(&r, "Saved report", 0.5), "no notice")
@@ -2038,7 +2058,7 @@ shows_notice :: proc(r: ^Rig, prefix: string, seconds := 30.0) -> bool {
 	return false
 }
 
-// The toolbar's Export reads Exporting… from the dialog's Export until the
+// The settings menu's Export reads Exporting… from the dialog's Export until the
 // host's notice says how it went, saved or not, then reads Export again. Where
 // no save dialog can open, the report goes to the reports folder under a name
 // of its own, or fails to when the folder is not there.
@@ -2053,8 +2073,7 @@ export_is_busy_until_it_is_saved_or_fails :: proc(t: ^testing.T) {
 
 	export_once :: proc(t: ^testing.T, r: ^Rig, notice: string) {
 		testing.expect(t, settle(r, "Done"))
-		ui.probe_advance(&r.p, 10, 1.0 / 60)
-		testing.expect(t, ui.probe_click(&r.p, "Export"), "the toolbar offers Export")
+		testing.expect(t, choose(r, "Export"), "the menu offers Export")
 		ui.probe_advance(&r.p, 20, 1.0 / 60)
 		testing.expect(t, ui.probe_click_top(&r.p, "Export"), "the dialog's Export")
 		testing.expect(t, ui.probe_pick_fail(&r.p), "the save dialog was asked for")
@@ -2062,11 +2081,12 @@ export_is_busy_until_it_is_saved_or_fails :: proc(t: ^testing.T) {
 		// busy before the host has answered.
 		ui.probe_frame(&r.p)
 		hand_on(r)
-		ui.probe_frame(&r.p)
+		testing.expect(t, open_settings(r))
 		testing.expect(t, ui.probe_tagged(&r.p, "Exporting…"), "busy once asked")
 		testing.expectf(t, shows_notice(r, notice), "a notice starting %q", notice)
 		testing.expect(t, settle(r, "Exporting…", present = false), "no longer busy")
 		testing.expect(t, ui.probe_tagged(&r.p, "Export"), "Export again")
+		r.m.settings_open = false
 	}
 
 	saves: Rig
@@ -2188,12 +2208,13 @@ signer_make :: proc(t: ^testing.T) -> (s: Signer) {
 	return
 }
 
-// open_licence opens the licence dialog from the toolbar's key, named as it
-// is while leita is unlicensed or licensed.
+// open_licence opens the licence dialog from the settings menu's item, named as
+// it is while leita is unlicensed or licensed. The item asks the host for the
+// licence once the menu opens, so the click waits for its answer.
 @(private = "file")
 open_licence :: proc(t: ^testing.T, r: ^Rig, name := "Licence: free for personal use") {
-	ui.probe_advance(&r.p, 10, 1.0 / 60)
-	testing.expect(t, ui.probe_click(&r.p, name), "the toolbar offers the licence")
+	testing.expect(t, open_settings(r) && settle(r, name), "the menu offers the licence")
+	testing.expect(t, ui.probe_click_top(&r.p, name))
 	ui.probe_advance(&r.p, 20, 1.0 / 60)
 }
 
@@ -2405,7 +2426,7 @@ reports_and_change_tracking_need_a_licence_after_the_trial :: proc(t: ^testing.T
 		testing.expect(t, ui.probe_click(&r.p, "Change"))
 		ui.probe_advance(&r.p, 10, 1.0 / 60)
 		testing.expect_value(t, r.m.colour, view.Colouring.Change)
-		testing.expect(t, ui.probe_click(&r.p, "Export"))
+		testing.expect(t, choose(&r, "Export"))
 		ui.probe_advance(&r.p, 20, 1.0 / 60)
 		testing.expect(t, ui.probe_tagged(&r.p, "Export report"), "the export dialog opens")
 	}
@@ -2425,7 +2446,7 @@ reports_and_change_tracking_need_a_licence_after_the_trial :: proc(t: ^testing.T
 		ui.probe_advance(&r.p, 10, 1.0 / 60)
 		testing.expect(t, !ui.probe_tagged(&r.p, ENDED), "dismissed, it goes")
 
-		testing.expect(t, ui.probe_click(&r.p, "Export"))
+		testing.expect(t, choose(&r, "Export"))
 		ui.probe_advance(&r.p, 20, 1.0 / 60)
 		testing.expect(
 			t,
@@ -2481,12 +2502,12 @@ reports_and_change_tracking_need_a_licence_after_the_trial :: proc(t: ^testing.T
 	testing.expect(t, ui.probe_click(&r.p, "Change"))
 	ui.probe_advance(&r.p, 10, 1.0 / 60)
 	testing.expect_value(t, r.m.colour, view.Colouring.Change)
-	testing.expect(t, ui.probe_click(&r.p, "Export"))
+	testing.expect(t, choose(&r, "Export"))
 	ui.probe_advance(&r.p, 20, 1.0 / 60)
 	testing.expect(t, ui.probe_tagged(&r.p, "Export report"), "under a licence, Export works")
 }
 
-// The globe's menu lists the languages by their own names; choosing one switches
+// The settings menu's Language lists the languages by their own names; choosing one switches
 // the window from the next frame, and the host words what it says next in it,
 // here why a licence key was refused.
 @(test)
@@ -2501,12 +2522,10 @@ the_language_menu_switches_the_window_and_the_host :: proc(t: ^testing.T) {
 	defer rig_close(&r)
 	testing.expect(t, settle(&r, "Done"))
 
-	// The toolbar settles first: a press lands where the last frame drew.
-	ui.probe_advance(&r.p, 10, 1.0 / 60)
-	testing.expect(t, ui.probe_click(&r.p, "Language"))
+	testing.expect(t, choose(&r, "Language"))
 	ui.probe_advance(&r.p, 20, 1.0 / 60)
 	testing.expect(t, ui.probe_tagged(&r.p, "日本語"), "each language by its own name")
-	testing.expect(t, ui.probe_click(&r.p, "Deutsch"))
+	testing.expect(t, ui.probe_click_top(&r.p, "Deutsch"))
 	// The frame after the choice tells the host.
 	press_and_hand_on(&r)
 	testing.expect(t, settle(&r, msg.tr(de, .Done)), "the window speaks German")
@@ -2537,14 +2556,12 @@ the_language_and_theme_chosen_are_there_the_next_run :: proc(t: ^testing.T) {
 		defer rig_close(&r)
 		testing.expect(t, settle(&r, "Done"))
 		testing.expect(t, !r.m.dark, "light until chosen")
-		ui.probe_advance(&r.p, 10, 1.0 / 60)
-		testing.expect(t, ui.probe_click(&r.p, "Language"))
+		testing.expect(t, choose(&r, "Language"))
 		ui.probe_advance(&r.p, 20, 1.0 / 60)
-		testing.expect(t, ui.probe_click(&r.p, "Deutsch"))
+		testing.expect(t, ui.probe_click_top(&r.p, "Deutsch"))
 		press_and_hand_on(&r)
 		testing.expect(t, settle(&r, msg.tr(de, .Done)))
-		ui.probe_advance(&r.p, 10, 1.0 / 60)
-		testing.expect(t, ui.probe_click(&r.p, msg.tr(de, .Theme_Dark)))
+		testing.expect(t, choose(&r, msg.tr(de, .Theme_Dark)))
 		press_and_hand_on(&r)
 		testing.expect(t, r.m.dark)
 		testing.expect(
@@ -2594,7 +2611,9 @@ a_search_typed_during_a_scan_refines_until_it_is_done :: proc(t: ^testing.T) {
 	rig_open(&r, "/", made_up = true)
 	defer rig_close(&r)
 
+	testing.expect(t, open_settings(&r))
 	testing.expect(t, settle(&r, "Stop"), "the scan is running")
+	r.m.settings_open = false
 	ui.probe_advance(&r.p, 10, 1.0 / 60)
 	testing.expect(t, ui.probe_click(&r.p, "Search"), "the magnifier")
 	ui.probe_advance(&r.p, 2, 1.0 / 60)
@@ -2602,7 +2621,8 @@ a_search_typed_during_a_scan_refines_until_it_is_done :: proc(t: ^testing.T) {
 	ui.probe_frame(&r.p)
 	hand_on(&r)
 	testing.expect(t, settle(&r, "cache"), "hits arrive")
-	testing.expect(t, ui.probe_tagged(&r.p, "Stop"), "while the scan runs")
+	said := ui.probe_semantics(&r.p, context.temp_allocator)
+	testing.expectf(t, strings.contains(said, `"Scanning"`), "while the scan runs:\n%s", said)
 	during := summary_of(&r)
 	testing.expectf(t, strings.has_prefix(during, "The best 500 of "), "a total: %q", during)
 	// The hits come best first: a folder that is the term heads the list.
@@ -2797,8 +2817,7 @@ monitoring_watches_a_place_and_hands_it_to_the_scheduler :: proc(t: ^testing.T) 
 	rig_open(&r, root, kept = kept, scheduler = &host, monitor_argv = {"/usr/bin/leita"})
 	defer rig_close(&r)
 	testing.expect(t, settle(&r, "Done"))
-	ui.probe_advance(&r.p, 10, 1.0 / 60)
-	testing.expect(t, ui.probe_click(&r.p, "Monitoring"), "the toolbar offers monitoring")
+	testing.expect(t, choose(&r, "Monitoring"), "the menu offers monitoring")
 	ui.probe_frame(&r.p)
 	hand_on(&r)
 	testing.expect(t, settle(&r, "No place is watched yet."))

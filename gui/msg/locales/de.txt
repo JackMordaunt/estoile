@@ -3,6 +3,7 @@
 # Testphase; die Diagramme heißen Sunburst, Treemap und Icicle.
 
 # Toolbar
+settings = Einstellungen
 language = Sprache
 about = Über {0}
 stop = Stopp

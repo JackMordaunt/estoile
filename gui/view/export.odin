@@ -4,7 +4,6 @@ import "core:strings"
 import "core:time"
 
 import "jm:ui"
-import "jm:ui/design"
 import "jm:ui/ops"
 import "jm:ui/primer"
 
@@ -14,7 +13,7 @@ import "../msg"
 import "../query"
 
 /*
-Exporting a report of the finished scan. The toolbar's Export opens a dialog
+Exporting a report of the finished scan. Export in the settings menu opens a dialog
 that asks for the format and whether to include what Reclaim finds; its
 Export opens the platform's save dialog in the reports folder, the user's
 Documents, with a name for the target and the minute, filtered to the format.
@@ -24,30 +23,33 @@ nothing said. Where no save dialog can open, the host saves in the reports
 folder under a name of its own, so nothing is replaced.
 */
 
-// export_button is the toolbar's Export, there whenever there is a scan and
-// live once it is done, since a report is of a finished scan: shown from the
-// start, the toolbar keeps its layout when the scan ends. While a report is
-// written it reads Exporting… with a spinner for its icon, and is heard as
-// disabled; a click then does nothing, so one export runs at a time.
+// export_item is the settings menu's Export, there whenever there is a scan
+// and live once it is done, since a report is of a finished scan. While a
+// report is written it reads Exporting… with a spinner for its icon, and is
+// heard as loading; choosing it then does nothing, so one export runs at a
+// time. Returns true on the frame it is chosen.
 @(private)
-export_button :: proc(gtx: ^ui.Ctx, m: ^Model, prog: ^query.Progress_Result) {
+export_item :: proc(menu: ^primer.Action_Menu, m: ^Model, prog: ^query.Progress_Result) -> bool {
 	if prog == nil || prog.generation == 0 {
-		return
+		return false
 	}
 	busy := exporting(m, prog)
-	state := design.Interaction.Live if prog.state == .Done else .Disabled
-	if primer.button(
-		gtx,
+	return primer.action_menu_item(
+		menu,
 		tr(.Exporting) if busy else tr(.Export),
 		leading = .Download,
+		disabled = prog.state != .Done,
 		loading = busy,
-		state = state,
-	) {
-		if unlocked(gtx) {
-			m.export_open = true
-		} else {
-			licence_show(m, msg.Msg.Reports_Locked)
-		}
+	)
+}
+
+// export_show opens the export dialog, or the licence dialog saying why not.
+@(private)
+export_show :: proc(gtx: ^ui.Ctx, m: ^Model) {
+	if unlocked(gtx) {
+		m.export_open = true
+	} else {
+		licence_show(m, msg.Msg.Reports_Locked)
 	}
 }
 

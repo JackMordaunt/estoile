@@ -9,6 +9,7 @@
 # three charts Sunburst, Treemap and Icicle, licence (British spelling).
 
 # Toolbar
+settings = Settings
 language = Language
 about = About {0}
 stop = Stop

@@ -5,6 +5,7 @@
 # licencia (licence).
 
 # Toolbar
+settings = Ajustes
 language = Idioma
 about = Acerca de {0}
 stop = Detener

@@ -229,14 +229,17 @@ Model :: struct {
 	buy_url:          string,
 	about_open:       bool, // the About dialog (about.odin)
 	notices_open:     bool, // the licences of what leita is built on (about.odin)
-	// The language in use and its text, whether the menu of languages is open,
+	// The language in use and its text, whether the submenu of languages is open,
 	// and the language the host was last told (language.odin).
 	locale:           i18n.Locale,
 	strings:          ^msg.Strings,
 	language_open:    bool,
 	locale_told:      Maybe(i18n.Locale),
-	// What the person chose in an earlier run has been put in use (settings.odin).
+	// What the person chose in an earlier run has been put in use, whether the
+	// settings menu is open, and the dialog chosen from it (settings.odin).
 	settings_read:    bool,
+	settings_open:    bool,
+	settings_dialog:  Settings_Dialog,
 	// The Monitoring dialog (monitor.odin): whether it is open, the place typed
 	// to watch, the change count when one was sent until the host answers, and
 	// whether it has answered since the dialog opened.
@@ -471,31 +474,7 @@ toolbar :: proc(gtx: ^ui.Ctx, m: ^Model, prog: ^query.Progress_Result) {
 	ui.spacer(gtx, 8)
 	ui.flexible(gtx, 1)
 	location_bar(gtx, m, prog)
-	export_button(gtx, m, prog)
-	switch {
-	case prog != nil && prog.state == .Scanning:
-		if primer.button(gtx, tr(.Stop), .Danger, leading = .Square_Fill) {
-			ui.command(gtx, command.Command(command.Stop{}))
-		}
-	case prog != nil && prog.target != "":
-		// Scanning the same place again picks up what changed on disk since.
-		if primer.icon_button(gtx, .Sync, tr(.Rescan), .Invisible) {
-			ui.command(gtx, command.Command(command.Scan{path = command.text_make(prog.target)}))
-		}
-	}
-	monitor_button(gtx, m, prog)
-	licence_button(gtx, m)
-	language_button(gtx, m)
-	about_button(gtx, m)
-	if primer.icon_button(
-		gtx,
-		m.dark ? .Sun : .Moon,
-		tr(.Theme_Light) if m.dark else tr(.Theme_Dark),
-		.Invisible,
-	) {
-		m.dark = !m.dark
-		ui.command(gtx, command.Command(command.Theme{dark = m.dark}))
-	}
+	settings_menu(gtx, m, prog)
 }
 
 /*

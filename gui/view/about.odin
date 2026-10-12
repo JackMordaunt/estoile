@@ -12,7 +12,7 @@ import "../notices"
 import "../query"
 
 /*
-About: the toolbar's info button opens a dialog that says what this is and
+About: About in the settings menu opens a dialog that says what this is and
 whose: the mark and the name, the version, the business that makes it, what
 it is for, the licence it runs under as the licence dialog says it, where to
 read more, and a link to the licences of what it is built on, which opens a
@@ -28,13 +28,6 @@ HOME_URL :: "https://mordaunt.dev/leita"
 // ABOUT_MARK_SIZE is the mark's size in the About dialog.
 ABOUT_MARK_SIZE :: 72
 
-// about_button is the toolbar's info button, which opens About.
-@(private)
-about_button :: proc(gtx: ^ui.Ctx, m: ^Model) {
-	if primer.icon_button(gtx, .Info, trf(gtx, .About, version.NAME), .Invisible) {
-		m.about_open = true
-	}
-}
 
 // about_dialog is About, over everything while it is open.
 @(private)

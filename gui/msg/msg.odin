@@ -21,6 +21,7 @@ package leita_msg
 import "jm:i18n"
 
 Msg :: enum u16 {
+	Settings,
 	Language,
 	About,
 	Stop,

@@ -10,7 +10,7 @@ import "../command"
 import "../msg"
 
 /*
-The window's language. The toolbar's globe opens a menu of the languages leita
+The window's language. Language in the settings menu opens a submenu of the languages leita
 offers, each by its own name, since a reader looks for theirs that way; a choice
 switches the whole window from the next frame. The window opens in the system's
 language (msg.system_locale), or the one the person picked in an earlier run,
@@ -56,23 +56,19 @@ trf :: proc(gtx: ^ui.Ctx, key: msg.Msg, args: ..i18n.Arg) -> string {
 	return msg.trf(current(), key, ..args, allocator = gtx.allocator)
 }
 
-// language_button is the toolbar's globe and the menu of languages it opens.
+// language_item is the settings menu's Language and the submenu of languages
+// it opens. The submenu is drawn after every other item of the menu, as
+// primer.action_menu_submenu_open asks (jm/ui/primer/menus.odin), so
+// settings_menu calls language_menu.
 @(private)
-language_button :: proc(gtx: ^ui.Ctx, m: ^Model) {
-	// The menu hangs from the globe, drawn after it in one stack, as
-	// primer.action_menu_button asks of its menu.
-	ui.stack(gtx)
-	if primer.icon_button(gtx, .Globe, tr(.Language), .Invisible, expanded = m.language_open) {
-		m.language_open = !m.language_open
-	}
-	menu := primer.action_menu_open(
-		gtx,
-		&m.language_open,
-		ui.last_widget(gtx),
-		selection = .Single,
-		align = .End,
-		name = tr(.Language),
-	)
+language_item :: proc(menu: ^primer.Action_Menu, m: ^Model) {
+	primer.action_menu_item(menu, tr(.Language), leading = .Globe, submenu = &m.language_open)
+}
+
+// language_menu is the submenu of languages that language_item opens.
+@(private)
+language_menu :: proc(gtx: ^ui.Ctx, parent: ^primer.Action_Menu, m: ^Model) {
+	menu := primer.action_menu_submenu_open(parent, &m.language_open, selection = .Single)
 	defer primer.action_menu_close(&menu)
 	if !menu.visible {
 		return

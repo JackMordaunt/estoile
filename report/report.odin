@@ -62,6 +62,9 @@ Report :: struct {
 	// reclaim.Category, a category with nothing in it left out: absent unless the
 	// caller asked for it.
 	reclaim:             Maybe([]Group),
+	// Whether the volume's space passes the limits asked for (threshold.odin),
+	// absent unless --warn-used, --fail-used or --min-free was.
+	thresholds:          Maybe(Threshold),
 	allocator:           mem.Allocator,
 }
 
@@ -126,11 +129,14 @@ path under the top, names joined by "/", "" for the top, as the window keeps
 them (history).
 */
 Options :: struct {
-	top:      int,
-	reclaim:  bool,
-	home:     string,
-	previous: Maybe(Snapshot),
-	licensee: string, // whose licence leita runs under, "" for none
+	top:       int,
+	reclaim:   bool,
+	home:      string,
+	previous:  Maybe(Snapshot),
+	licensee:  string, // whose licence leita runs under, "" for none
+	warn_used: int, // --warn-used, percent used; 0 for no check
+	fail_used: int, // --fail-used, percent used; 0 for no check
+	min_free:  u64, // --min-free, bytes; 0 for no check
 }
 
 // Snapshot is an earlier scan as history keeps it: when it was taken, and what
@@ -179,6 +185,15 @@ build :: proc(
 	r.started = facts.started
 	r.duration = facts.duration
 	r.space = facts.space
+	if th, configured, _ := threshold_of(
+		r.space,
+		opt.warn_used,
+		opt.fail_used,
+		opt.min_free,
+		allocator,
+	); configured {
+		r.thresholds = th
+	}
 
 	top := t.root
 	if top >= roll.seen || .Used not_in scan.node_flags(scan.node(t, top)) {
@@ -296,6 +311,12 @@ destroy :: proc(r: ^Report) {
 			delete(g.items, r.allocator)
 		}
 		delete(groups, r.allocator)
+	}
+	if th, ok := r.thresholds.?; ok {
+		for reason in th.reasons {
+			delete(reason, r.allocator)
+		}
+		delete(th.reasons, r.allocator)
 	}
 	delete(r.version, r.allocator)
 	delete(r.licensee, r.allocator)

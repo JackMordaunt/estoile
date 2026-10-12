@@ -114,6 +114,28 @@ write_json :: proc(sb: ^strings.Builder, r: ^Report) {
 	} else {
 		strings.write_string(sb, "null")
 	}
+	strings.write_string(sb, ",\n  \"thresholds\": ")
+	if th, ok := r.thresholds.?; ok {
+		strings.write_string(sb, "{\"warn_used\": ")
+		json_int_or_null(sb, th.warn_used)
+		strings.write_string(sb, ", \"fail_used\": ")
+		json_int_or_null(sb, th.fail_used)
+		strings.write_string(sb, ", \"min_free\": ")
+		json_u64_or_null(sb, th.min_free)
+		fmt.sbprintf(
+			sb,
+			", \"used_percent\": %.6f, \"verdict\": %q, \"reasons\": [",
+			th.used_percent,
+			VERDICT_KEYS[th.verdict],
+		)
+		for reason, i in th.reasons {
+			strings.write_string(sb, "," if i > 0 else "")
+			json_string(sb, reason)
+		}
+		strings.write_string(sb, "]}")
+	} else {
+		strings.write_string(sb, "null")
+	}
 	strings.write_string(sb, ",\n  \"generated_by\": ")
 	json_string(sb, generated_by(r))
 	strings.write_string(sb, "\n}\n")
@@ -155,6 +177,24 @@ json_path :: proc(sb: ^strings.Builder, path: string) {
 			base64.encode(transmute([]byte)path, allocator = context.temp_allocator),
 		)
 		strings.write_byte(sb, '"')
+	}
+}
+
+@(private)
+json_int_or_null :: proc(sb: ^strings.Builder, v: Maybe(int)) {
+	if n, ok := v.?; ok {
+		fmt.sbprintf(sb, "%d", n)
+	} else {
+		strings.write_string(sb, "null")
+	}
+}
+
+@(private)
+json_u64_or_null :: proc(sb: ^strings.Builder, v: Maybe(u64)) {
+	if n, ok := v.?; ok {
+		fmt.sbprintf(sb, "%d", n)
+	} else {
+		strings.write_string(sb, "null")
 	}
 }
 

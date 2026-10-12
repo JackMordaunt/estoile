@@ -82,6 +82,29 @@ leita D: --report usage.pdf
 
 `leita -h` lists every option.
 
+## Scripts and monitoring
+
+Alert from your RMM tool the moment a drive passes 90% used, no report and no
+licence required. `--warn-used` and `--fail-used` check the percent used,
+`--min-free` checks the bytes still free, and leita exits with a code your
+script or RMM tool (NinjaOne, Datto, ConnectWise, ...) can act on:
+
+```sh
+leita D: --warn-used 80 --fail-used 95 --min-free 20GiB
+```
+
+| Exit code | Meaning |
+| --- | --- |
+| 0 | OK: no limit was crossed |
+| 1 | Error: a bad flag, or the drive could not be scanned |
+| 2 | Warning: `--warn-used` was crossed |
+| 3 | Failed: `--fail-used` or `--min-free` was crossed |
+
+A one-line summary goes to standard error (`warn: 83.4% used, at or past
+--warn-used 80%`); nothing is printed for an OK scan beyond the usual summary.
+Add `--report - --format json` to also get the full scan on standard output,
+with the verdict in its `thresholds` member (`report/SCHEMA.md`).
+
 ## Licensing
 
 **Scanning, the charts and Reclaim are free for personal use.** That covers

@@ -132,6 +132,95 @@ a_report_it_cannot_write_is_refused :: proc(t: ^testing.T) {
 	}
 }
 
+// A threshold flag that cannot be read is refused before anything is scanned.
+@(test)
+a_bad_threshold_flag_is_refused :: proc(t: ^testing.T) {
+	cases := [?]Options {
+		{min_free = "big"},
+		{warn_used = 101},
+		{warn_used = -1},
+		{fail_used = 101},
+		{fail_used = -1},
+	}
+	for c in cases {
+		testing.expectf(t, scan_and_say(c) == EXIT_ERROR, "%v was not refused", c)
+	}
+}
+
+/*
+With no threshold flag given, a plain scan exits 0 as it always did, whether
+or not this engine knows the volume's space. The report it writes still names
+what was actually found (a real file's bytes, not a stub's zero value), and
+its "thresholds" member stays null, since none was asked for.
+*/
+@(test)
+no_threshold_flags_leaves_the_exit_code_unchanged :: proc(t: ^testing.T) {
+	dir, dir_err := os.temp_directory(context.temp_allocator)
+	testing.expect(t, dir_err == nil, "no temp directory")
+	root := fmt.tprintf("%s/leita_threshold_unconfigured", dir)
+	os.remove_all(root)
+	defer os.remove_all(root)
+	testing.expect(t, os.make_directory(root) == nil, "could not make the root")
+	testing.expect(
+		t,
+		os.write_entire_file(fmt.tprintf("%s/a.bin", root), make([]byte, 4096)) == nil,
+	)
+	out := fmt.tprintf("%s.json", root)
+	defer os.remove(out)
+
+	testing.expect_value(
+		t,
+		scan_and_say({target = root, report = out, no_history = true}),
+		EXIT_OK,
+	)
+
+	data, read_err := os.read_entire_file(out, context.temp_allocator)
+	testing.expect(t, read_err == nil, "no report written")
+	v, err := json.parse(data, parse_integers = true, allocator = context.temp_allocator)
+	testing.expect_value(t, err, json.Error.None)
+	top, is_object := v.(json.Object)
+	testing.expect(t, is_object, "a report is one object")
+	if !is_object {
+		return
+	}
+	testing.expect_value(t, top["totals"].(json.Object)["bytes"].(json.Integer), 4096)
+	testing.expect(t, top["thresholds"].(json.Null) == nil, "none was asked for")
+}
+
+/*
+A full LEITA_SYNTHETIC scan (--warn-used, --fail-used and --min-free read the
+volume's space synth.space makes up) is deliberately not exercised here as an
+automated test: a manual run (card 40's log has the session, including the
+built binary's command and output, and the reproduction below) took on the
+order of 10s to scan the made-up disk to completion, and running that
+concurrently with this suite's many real, fast Walk-engine scans reliably
+reproduced, against scan.Tree on the committed main and unrelated to this
+change, two concurrently live Tree instances' largest_files/largest_directories
+bleeding into each other, one scan's paths turning up prefixed by the other's.
+The cause within scan.Tree is not confirmed, only the symptom and that it
+predates this change; filed separately (sb comment on card 40). Until that is
+run down, it is not safe to add a slow synthetic scan to this parallel suite.
+
+The pipeline from --warn-used/--fail-used/--min-free down to the exit code and
+the JSON "thresholds" member was checked by hand against the built binary
+instead (same card 40 log): LEITA_SYNTHETIC=350 with --warn-used 80
+--fail-used 95 --min-free 50GiB --report - --format json exited 3 and wrote a
+"thresholds" object with verdict "fail" and all three reasons. Everything
+below that line in the pipeline (report.build's wiring from Options into
+Report.thresholds, and write_json's rendering of it) is exercised without any
+scan by json_carries_the_threshold_verdict in report/report_test.odin, which
+builds a Report by hand.
+*/
+
+// exit_code is what a script reads, read_me the way report.threshold_of's own
+// cases are checked (report/report_test.odin): no scan needed for this part.
+@(test)
+exit_code_reads_a_verdict_back :: proc(t: ^testing.T) {
+	testing.expect_value(t, exit_code(.Ok), EXIT_OK)
+	testing.expect_value(t, exit_code(.Warn), EXIT_WARN)
+	testing.expect_value(t, exit_code(.Fail), EXIT_FAIL)
+}
+
 // Once the trial is over without a licence, a report is refused before anything
 // is read; the scan alone is still free.
 @(test)

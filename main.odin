@@ -14,6 +14,7 @@ import "core:debug/trace"
 import "core:flags"
 import "core:fmt"
 import "core:os"
+import "core:strings"
 import "core:time"
 
 import "history"
@@ -57,8 +58,23 @@ Options :: struct {
 	top:          int `usage:"Largest directories and files a report lists, 50 unless set."`,
 	reclaim:      bool `usage:"Include in the report what can be deleted and made again."`,
 	no_history:   bool `usage:"Neither compare with earlier scans of this place nor keep this one."`,
+	warn_used:    int `usage:"Exit code 2 once the volume is at least this percent used, e.g. 80."`,
+	fail_used:    int `usage:"Exit code 3 once the volume is at least this percent used, e.g. 95."`,
+	min_free:     string `usage:"Exit code 3 once the volume has less free than this, e.g. 20GiB."`,
 	version:      bool `usage:"Print which leita this is and stop."`,
 }
+
+/*
+Exit codes a script reads instead of this command's words, so a monitoring
+tool can run leita against a drive and act on the result without parsing any
+of them: see "Scripts and monitoring" in README.md. A code already in use
+keeps its meaning; EXIT_WARN and EXIT_FAIL are new and only returned when
+--warn-used, --fail-used or --min-free was asked for.
+*/
+EXIT_OK    :: 0
+EXIT_ERROR :: 1 // a bad flag, a target that could not be scanned, or the like
+EXIT_WARN  :: 2 // the scan finished; a --warn-used limit was crossed
+EXIT_FAIL  :: 3 // the scan finished; a --fail-used or --min-free limit was crossed
 
 main :: proc() {
 	os.exit(run())
@@ -137,6 +153,22 @@ scan_and_say :: proc(opt: Options, kept := "", licensee := "", locked := false) 
 		if format != .Pdf || opt.report == "" {
 			fmt.eprintln("error: --paper lays out a PDF report; name one with --report")
 			return 1
+		}
+	}
+	if opt.warn_used < 0 || opt.warn_used > 100 {
+		fmt.eprintfln("error: --warn-used is a percent, 0 to 100, not %d", opt.warn_used)
+		return EXIT_ERROR
+	}
+	if opt.fail_used < 0 || opt.fail_used > 100 {
+		fmt.eprintfln("error: --fail-used is a percent, 0 to 100, not %d", opt.fail_used)
+		return EXIT_ERROR
+	}
+	min_free: u64
+	if opt.min_free != "" {
+		ok: bool
+		if min_free, ok = human.parse_bytes(opt.min_free); !ok {
+			fmt.eprintfln("error: cannot read --min-free %q: a size such as 20GiB", opt.min_free)
+			return EXIT_ERROR
 		}
 	}
 	// A report on standard output is the whole of it; the summary would corrupt it.
@@ -256,8 +288,26 @@ scan_and_say :: proc(opt: Options, kept := "", licensee := "", locked := false) 
 	}
 	k := keep_scan(kept, &t, &roll, engine.engine)
 	say_kept(k, survey.total(&roll, t.root) if t.root < roll.seen else 0, quiet)
+
+	space := volume_space(&f, engine.engine, target)
+	thresholds_set := opt.warn_used > 0 || opt.fail_used > 0 || min_free > 0
+	th, _, known := report.threshold_of(
+		space,
+		opt.warn_used,
+		opt.fail_used,
+		min_free,
+		context.temp_allocator,
+	)
+	if thresholds_set && !known {
+		fmt.eprintln("error: cannot check thresholds: this target's free space is unknown")
+		return EXIT_ERROR
+	}
+	if thresholds_set {
+		say_threshold(th)
+	}
+
 	if opt.report == "" {
-		return 0
+		return exit_code(th.verdict)
 	}
 
 	facts := report.Facts {
@@ -265,29 +315,76 @@ scan_and_say :: proc(opt: Options, kept := "", licensee := "", locked := false) 
 		engine   = engine.engine,
 		started  = started,
 		duration = elapsed,
-	}
-	// As the window says it: a made-up disk has made-up space, and a walk asks
-	// the filesystem it walked, which is mounted, or it could not be walked.
-	#partial switch engine.engine {
-	case .Mft:
-		facts.space = mft_space(&f.table)
-	case .Synthetic:
-		cfg, _ := synth.from_env()
-		total, free := synth.space(cfg.day)
-		facts.space = report.Space{total, free}
-	case .Walk:
-		if total, free, ok := scan.space(scan.location(target, context.temp_allocator)); ok {
-			facts.space = report.Space{total, free}
-		}
+		space    = space,
 	}
 	r := report.build(
 		&t,
 		&roll,
 		facts,
-		{top = opt.top, reclaim = opt.reclaim, previous = k.previous, licensee = licensee},
+		{
+			top = opt.top,
+			reclaim = opt.reclaim,
+			previous = k.previous,
+			licensee = licensee,
+			warn_used = opt.warn_used,
+			fail_used = opt.fail_used,
+			min_free = min_free,
+		},
 	)
 	defer report.destroy(&r)
-	return write_report(&r, opt.report, format, paper)
+	if code := write_report(&r, opt.report, format, paper); code != 0 {
+		return code
+	}
+	return exit_code(th.verdict)
+}
+
+// volume_space is what the scanned volume holds and has free, when the engine
+// that scanned it knows: the MFT reads it from the boot sector, synth makes it
+// up for its made-up day, and a walk asks the filesystem it is mounted on.
+volume_space :: proc(
+	f: ^survey.Fill,
+	engine: scan.Engine,
+	target: scan.Target,
+) -> Maybe(report.Space) {
+	#partial switch engine {
+	case .Mft:
+		return mft_space(&f.table)
+	case .Synthetic:
+		cfg, _ := synth.from_env()
+		total, free := synth.space(cfg.day)
+		return report.Space{total, free}
+	case .Walk:
+		if total, free, ok := scan.space(scan.location(target, context.temp_allocator)); ok {
+			return report.Space{total, free}
+		}
+	}
+	return nil
+}
+
+// exit_code is what a verdict reads back as, for a script to test.
+exit_code :: proc(v: report.Verdict) -> int {
+	#partial switch v {
+	case .Warn:
+		return EXIT_WARN
+	case .Fail:
+		return EXIT_FAIL
+	}
+	return EXIT_OK
+}
+
+// say_threshold writes th's verdict to standard error as a single line, one of
+// the limits crossed per line below it, never to standard output: a report on
+// "-" writes JSON there, and a plain scan's summary should not grow a line that
+// is silent unless asked for. Ok says nothing, since the exit code already does.
+say_threshold :: proc(th: report.Threshold) {
+	if th.verdict == .Ok {
+		return
+	}
+	fmt.eprintfln(
+		"%s: %s",
+		report.VERDICT_KEYS[th.verdict],
+		strings.join(th.reasons, "; ", context.temp_allocator),
+	)
 }
 
 /*

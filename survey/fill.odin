@@ -7,6 +7,7 @@ package survey
 import "core:fmt"
 import "core:sync"
 import "core:thread"
+import "core:time"
 
 import "../ntfs"
 import "../scan"
@@ -37,11 +38,14 @@ Fill :: struct {
 	// A file to keep the place's whole tree in between runs. Set, the place is
 	// updated from it by what the system says changed, when that can be trusted, and
 	// read whole otherwise; either way the result is kept there for next time. Empty,
-	// the place is read whole and nothing is kept, as the window and the command
-	// line do. See update.odin.
+	// the place is read whole and nothing is kept, as with history off. See
+	// update.odin.
 	baseline:  string, //review:ignore odin-destroy-incomplete borrowed from the caller
+	whole:     bool, // with a baseline: read the place whole all the same, and keep it
 	how:       Fill_Kind, // with a baseline: whether the place was read whole or updated
 	why:       string, //review:ignore odin-destroy-incomplete a constant, never freed: why it was read whole
+	reread:    u64, // updated: how many directories were read rather than copied
+	taken:     time.Time, // updated: when the tree updated from was kept
 	saved:     bool, // the result was kept as the next baseline
 	// The MFT reader's own table, which carries what only NTFS knows. It outlives the
 	// tree, whose names are borrowed from it.

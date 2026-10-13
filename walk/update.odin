@@ -1,6 +1,7 @@
 package walk
 
 import "base:runtime"
+import "core:sync"
 
 import "../scan"
 
@@ -37,6 +38,8 @@ Update :: struct {
 	probe:  bool,
 	since:  i64,
 	restat: u64,
+	// How many directories the update read rather than copied, counted as it goes.
+	read:   u64,
 	// base's children, built by `update` if left empty. A caller that has built it
 	// already, to find what changed in base, passes it and keeps it.
 	index:  scan.Index,
@@ -191,6 +194,7 @@ and walked whole.
 @(private)
 list_dir :: proc(d: Dir, w: ^Worker) -> (nodes, bytes: u64, ok: bool) {
 	u := w.update
+	sync.atomic_add(&u.read, 1)
 	clear(&w.siblings)
 	for c := u.index.first[d.base]; c != scan.NO_NODE; c = u.index.next[c] {
 		w.siblings[scan.name_of(u.base, c)] = c

@@ -376,6 +376,33 @@ no_history_leaves_the_store_alone :: proc(t: ^testing.T) {
 
 	testing.expect_value(t, scan_and_say({target = root, no_history = true}, store), 0)
 	testing.expect(t, !os.exists(store), "the store was made")
+	testing.expect(t, !os.exists(filepath.dir(store)), "a baseline was kept")
+}
+
+// With history on, a scan keeps the place's whole tree beside the store, where the
+// window and the monitor find it, whole or not; the next scan updates from it.
+@(test)
+a_scan_keeps_a_baseline_beside_the_store :: proc(t: ^testing.T) {
+	root, store := fresh(t, "leita_baseline_cli")
+	defer os.remove_all(root)
+	defer os.remove_all(filepath.dir(store))
+	write_zeros(t, fmt.tprintf("%s/a.bin", root), 1 << 20)
+	target, _, err := scan.resolve(root)
+	testing.expect_value(t, err, scan.Error.None)
+	defer scan.target_destroy(&target)
+	baseline := history.baseline_path(
+		store,
+		scan.location(target, context.temp_allocator),
+		context.temp_allocator,
+	)
+
+	testing.expect_value(t, scan_and_say({target = root, whole = true}, store), 0)
+	testing.expectf(t, os.exists(baseline), "no baseline at %s", baseline)
+	testing.expect(t, os.remove(baseline) == nil, "could not remove the baseline")
+	testing.expect_value(t, scan_and_say({target = root}, store), 0)
+	testing.expectf(t, os.exists(baseline), "no baseline at %s", baseline)
+	testing.expect_value(t, scan_and_say({target = root}, store), 0)
+	testing.expect_value(t, snapshot_count(t, store), 3)
 }
 
 // A store another program holds locked for writing past history.BUSY_WAIT leaves

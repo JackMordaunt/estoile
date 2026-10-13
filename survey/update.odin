@@ -1,6 +1,11 @@
 package survey
 
+import "core:fmt"
+import "core:os"
 import "core:strings"
+import "core:time"
+
+import "jm:timefmt"
 
 import "../changes"
 import "../gui/query"
@@ -29,8 +34,8 @@ RESTAT :: query.KEPT_MIN
 
 /*
 Read the place, from its baseline when that can be trusted, and keep the result as
-the next baseline. A place is read whole when it has no baseline, the baseline is of
-another place or cannot be read, or the system cannot say what changed
+the next baseline. A place is read whole when f.whole asks, it has no baseline, the
+baseline is of another place or cannot be read, or the system cannot say what changed
 (changes.since says why); f.why says which. Only a walk's or the MFT's tree is
 kept: a made-up disk is always read whole, and fill_run never brings one here.
 */
@@ -40,7 +45,13 @@ fill_from_baseline :: proc(f: ^Fill) {
 	defer delete(place)
 
 	base: scan.Tree
-	cursor, why, loaded := baseline_load(f.baseline, place, &base)
+	cursor: changes.Cursor
+	why := "asked to read it whole"
+	loaded: bool
+	if !f.whole {
+		f.taken, _ = os.modification_time_by_path(f.baseline)
+		cursor, why, loaded = baseline_load(f.baseline, place, &base)
+	}
 	if loaded {
 		defer scan.tree_destroy(&base)
 		set, next, err := changes.since(place, cursor)
@@ -115,7 +126,32 @@ apply :: proc(f: ^Fill, place: string, base: ^scan.Tree, set: changes.Change_Set
 		// Not in the base: new, so the directory above it finds it and walks it.
 		u.marks[n] = .Deep if exact else max(u.marks[n], walk.Mark.List)
 	}
-	return walk.update(place, &u, f.tree, f.wcfg)
+	err := walk.update(place, &u, f.tree, f.wcfg)
+	f.reread = u.read
+	return err
+}
+
+/*
+how_read says in words how a fill with a baseline read its place, in the temp
+allocator: "updated: N directories read again since <time>", or "read whole: <why>".
+An update with no count or time to give, as a run recorded before them, is "updated
+from the last scan".
+*/
+how_read :: proc(updated: bool, why: string, reread: u64 = 0, taken := time.Time{}) -> string {
+	switch {
+	case updated && taken == {}:
+		return "updated from the last scan"
+	case updated:
+		return fmt.tprintf(
+			"updated: %d %s read again since %s",
+			reread,
+			"directory" if reread == 1 else "directories",
+			timefmt.local(taken, "%Y-%m-%d %H:%M", context.temp_allocator),
+		)
+	case why != "":
+		return fmt.tprintf("read whole: %s", why)
+	}
+	return "read whole"
 }
 
 // The directory of `base` that `path` names, or the nearest above it that the base

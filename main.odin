@@ -50,6 +50,8 @@ Scan
   --live                    draw the answer as it is found rather than once at the end
   --no-history              neither compare with earlier scans of this place nor keep
                             this one
+  --whole                   read the place whole, not only what changed since it was
+                            last read
 Report
   --report FILE             write the scan up as FILE, .csv, .json, .html or .pdf;
                             - writes it to standard output instead of the summary
@@ -107,6 +109,7 @@ Options :: struct {
 	top:          int,
 	reclaim:      bool,
 	no_history:   bool,
+	whole:        bool,
 	warn_used:    int,
 	fail_used:    int,
 	min_free:     string,
@@ -361,15 +364,26 @@ scan_and_say :: proc(opt: Options, kept := "", licensee := "", locked := false) 
 	}
 	defer scan.tree_destroy(&t)
 
-	// The table outlives the tree, whose names are borrowed from it.
+	// The table outlives the tree, whose names are borrowed from it. With history on,
+	// the place's whole tree is kept beside it, shared with the window and the monitor,
+	// and the next scan reads only what changed since.
+	kept := "" if opt.no_history else kept
 	f := survey.Fill {
 		target = target,
 		engine = engine.engine,
 		opts   = opts,
 		wcfg   = wcfg,
 		tree   = &t,
+		whole  = opt.whole,
 	}
 	defer survey.fill_destroy(&f)
+	if kept != "" {
+		f.baseline = history.baseline_path(
+			kept,
+			scan.location(target, context.temp_allocator),
+			context.temp_allocator,
+		)
+	}
 
 	if opt.live {
 		return run_live(&f)
@@ -395,13 +409,13 @@ scan_and_say :: proc(opt: Options, kept := "", licensee := "", locked := false) 
 			t.nodes_done,
 			time.duration_milliseconds(elapsed),
 		)
+		say_how_read(&f)
 	}
 
 	// The same charging the live scan does, run once over a tree nobody is still
 	// filling. A node left uncharged here has an ancestor that never resolved, and
 	// another pass would not change that. Reclaim walks directories' children,
 	// which only a linked rollup lists, as is keeping a scan.
-	kept := "" if opt.no_history else kept
 	roll := survey.Rollup {
 		linked = opt.reclaim || kept != "",
 	}
@@ -466,6 +480,15 @@ scan_and_say :: proc(opt: Options, kept := "", licensee := "", locked := false) 
 		return code
 	}
 	return exit_code(th.verdict)
+}
+
+// say_how_read says whether a scan with a baseline read its place whole or only
+// what changed; a scan without one reads whole and says nothing of it.
+say_how_read :: proc(f: ^survey.Fill) {
+	if f.baseline == "" {
+		return
+	}
+	label("read", "%s", survey.how_read(f.how == .Updated, f.why, f.reread, f.taken))
 }
 
 // exit_code is what a verdict reads back as, for a script to test.

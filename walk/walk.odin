@@ -250,6 +250,9 @@ walk_dir :: proc(d: Dir, w: ^Worker) -> bool {
 	ok: bool
 	switch d.job {
 	case .Walk:
+		if w.update != nil {
+			sync.atomic_add(&w.update.read, 1)
+		}
 		nodes, bytes, ok = read_dir(d, w)
 	case .Copy:
 		nodes, bytes, ok = copy_dir(d, w)

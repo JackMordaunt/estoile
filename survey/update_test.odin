@@ -229,3 +229,55 @@ test_a_fill_with_a_baseline_updates_the_place :: proc(t: ^testing.T) {
 		time.sleep(250 * time.Millisecond)
 	}
 }
+
+// Asked to read whole, a Fill with a baseline reads the place whole all the same,
+// says so, and keeps what it read; the next run updates from it and says how much
+// it read again, and since when.
+@(test)
+test_a_fill_asked_whole_reads_whole_and_keeps :: proc(t: ^testing.T) {
+	root := fixture(t, "whole")
+	defer os.remove_all(root)
+	file := join(root, "..", "leita_survey_whole.tree")
+	defer os.remove(file)
+	target, choice, err := scan.resolve(root)
+	testing.expect_value(t, err, scan.Error.None)
+	defer scan.target_destroy(&target)
+
+	runs := [3]Fill{}
+	for &f, i in runs {
+		tree: scan.Tree
+		testing.expect_value(t, scan.tree_init(&tree, 2), scan.Error.None)
+		defer scan.tree_destroy(&tree)
+		f = Fill {
+			target = target,
+			engine = choice.engine,
+			wcfg = {workers = 2},
+			tree = &tree,
+			baseline = file,
+			whole = i == 1,
+		}
+		defer fill_destroy(&f)
+		fill_run(&f)
+		testing.expectf(t, problem(&f) == "", "the fill failed: %s", problem(&f))
+		testing.expectf(t, f.saved, "run %d was not kept", i)
+	}
+	testing.expect_value(t, runs[1].how, Fill_Kind.Full)
+	testing.expect_value(t, runs[1].why, "asked to read it whole")
+	testing.expectf(t, runs[2].how == .Updated, "read whole: %s", runs[2].why)
+	testing.expect(t, runs[2].taken != {}, "no time the base was kept")
+	words := how_read(true, "", runs[2].reread, runs[2].taken)
+	testing.expectf(t, strings.has_prefix(words, "updated: "), "%q", words)
+}
+
+// how_read words each way a place was read.
+@(test)
+test_how_a_place_was_read_is_said :: proc(t: ^testing.T) {
+	taken := time.unix(1_760_000_000, 0)
+	one := how_read(true, "", 1, taken)
+	testing.expectf(t, strings.has_prefix(one, "updated: 1 directory read again since 20"), "%q", one)
+	many := how_read(true, "", 3, taken)
+	testing.expectf(t, strings.has_prefix(many, "updated: 3 directories read again"), "%q", many)
+	testing.expect_value(t, how_read(true, ""), "updated from the last scan")
+	testing.expect_value(t, how_read(false, "asked to read it whole"), "read whole: asked to read it whole")
+	testing.expect_value(t, how_read(false, ""), "read whole")
+}

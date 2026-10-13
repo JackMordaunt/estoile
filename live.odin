@@ -111,6 +111,7 @@ run_live :: proc(f: ^survey.Fill) -> int {
 		drawn,
 		missed,
 	)
+	say_how_read(f)
 
 	print_largest(f.tree, &b.roll, .files)
 	print_largest(f.tree, &b.roll, .directories)

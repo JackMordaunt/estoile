@@ -27,6 +27,7 @@ import "../history"
 import "../human"
 import "../licence"
 import "../settings"
+import "../survey"
 import "../version"
 
 // Paths are the files a run reads and writes.
@@ -152,7 +153,7 @@ run :: proc(opt: Options, w: io.Writer) -> int {
 				watch.place,
 				human.bytes(r.bytes),
 				r.seconds,
-				how_read(r),
+				survey.how_read(r.updated, r.why),
 			)
 		}
 		for a in alerts {
@@ -286,18 +287,6 @@ words_of :: proc(st: ^settings.Store) -> ^msg.Strings {
 	}
 	msg.init(words, locale)
 	return words
-}
-
-// how_read says how a run read its place: updated from the last tree, or
-// whole and why, in the temp allocator.
-how_read :: proc(r: settings.Run) -> string {
-	switch {
-	case r.updated:
-		return "updated from the last scan"
-	case r.why != "":
-		return fmt.tprintf("read whole: %s", r.why)
-	}
-	return "read whole"
 }
 
 /*

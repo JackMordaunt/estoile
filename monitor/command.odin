@@ -18,7 +18,6 @@ import "../human"
 import "../licence"
 import "../schedule"
 import "../settings"
-import "../survey"
 import "../term"
 
 /*
@@ -404,7 +403,7 @@ list :: proc(c: Context, w: io.Writer) -> int {
 				"  %s  %s, %s",
 				when_(last.started),
 				human.bytes(last.bytes),
-				survey.how_read(last.updated, last.why),
+				how_read(last),
 			)
 		}
 		raised, _ := settings.alerts(&st, watch.place, LIST_ALERTS, context.temp_allocator)

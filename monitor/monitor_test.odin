@@ -232,6 +232,10 @@ a_run_scans_what_is_due_and_keeps_it_in_history :: proc(t: ^testing.T) {
 	testing.expect_value(t, runs[0].problem, "")
 	_, out = run_monitor(&b, "list")
 	testing.expect(t, strings.contains(out, "2.0 MiB"), out)
+	// The last run updated from the first's tree, and says how much it read again,
+	// and since when, as the command line does.
+	testing.expectf(t, runs[0].updated, "the last run read whole: %s", runs[0].why)
+	testing.expect(t, strings.contains(out, "read again since"), out)
 
 	// The first run read the place whole and kept it as the baseline the next
 	// update from, named as the command line and the window name theirs; stopping

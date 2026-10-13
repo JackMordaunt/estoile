@@ -134,8 +134,8 @@ apply :: proc(f: ^Fill, place: string, base: ^scan.Tree, set: changes.Change_Set
 /*
 how_read says in words how a fill with a baseline read its place, in the temp
 allocator: "updated: N directories read again since <time>", or "read whole: <why>".
-An update with no count or time to give, as a run recorded before them, is "updated
-from the last scan".
+An update with no time to give, as a run the monitor recorded before it kept the
+count and the time, is "updated from the last scan".
 */
 how_read :: proc(updated: bool, why: string, reread: u64 = 0, taken := time.Time{}) -> string {
 	switch {

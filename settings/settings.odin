@@ -124,6 +124,8 @@ number of times the same as opening it once.
 ADDED := [?]Column {
 	{"run", "updated", "ALTER TABLE run ADD COLUMN updated INTEGER NOT NULL DEFAULT 0"},
 	{"run", "why", "ALTER TABLE run ADD COLUMN why TEXT NOT NULL DEFAULT ''"},
+	{"run", "reread", "ALTER TABLE run ADD COLUMN reread INTEGER NOT NULL DEFAULT 0"},
+	{"run", "taken", "ALTER TABLE run ADD COLUMN taken INTEGER NOT NULL DEFAULT 0"},
 	{"run", "firing", "ALTER TABLE run ADD COLUMN firing TEXT NOT NULL DEFAULT ''"},
 	{"watch", "warn_used", "ALTER TABLE watch ADD COLUMN warn_used INTEGER NOT NULL DEFAULT 0"},
 	{"watch", "fail_used", "ALTER TABLE watch ADD COLUMN fail_used INTEGER NOT NULL DEFAULT 0"},

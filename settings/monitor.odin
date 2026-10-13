@@ -71,8 +71,9 @@ Limits :: struct {
 
 // Run is one scan of a watched place the monitor ran: when it started, how
 // long it took, what the place held and the disk it was on then, whether it
-// was updated from the place's last tree or read whole and why, and why it
-// failed, "" when it did not.
+// was updated from the place's last tree, how many directories that read and
+// when that tree was kept, or read whole and why, and why it failed, "" when it
+// did not.
 Run :: struct {
 	id:         i64,
 	place:      string,
@@ -82,6 +83,8 @@ Run :: struct {
 	disk_total: u64,
 	disk_free:  u64,
 	updated:    bool,
+	reread:     u64, // updated: how many directories were read rather than copied
+	taken:      i64, // updated: Unix seconds the tree updated from was kept, 0 when not known
 	why:        string, // why it was read whole, "" for no reason given
 	problem:    string,
 	firing:     string, // what was wrong after it, alert.Condition keys joined by ","
@@ -229,8 +232,9 @@ watches_destroy :: proc(ws: []Watch, allocator := context.allocator) {
 record :: proc(st: ^Store, r: Run) -> (id: i64, err: sqlite3.Error) {
 	sqlite3.exec_args(
 		st.db,
-		`INSERT INTO run(place, started, seconds, bytes, disk_total, disk_free, updated, why, problem, firing)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO run(place, started, seconds, bytes, disk_total, disk_free, updated,
+			reread, taken, why, problem, firing)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		r.place,
 		r.started,
 		r.seconds,
@@ -238,6 +242,8 @@ record :: proc(st: ^Store, r: Run) -> (id: i64, err: sqlite3.Error) {
 		i64(r.disk_total),
 		i64(r.disk_free),
 		r.updated,
+		i64(r.reread),
+		r.taken,
 		r.why,
 		r.problem,
 		r.firing,
@@ -266,7 +272,8 @@ runs :: proc(
 ) {
 	rows := sqlite3.query(
 		st.db,
-		`SELECT id, place, started, seconds, bytes, disk_total, disk_free, updated, why, problem, firing
+		`SELECT id, place, started, seconds, bytes, disk_total, disk_free, updated, reread,
+			taken, why, problem, firing
 			FROM run WHERE place = ? ORDER BY started DESC, id DESC LIMIT ?`,
 		place,
 		i64(limit),
@@ -285,9 +292,11 @@ runs :: proc(
 				disk_total = u64(sqlite3.integer(rows, 5)),
 				disk_free = u64(sqlite3.integer(rows, 6)),
 				updated = sqlite3.boolean(rows, 7),
-				why = strings.clone(sqlite3.text(rows, 8), allocator),
-				problem = strings.clone(sqlite3.text(rows, 9), allocator),
-				firing = strings.clone(sqlite3.text(rows, 10), allocator),
+				reread = u64(sqlite3.integer(rows, 8)),
+				taken = sqlite3.integer(rows, 9),
+				why = strings.clone(sqlite3.text(rows, 10), allocator),
+				problem = strings.clone(sqlite3.text(rows, 11), allocator),
+				firing = strings.clone(sqlite3.text(rows, 12), allocator),
 			},
 		)
 	}

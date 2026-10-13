@@ -151,7 +151,7 @@ run :: proc(opt: Options, w: io.Writer) -> int {
 				watch.place,
 				human.bytes(r.bytes),
 				r.seconds,
-				survey.how_read(r.updated, r.why),
+				how_read(r),
 			)
 		}
 		for a in alerts {
@@ -181,6 +181,10 @@ scan_one :: proc(opt: Options, watch: settings.Watch) -> (r: settings.Run, alert
 	r.seconds = time.duration_seconds(s.duration)
 	r.bytes = bytes(s)
 	r.updated = s.updated
+	r.reread = s.fill.reread
+	if s.fill.taken != {} {
+		r.taken = time.to_unix_seconds(s.fill.taken)
+	}
 	r.why = s.why
 	if sp, ok := s.space.?; ok {
 		r.disk_total, r.disk_free = sp.total, sp.free
@@ -282,6 +286,14 @@ words_of :: proc(st: ^settings.Store) -> ^msg.Strings {
 	}
 	msg.init(words, locale)
 	return words
+}
+
+// how_read says how a run read its place, as survey.how_read words it; a run
+// recorded before the monitor kept its count and time says only that it updated.
+@(private)
+how_read :: proc(r: settings.Run) -> string {
+	taken := time.unix(r.taken, 0) if r.taken != 0 else time.Time{}
+	return survey.how_read(r.updated, r.why, r.reread, taken)
 }
 
 // alert_of is an alert as the log kept it, and whether its kind is one this

@@ -140,6 +140,8 @@ an_older_store_gains_the_columns_it_lacks :: proc(t: ^testing.T) {
 		testing.expect_value(t, len(rs), 1)
 		testing.expect_value(t, rs[0].bytes, 7)
 		testing.expect(t, !rs[0].updated)
+		testing.expect_value(t, rs[0].reread, 0)
+		testing.expect_value(t, rs[0].taken, 0)
 		testing.expect_value(t, rs[0].why, "")
 		testing.expect_value(t, rs[0].firing, "")
 		ws, _ := watches(&st, context.temp_allocator)
@@ -151,10 +153,12 @@ an_older_store_gains_the_columns_it_lacks :: proc(t: ^testing.T) {
 	st: Store
 	testing.expect(t, open(&st, path) == nil)
 	defer close(&st)
-	_, err := record(&st, {place = "/srv", started = 6, updated = true, why = ""})
+	_, err := record(&st, {place = "/srv", started = 6, updated = true, reread = 4, taken = 5})
 	testing.expect(t, err == nil)
 	last, _ := last_run(&st, "/srv", context.temp_allocator)
 	testing.expect(t, last.updated)
+	testing.expect_value(t, last.reread, 4)
+	testing.expect_value(t, last.taken, 5)
 }
 
 @(test)

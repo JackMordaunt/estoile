@@ -94,6 +94,22 @@ FLUSH_EVERY :: time.Second
 @(private = "file")
 WAIT_MS :: 250
 
+/*
+When the loop last looked at the clock, by the wall clock and by CLOCK_MONOTONIC,
+which stops while the machine is suspended (clock_gettime(2)); ns.
+*/
+@(private = "file")
+Clocks :: struct {
+	real: i64,
+	mono: i64,
+}
+
+@(private = "file")
+clocks_now :: proc() -> Clocks {
+	ts, _ := linux.clock_gettime(.MONOTONIC)
+	return {time.to_unix_nanoseconds(time.now()), i64(ts.time_sec) * 1e9 + i64(ts.time_nsec)}
+}
+
 // How often the recorder drops records older than RETENTION.
 @(private = "file")
 COMPACT_EVERY :: 24 * time.Hour
@@ -202,9 +218,16 @@ run :: proc(cfg: Config) -> (problem: string) {
 @(private = "file")
 loop :: proc(r: ^Recorder) {
 	last_flush, last_beat, last_compact := time.now(), time.now(), time.now()
+	looked := clocks_now()
 	for !sync.atomic_load(r.cfg.stop) {
 		fds := [2]linux.Poll_Fd{{fd = r.fan, events = {.IN}}, {fd = r.mountinfo, events = {.PRI}}}
 		n, _ := linux.poll(fds[:], WAIT_MS)
+		// Before anything is written: the Slept record must end the gap it explains.
+		clocks := clocks_now()
+		if (clocks.real - looked.real) - (clocks.mono - looked.mono) > i64(HEARTBEAT) {
+			mark_all(r, .Slept, u64(looked.real))
+		}
+		looked = clocks
 		if n > 0 && .IN in fds[0].revents {
 			read_events(r)
 		}
@@ -391,12 +414,12 @@ find :: proc(r: ^Recorder, fsid: string) -> ^Recorded_Filesystem {
 	return nil
 }
 
-// mark_all appends a record of kind to every log, and writes it.
+// mark_all appends a record of kind, carrying hash, to every log, and writes it.
 @(private = "file")
-mark_all :: proc(r: ^Recorder, kind: Kind) {
+mark_all :: proc(r: ^Recorder, kind: Kind, hash := u64(0)) {
 	now := time.to_unix_nanoseconds(time.now())
 	for &fs in r.recorded {
-		append_record(&fs, {kind, now, 0})
+		append_record(&fs, {kind, now, hash})
 		write_log(&fs)
 	}
 }

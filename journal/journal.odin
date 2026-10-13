@@ -26,6 +26,11 @@ epoch), hash u64.
   readlink of /proc/self/fd gives it. The log is world-readable and holds no names.
 - Overflow: the kernel's queue overflowed, and events were lost.
 - Stop: the recorder stopped, or the filesystem went away.
+- Slept: the machine was suspended; time is when the recorder woke, and hash is the
+  time of its last look at the clock before, an i64 as a u64. The wall clock
+  (CLOCK_REALTIME) runs on through a suspend and CLOCK_MONOTONIC does not
+  (clock_gettime(2)), so a gap between them over HEARTBEAT says the machine slept.
+  It comes before any other record written after waking.
 
 The recorder drops records older than RETENTION when it starts and once a day.
 
@@ -34,7 +39,12 @@ The recorder drops records older than RETENTION when it starts and once a day.
 A scan asks for the window from its cursor's time to now (window). The log covers
 the window when it was recording throughout: a record at or before the window's
 start, every record after it within twice HEARTBEAT of the one before, the last
-within twice HEARTBEAT of now, and no Start, Stop or Overflow inside. Covered, the
+within twice HEARTBEAT of now, and no Start, Stop or Overflow inside. A longer gap
+is allowed only when a Slept record ends it and spans it. That assumes fanotify's
+marks, held in kernel memory with the filesystem, outlast a suspend, and that no
+other system writes the filesystem while this one sleeps. Neither was tested: the
+OrbStack machine the recorder was tried on was never suspended. A recorder that
+died leaves a gap with no Slept, and its next run writes a Start. Covered, the
 directories to read again are those of the scan's own last tree whose canonical
 path hashes to a Changed record in the window. A directory made since has no path
 in that tree, and needs none: making it changed its parent, which the tree has,
@@ -96,6 +106,7 @@ Kind :: enum u8 {
 	Changed   = 3,
 	Overflow  = 4,
 	Stop      = 5,
+	Slept     = 6,
 }
 
 // One record of a log; time is in ns since the epoch.
@@ -313,7 +324,7 @@ cover :: proc(records: []Record, from, to: i64) -> (end: i64, why: string) {
 		switch {
 		case r.time < prev.time:
 			return 0, "the clock went back while changes were recorded"
-		case r.time - prev.time > most:
+		case r.time - prev.time > most && !(r.kind == .Slept && slept_from(r) <= prev.time):
 			return 0, "the recorder missed a heartbeat"
 		}
 		#partial switch r.kind {
@@ -330,6 +341,12 @@ cover :: proc(records: []Record, from, to: i64) -> (end: i64, why: string) {
 		return 0, "the recorder is not running"
 	}
 	return prev.time, ""
+}
+
+// slept_from is when the machine went to sleep, by a Slept record: the recorder's
+// last look at the clock before.
+slept_from :: proc(r: Record) -> i64 {
+	return i64(r.hash)
 }
 
 /*

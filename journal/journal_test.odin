@@ -328,3 +328,53 @@ test_mounts_gone_or_changed_are_judged_again :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(judge_table(&j, root + remounted + reused, {"8:1", "8:17"})), 1)
 	testing.expect(t, "7:0" in j.devices, "a mount given a gone mount's id was not tried")
 }
+
+/*
+A machine asleep for an hour leaves a gap a Slept record explains: the window
+across it is covered, and names what changed on both sides. The same gap with no
+Slept, with a Slept that begins after the record before the gap, or with a Start
+after waking, as a recorder that died while the machine slept writes, is not.
+*/
+@(test)
+test_a_suspend_is_covered_only_by_a_slept_record :: proc(t: ^testing.T) {
+	HOUR :: 3600 * SEC
+	before := joined(beats(T0, T0 + 20 * SEC), {{.Changed, T0 + 21 * SEC, 1}})
+	after := joined(
+		{{.Changed, T0 + HOUR + 1 * SEC, 2}},
+		beats(T0 + HOUR + 5 * SEC, T0 + HOUR + 45 * SEC),
+	)
+	slept := Record{.Slept, T0 + HOUR, u64(T0 + 20 * SEC)}
+	from, to := T0 + 5 * SEC, T0 + HOUR + 50 * SEC
+
+	path := log_file(t, "slept", "/mnt/e", joined(before, {slept}, after))
+	defer os.remove(path)
+	w, why := window(path, from, to)
+	defer window_destroy(&w)
+	testing.expectf(t, why == "", "a suspend was not covered: %s", why)
+	testing.expect(t, 1 in w.hashes && 2 in w.hashes, "a change beside the suspend is missing")
+
+	late := Record{.Slept, T0 + HOUR, u64(T0 + 22 * SEC)}
+	restarted := joined({{.Start, T0 + HOUR + 1 * SEC, 9}}, after)
+	Case :: struct {
+		name:    string,
+		records: []Record,
+		want:    string,
+	}
+	cases := []Case {
+		{"bare gap", joined(before, after), "the recorder missed a heartbeat"},
+		{"slept too late", joined(before, {late}, after), "the recorder missed a heartbeat"},
+		{
+			"died asleep",
+			joined(before, {slept}, restarted),
+			"the recorder started again since the place was last read",
+		},
+	}
+	for c in cases {
+		p := log_file(t, fmt.tprintf("slept_%s", c.name), "/mnt/e", c.records)
+		defer os.remove(p)
+		bad, bad_why := window(p, from, to)
+		defer window_destroy(&bad)
+		testing.expectf(t, bad_why == c.want, "%s: %q", c.name, bad_why)
+		testing.expectf(t, len(bad.hashes) == 0, "%s: named changes", c.name)
+	}
+}

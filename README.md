@@ -45,6 +45,19 @@ leita remembers every scan. Scan the same place again and it shows what grew
 and what shrank since last time, so the folder that filled up overnight
 stands out on its own.
 
+A place leita has read before is read again only where it changed. leita keeps
+the whole tree of each place beside its history and asks the system what changed
+since: the change journal on macOS and Windows, each folder's modification time on
+Linux. A second scan of a home directory of 2.6 million entries takes under a
+second instead of thirteen. When the system cannot say, or too much has happened
+since, leita reads the place whole and tells you why. A small file written in
+place, in a folder nothing else changed, can keep its old size until the next
+whole read; `leita --whole` reads everything again whenever you want one.
+`--no-history` neither uses that tree nor keeps one.
+
+The tree takes about 40 bytes an entry on disk: 99 MB for a home directory of
+2.57 million entries.
+
 Comparing scans comes with a licence too, with the same 30-day trial. leita
 keeps every scan either way, so your history is all there when you add one.
 

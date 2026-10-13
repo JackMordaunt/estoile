@@ -1,6 +1,7 @@
 package walk
 
-import "base:runtime"
+// Required: only the restat uses it, which a platform without RESTATS compiles out.
+@(require) import "base:runtime"
 import "core:sync"
 
 import "../scan"
@@ -29,8 +30,8 @@ stat(2)), and a journal may not name it either: FSEvents names a written file's
 directory only once the file is closed (macOS 15.7, 2026-10-13: a file appended to
 and fsynced while held open gave no event until close), so a disk image, a log or a
 database's write-ahead log held open keeps growing unseen. Every copied directory's files of
-at least `restat` bytes are therefore asked their size again, probe or journal,
-where the platform can ask (not Windows: stamp_other.odin); 0 asks none.
+at least `restat` bytes are therefore asked their size again, probe or journal, where
+RESTATS says the platform asks (not Windows: stamp_other.odin); 0 asks none.
 */
 Update :: struct {
 	base:   ^scan.Tree,
@@ -149,18 +150,20 @@ copy_dir :: proc(d: Dir, w: ^Worker) -> (nodes, bytes: u64, ok: bool) {
 		name := scan.name_of(base, c)
 		disk := b.disk
 		file := flags & {.Directory, .Reparse} == {}
-		if file && disk >= u.restat && u.restat > 0 {
-			runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
-			path, err := join(d.path, name, context.temp_allocator)
-			if err != nil {
-				w.err = .Out_Of_Memory
-				return nodes, bytes, false
+		when RESTATS {
+			if file && disk >= u.restat && u.restat > 0 {
+				runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
+				path, err := join(d.path, name, context.temp_allocator)
+				if err != nil {
+					w.err = .Out_Of_Memory
+					return nodes, bytes, false
+				}
+				now, found := disk_of(path)
+				if !found {
+					continue
+				}
+				disk = now
 			}
-			now, found := disk_of(path, disk)
-			if !found {
-				continue
-			}
-			disk = now
 		}
 
 		n := scan.node(w.writer.tree, slot)

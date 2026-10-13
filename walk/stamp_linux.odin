@@ -28,10 +28,14 @@ changed_since :: proc(path: string, since: i64) -> bool {
 	return max(stamp(st.mtime), stamp(st.ctime)) >= since
 }
 
+// Whether an update asks a copied file its size again, with disk_of.
+@(private)
+RESTATS :: true
+
 // What the file at `path` occupies now, as a walk would charge it, and whether it is
 // still there to ask.
 @(private)
-disk_of :: proc(path: string, was: u64) -> (disk: u64, found: bool) {
+disk_of :: proc(path: string) -> (disk: u64, found: bool) {
 	buf: Path
 	cpath, terminated := terminate(path, &buf)
 	if !terminated {

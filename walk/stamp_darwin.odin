@@ -12,13 +12,17 @@ changed_since :: proc(path: string, since: i64) -> bool {
 	return true
 }
 
+// Whether an update asks a copied file its size again, with disk_of.
+@(private)
+RESTATS :: true
+
 /*
 What the file at `path` holds on disk now, asked as read_dir asks it: the allocated
 size of all its forks, the link itself for a symlink. Not found when it is gone or
 cannot be asked, and then dropped, as a read would not find it either.
 */
 @(private)
-disk_of :: proc(path: string, was: u64) -> (disk: u64, found: bool) {
+disk_of :: proc(path: string) -> (disk: u64, found: bool) {
 	buf: Path
 	cpath, terminated := terminate(path, &buf)
 	if !terminated {

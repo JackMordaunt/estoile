@@ -119,3 +119,43 @@ test_an_event_cursor_too_far_back_rescans :: proc(t: ^testing.T) {
 	testing.expectf(t, set.rescan, "no rescan: %v", set.shallow)
 	testing.expectf(t, time.tick_since(start) < time.Second, "replayed: %v", time.tick_since(start))
 }
+
+/*
+A change made just before an update and not yet in the history that update replays
+is not lost: it is named by the next update, which replays from the first's cursor.
+fseventsd takes a closed file's event in 10 ms to 1.2 s (2026-10-13, macOS 15.7, M1
+Pro), and gives it its id only then, above the cursor an update took before its
+replay. The first update here asks at once, which most often misses the change; the
+second asks from that update's cursor once the event must be in, and so must name it.
+*/
+@(test)
+test_a_change_too_new_for_one_update_is_named_by_the_next :: proc(t: ^testing.T) {
+	root := fresh(t, "fsevents_late")
+	defer os.remove_all(root)
+	sub := fmt.tprintf("%s/sub", root)
+	testing.expect(t, os.make_directory(sub) == nil, "could not make sub")
+	time.sleep(2 * time.Second) // let what made the fixture reach the history first
+
+	c, ok := now(root)
+	if !testing.expect(t, ok, "no cursor: the temp directory's volume keeps no event history") {
+		return
+	}
+	put(t, fmt.tprintf("%s/new.txt", sub), 100)
+
+	first, next, err := since(root, c)
+	defer change_set_destroy(&first)
+	testing.expect_value(t, err, Error.None)
+	if !testing.expectf(t, !first.rescan, "rescan: %s", first.why) {
+		return
+	}
+	if slice.contains(first.shallow[:], sub) {
+		log.info("the first update already named sub: the late case did not arise this run")
+		return
+	}
+	time.sleep(2 * time.Second)
+	second, _, again := since(root, next)
+	defer change_set_destroy(&second)
+	testing.expect_value(t, again, Error.None)
+	testing.expectf(t, !second.rescan, "rescan: %s", second.why)
+	testing.expectf(t, slice.contains(second.shallow[:], sub), "sub is lost: %v", second.shallow)
+}

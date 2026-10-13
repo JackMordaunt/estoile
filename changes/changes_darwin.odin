@@ -21,6 +21,16 @@ The cursor is the current event id, taken before anything is read, and the UUID 
 the volume's event store: a store that was wiped and begun again has another, and
 its ids say nothing about the old one's.
 
+fseventsd takes a change from the kernel some time after it is made, 10 ms to 1.2 s
+after a file's close(2) on an M1 Pro under macOS 15.7 (2026-10-13), and only then
+gives it an id and puts it in the history. A replay that starts sooner does not name
+it. Keeping the stream open 1 s after HistoryDone caught 15 of 21 such events, and
+FSEventStreamFlushSync 2 of 19, so neither is done. The current id taken before the
+replay was below such an event's id every time, and 1,291 chained updates over
+55,000 writes lost none, so the next update replays it: a change made that close
+before an update is read by the next one, as one made while the update runs is. The
+cost is such a change shown one update late; no margin on the cursor is needed.
+
 The stream reports that it could not keep up, or that events were dropped, as
 MustScanSubDirs on a directory, which is read again whole; on the place or above it,
 the place is scanned whole. A changed root, a wrapped counter, a cursor more than

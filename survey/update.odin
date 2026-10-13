@@ -23,12 +23,13 @@ Fill_Kind :: enum u8 {
 
 /*
 RESTAT is the least a file of a copied directory holds for an update to ask its size
-again, on every platform: history's KEPT_MIN, so every file history keeps is
-current. Neither a probe nor FSEvents sees a file written while held open
-(walk.Update); on a home directory such files (a VM's disk image, logs, a
-database's write-ahead log) left an update 10.1 GB short (2026-10-13). A smaller file written in place, in a directory that did
-not change, keeps its old size until the next whole scan; over a day of a home
-directory that was 8.7 MiB in 110.8 GiB (measured 2026-10-12, 162 files).
+again, on macOS and Linux (walk.RESTATS; Windows keeps the size copied): history's
+KEPT_MIN, so every file history keeps is current there. Neither a probe nor FSEvents
+sees a file written while held open (walk.Update); on a home directory such files (a
+VM's disk image, logs, a database's write-ahead log) left an update 10.1 GB short
+(2026-10-13). A smaller file written in place, in a directory that did not change,
+keeps its old size until the next whole scan; over a day of a home directory that was
+8.7 MiB in 110.8 GiB (measured 2026-10-12, 162 files).
 */
 RESTAT :: query.KEPT_MIN
 

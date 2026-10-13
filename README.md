@@ -49,11 +49,12 @@ A place leita has read before is read again only where it changed. leita keeps
 the whole tree of each place beside its history and asks the system what changed
 since: the change journal on macOS and Windows, each folder's modification time on
 Linux. A second scan of a home directory of 2.6 million entries takes under a
-second instead of thirteen. When the system cannot say, or too much has happened
-since, leita reads the place whole and tells you why. A small file written in
-place, in a folder nothing else changed, can keep its old size until the next
-whole read; `leita --whole` reads everything again whenever you want one.
-`--no-history` neither uses that tree nor keeps one.
+second instead of thirteen, when the system still has its folders cached from the
+first. When the system cannot say, or too much has happened since, leita reads the
+place whole and tells you why. A small file written in place, in a folder nothing
+else changed, can keep its old size until the next whole read; `leita --whole`
+reads everything again whenever you want one. `--no-history` neither uses that
+tree nor keeps one.
 
 The tree takes about 40 bytes an entry on disk: 99 MB for a home directory of
 2.57 million entries. A place not scanned for 30 days has its tree deleted; its

@@ -56,7 +56,8 @@ whole read; `leita --whole` reads everything again whenever you want one.
 `--no-history` neither uses that tree nor keeps one.
 
 The tree takes about 40 bytes an entry on disk: 99 MB for a home directory of
-2.57 million entries.
+2.57 million entries. A place not scanned for 30 days has its tree deleted; its
+next scan reads it whole, as it would have anyway.
 
 Comparing scans comes with a licence too, with the same 30-day trial. leita
 keeps every scan either way, so your history is all there when you add one.

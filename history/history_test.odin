@@ -1,8 +1,10 @@
 package leita_history
 
+import "core:fmt"
 import "core:os"
 import "core:path/filepath"
 import "core:testing"
+import "core:time"
 
 import "jm:sqlite3"
 
@@ -194,6 +196,36 @@ test_a_baseline_lives_beside_the_store :: proc(t: ^testing.T) {
 		"two places share a baseline",
 	)
 	testing.expect_value(t, baseline_path("", "/home/me", context.temp_allocator), "")
+}
+
+// Opening the store deletes the baselines beside it no scan has rewritten in
+// BASELINE_KEPT, a stopped save's temporary file among them, and keeps the rest.
+@(test)
+test_opening_the_store_prunes_old_baselines :: proc(t: ^testing.T) {
+	dir, dir_err := os.make_directory_temp("", "leita-prune-*", context.temp_allocator)
+	testing.expect(t, dir_err == nil, "no temp directory")
+	defer os.remove_all(dir)
+	store := filepath.join({dir, "history.db"}, context.temp_allocator) or_else ""
+	recent := baseline_path(store, "/home/me", context.temp_allocator)
+	old := baseline_path(store, "/home/gone", context.temp_allocator)
+	stopped := fmt.tprintf("%s.7-0.new", old)
+	testing.expect(t, os.make_directory_all(filepath.dir(recent)) == nil)
+	for path in ([]string{recent, old, stopped}) {
+		testing.expectf(t, os.write_entire_file(path, []u8{1}) == nil, "could not write %s", path)
+	}
+	now := time.now()
+	month := time.time_add(now, -(BASELINE_KEPT + time.Hour))
+	nearly := time.time_add(now, -(BASELINE_KEPT - time.Hour))
+	testing.expect(t, os.change_times(old, month, month) == nil)
+	testing.expect(t, os.change_times(stopped, month, month) == nil)
+	testing.expect(t, os.change_times(recent, nearly, nearly) == nil)
+
+	st: Store
+	testing.expect(t, open(&st, store) == nil)
+	close(&st)
+	testing.expect(t, os.exists(recent), "a baseline younger than BASELINE_KEPT was deleted")
+	testing.expect(t, !os.exists(old), "a baseline older than BASELINE_KEPT was kept")
+	testing.expect(t, !os.exists(stopped), "a stopped save's temporary file was kept")
 }
 
 // A snapshot keeps the disk it was on; a store made before the disk was kept

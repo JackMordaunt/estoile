@@ -124,13 +124,15 @@ SCHEMA :: `
 		failed INTEGER NOT NULL);
 	CREATE INDEX IF NOT EXISTS action_taken ON action(taken);`
 
-// open opens the store at path, making it and its folder if they are missing.
+// open opens the store at path, making it and its folder if they are missing, and
+// deletes the baselines beside it no scan has rewritten in BASELINE_KEPT.
 // ":memory:" opens one that lasts as long as the connection.
 open :: proc(st: ^Store, path: string) -> sqlite3.Error {
 	if path != ":memory:" {
 		if dir := filepath.dir(path); dir != "" {
 			_ = os.make_directory_all(dir)
 		}
+		prune_baselines(path, time.now())
 	}
 	// The window and the command line may both write at once: one waits for the
 	// other's write, a short transaction, rather than failing at once.

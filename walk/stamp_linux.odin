@@ -31,7 +31,7 @@ changed_since :: proc(path: string, since: i64) -> bool {
 // What the file at `path` occupies now, as a walk would charge it, and whether it is
 // still there to ask.
 @(private)
-disk_of :: proc(path: string) -> (disk: u64, ok: bool) {
+disk_of :: proc(path: string, was: u64) -> (disk: u64, found: bool) {
 	buf: Path
 	cpath, terminated := terminate(path, &buf)
 	if !terminated {

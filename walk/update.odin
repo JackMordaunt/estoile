@@ -21,9 +21,15 @@ changed, as a change journal or a probe of them found.
 `probe` is for a platform with no journal to ask. Every directory not marked is then
 asked when it last changed, and one changed at or after `since`, in nanoseconds since
 the epoch, is read again rather than copied. An entry a directory gains, loses or
-renames moves the directory's modification time; a file written in place moves only
-its own (POSIX sys/stat.h, stat(2)), so a copied directory's files of at least
-`restat` bytes are asked their size again.
+renames moves the directory's modification time.
+
+A file written in place moves only its own modification time (POSIX sys/stat.h,
+stat(2)), and a journal may not name it either: FSEvents names a written file's
+directory only once the file is closed (macOS 15.7, 2026-10-13: a file appended to
+and fsynced while held open gave no event until close), so a disk image, a log or a
+database's write-ahead log held open keeps growing unseen. Every copied directory's files of
+at least `restat` bytes are therefore asked their size again, probe or journal,
+where the platform can ask (not Windows: stamp_other.odin); 0 asks none.
 */
 Update :: struct {
 	base:   ^scan.Tree,
@@ -106,7 +112,11 @@ descends :: proc(flags: scan.Node_Flags, follow: bool) -> bool {
 Copy a directory's entries from the base, unchanged.
 
 Under a probe it is first asked whether it changed, and read instead if it did or
-cannot say; and its large files are asked their sizes, a file that is gone dropped.
+cannot say. Under a probe or a journal its files of at least `restat` bytes are
+asked their sizes, a file that is gone dropped, since neither sees a file written
+while held open (Update). The copies run on the workers, so these stats do too: on
+a home directory of 2.57M entries that was 17,617 files, 45 ms warm and 1.9 s cold
+from one thread (2026-10-13).
 */
 @(private)
 copy_dir :: proc(d: Dir, w: ^Worker) -> (nodes, bytes: u64, ok: bool) {
@@ -136,14 +146,14 @@ copy_dir :: proc(d: Dir, w: ^Worker) -> (nodes, bytes: u64, ok: bool) {
 		name := scan.name_of(base, c)
 		disk := b.disk
 		file := flags & {.Directory, .Reparse} == {}
-		if u.probe && file && disk >= u.restat && u.restat > 0 {
+		if file && disk >= u.restat && u.restat > 0 {
 			runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
 			path, err := join(d.path, name, context.temp_allocator)
 			if err != nil {
 				w.err = .Out_Of_Memory
 				return nodes, bytes, false
 			}
-			now, found := disk_of(path)
+			now, found := disk_of(path, disk)
 			if !found {
 				continue
 			}

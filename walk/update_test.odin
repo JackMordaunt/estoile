@@ -41,7 +41,7 @@ put :: proc(t: ^testing.T, path: string, size: int) {
 	testing.expectf(t, os.write_entire_file(path, body) == nil, "could not write %s", path)
 }
 
-// Grow still/k.txt where it is. No test here marks still, or probes with a restat
+// Grow still/k.txt where it is. No test here marks still, or updates with a restat
 // small enough to catch it, so an update must keep the base's size for it.
 @(private = "file")
 grow_unseen :: proc(t: ^testing.T, root: string) {
@@ -231,6 +231,42 @@ test_a_probe_finds_changed_directories :: proc(t: ^testing.T) {
 	want := read_tree(t, root)
 	defer scan.tree_destroy(&want)
 	expect_same_shape(t, &got, &want, &base)
+}
+
+// A large file grown in place in a directory no journal named gets its new size
+// with no probe, as a file FSEvents does not report while it is held open must.
+@(test)
+test_a_copied_large_file_is_asked_its_size :: proc(t: ^testing.T) {
+	when ODIN_OS == .Windows {
+		return // Windows keeps a copied file's size (stamp_other.odin)
+	}
+	root := place(t, "restat")
+	defer os.remove_all(root)
+	put(t, fmt.tprintf("%s/still/big.bin", root), 1 << 17)
+	base := read_tree(t, root)
+	defer scan.tree_destroy(&base)
+	put(t, fmt.tprintf("%s/still/big.bin", root), 1 << 19)
+
+	u := Update {
+		base   = &base,
+		restat = 1 << 16,
+	}
+	got: scan.Tree
+	testing.expect_value(t, scan.tree_init(&got, 2), scan.Error.None)
+	defer scan.tree_destroy(&got)
+	testing.expect_value(t, update(root, &u, &got, Config{workers = 2}), Error.None)
+
+	big := at(&got, "still", "big.bin")
+	if big == scan.NO_NODE {
+		testing.fail_now(t, "big.bin was not copied")
+	}
+	was := scan.node(&base, at(&base, "still", "big.bin")).disk
+	now := scan.node(&got, big).disk
+	testing.expectf(t, now > was, "big.bin charged %d, as the base did", now)
+	testing.expect(t, now >= 1 << 19, "big.bin is short of what was written")
+	want := read_tree(t, root)
+	defer scan.tree_destroy(&want)
+	expect_same_shape(t, &got, &want)
 }
 
 // A hard-linked file keeps the name the base charged it under when the other

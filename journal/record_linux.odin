@@ -125,7 +125,12 @@ Config :: struct {
 	stop: ^bool,
 }
 
-// A filesystem the recorder records, and the log it writes.
+/*
+A filesystem the recorder records, and the log it writes. Its mount point is not
+kept open: while the recorder held it open, `umount /mnt/e` failed with "target is
+busy" (EBUSY) on Linux 7.0.14 (2026-10-13), so a recorded disk could not be ejected.
+flush opens it only for as long as it resolves handles.
+*/
 @(private = "file")
 Recorded_Filesystem :: struct {
 	mount_id: int,
@@ -133,7 +138,6 @@ Recorded_Filesystem :: struct {
 	point:    string,
 	fstype:   string,
 	fsid:     [2]i32,
-	dir:      linux.Fd, // the mount point, open: handles resolve through it
 	log:      ^os.File,
 	path:     string,
 	buf:      [dynamic]byte, // records to append at the next write
@@ -282,9 +286,6 @@ forget :: proc(fs: ^Recorded_Filesystem) {
 	if fs.log != nil {
 		os.close(fs.log)
 	}
-	if fs.dir > 0 {
-		linux.close(fs.dir)
-	}
 	delete(fs.device)
 	delete(fs.point)
 	delete(fs.fstype)
@@ -366,22 +367,61 @@ take_event :: proc(r: ^Recorder, event: []byte, md: ^Event_Metadata) {
 flush resolves each directory heard of since the last flush once, through its
 filesystem's mount point, and appends a Changed record of its path's hash to that
 filesystem's log. A directory gone since is not recorded: its parent was, when it
-went.
+went. A filesystem whose mount point cannot be opened, or holds another filesystem
+now, is let go as an unmounted one is, and the mounts are judged again.
 */
 @(private = "file")
 flush :: proc(r: ^Recorder) {
 	now := time.to_unix_nanoseconds(time.now())
-	for key in r.pending {
-		defer delete(key)
-		fs := find(r, key[:8])
-		if fs == nil {
+	dropped := false
+	for i := len(r.recorded) - 1; i >= 0; i -= 1 {
+		fs := &r.recorded[i]
+		if !resolve(r, fs, now) {
+			drop(r, i)
+			dropped = true
 			continue
 		}
-		handle := raw_data(key[8:])
+		write_log(fs)
+	}
+	for key in r.pending {
+		delete(key)
+	}
+	clear(&r.pending)
+	if dropped {
+		sync_mounts(r)
+	}
+}
+
+/*
+resolve appends a Changed record to fs's log for each pending directory of it. It
+opens fs's mount point only when one is pending, and closes it before returning. An
+unmount while it is open still fails with EBUSY, for as long as resolving one
+second's directories takes. It is false when the mount point cannot be opened or
+holds another filesystem.
+*/
+@(private = "file")
+resolve :: proc(r: ^Recorder, fs: ^Recorded_Filesystem, now: i64) -> bool {
+	id := transmute([8]byte)fs.fsid
+	dir := linux.Fd(-1)
+	defer if dir >= 0 {
+		linux.close(dir)
+	}
+	for key in r.pending {
+		if key[:8] != string(id[:]) {
+			continue
+		}
+		if dir < 0 {
+			fsid: [2]i32
+			err: linux.Errno
+			dir, fsid, err = open_point(fs.point)
+			if err != .NONE || fsid != fs.fsid {
+				return false
+			}
+		}
 		fd := intrinsics.syscall(
 			linux.SYS_open_by_handle_at,
-			uintptr(fs.dir),
-			uintptr(handle),
+			uintptr(dir),
+			uintptr(raw_data(key[8:])),
 			uintptr(transmute(u32)linux.Open_Flags{.PATH, .CLOEXEC}),
 		)
 		if int(fd) < 0 {
@@ -396,22 +436,40 @@ flush :: proc(r: ^Recorder) {
 			append_record(fs, {.Changed, now, h})
 		}
 	}
-	clear(&r.pending)
-	for &fs in r.recorded {
-		write_log(&fs)
-	}
+	return true
 }
 
-// find is the recorded filesystem whose fsid is the 8 bytes given, or nil.
+/*
+open_point opens the mount point at point to resolve handles through, and says
+which filesystem it holds. The descriptor is -1 when err is not .NONE. It is not
+O_PATH: through an O_PATH descriptor open_by_handle_at resolved no handle on Linux
+7.0.14 (2026-10-13), and the log held no Changed record.
+*/
 @(private = "file")
-find :: proc(r: ^Recorder, fsid: string) -> ^Recorded_Filesystem {
-	for &fs in r.recorded {
-		id := transmute([8]byte)fs.fsid
-		if string(id[:]) == fsid {
-			return &fs
-		}
+open_point :: proc(point: string) -> (dir: linux.Fd, fsid: [2]i32, err: linux.Errno) {
+	dir, err = linux.open(
+		strings.clone_to_cstring(point, context.temp_allocator),
+		{.DIRECTORY, .CLOEXEC},
+	)
+	if err != .NONE {
+		return -1, {}, err
 	}
-	return nil
+	st: linux.Stat_FS
+	if err = linux.fstatfs(dir, &st); err != .NONE {
+		linux.close(dir)
+		return -1, {}, err
+	}
+	return dir, st.fsid, .NONE
+}
+
+// drop stops recording r.recorded[i] and forgets it, so its device is judged again.
+@(private = "file")
+drop :: proc(r: ^Recorder, i: int) {
+	fs := &r.recorded[i]
+	stop_recording(fs)
+	verdicts_forget(&r.verdicts, fs.device)
+	forget(fs)
+	ordered_remove(&r.recorded, i)
 }
 
 // mark_all appends a record of kind, carrying hash, to every log, and writes it.
@@ -453,10 +511,7 @@ sync_mounts :: proc(r: ^Recorder) {
 	for i := len(r.recorded) - 1; i >= 0; i -= 1 {
 		fs := &r.recorded[i]
 		if _, here := mount_by_id(mounts, fs.mount_id); !here {
-			stop_recording(fs)
-			verdicts_forget(&r.verdicts, fs.device)
-			forget(fs)
-			ordered_remove(&r.recorded, i)
+			drop(r, i)
 		}
 	}
 	devices := make([dynamic]string, context.temp_allocator)
@@ -590,27 +645,19 @@ mount point is begun again: its hashes would not match this one's.
 */
 @(private = "file")
 start_recording :: proc(r: ^Recorder, m: Mount) -> (fs: Recorded_Filesystem, problem: string) {
-	dir, err := linux.open(
-		strings.clone_to_cstring(m.point, context.temp_allocator),
-		{.DIRECTORY, .CLOEXEC},
-	)
+	dir, fsid, err := open_point(m.point)
 	if err != .NONE {
 		return {}, fmt.tprintf("cannot open it: %v", err)
 	}
-	st: linux.Stat_FS
-	if e := linux.fstatfs(dir, &st); e != .NONE {
-		linux.close(dir)
-		return {}, fmt.tprintf("statfs: %v", e)
-	}
+	linux.close(dir)
 	fs = Recorded_Filesystem {
 		mount_id = m.id,
 		device   = strings.clone(m.device),
 		point    = strings.clone(m.point),
 		fstype   = strings.clone(m.fstype),
-		fsid     = st.fsid,
-		dir      = dir,
+		fsid     = fsid,
 	}
-	fs.path, _ = filepath.join({r.cfg.logs, log_name(st.fsid)})
+	fs.path, _ = filepath.join({r.cfg.logs, log_name(fsid)})
 	if !ensure_header(&fs) {
 		forget(&fs)
 		return {}, "its log cannot be written"

@@ -329,6 +329,23 @@ test_mounts_gone_or_changed_are_judged_again :: proc(t: ^testing.T) {
 	testing.expect(t, "7:0" in j.devices, "a mount given a gone mount's id was not tried")
 }
 
+// A recording let go while its mount is still listed, as flush lets go one whose
+// mount point no longer holds it, is tried again with the same table.
+@(test)
+test_a_recording_let_go_while_mounted_is_judged_again :: proc(t: ^testing.T) {
+	j: Verdicts
+	defer verdicts_destroy(&j)
+	table :: "36 1 8:1 / / rw - ext4 /dev/sda1 rw\n50 36 7:0 / /mnt/e rw - ext4 /dev/loop0 rw\n"
+
+	testing.expect_value(t, len(judge_table(&j, table, {})), 2)
+	testing.expect_value(t, len(judge_table(&j, table, {"8:1", "7:0"})), 0)
+	verdicts_forget(&j, "7:0")
+	tried := judge_table(&j, table, {"8:1"})
+	testing.expect_value(t, len(tried), 1)
+	testing.expect(t, len(tried) == 1 && tried[0] == "/mnt/e", "the let-go mount was not tried")
+	testing.expect(t, "7:0" in j.devices, "the let-go filesystem was not recorded again")
+}
+
 /*
 A machine asleep for an hour leaves a gap a Slept record explains: the window
 across it is covered, and names what changed on both sides. The same gap with no

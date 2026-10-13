@@ -312,7 +312,9 @@ view :: proc(gtx: ^ui.Ctx, user: rawptr) {
 	m.scheme = primer.theme_scheme(theme)
 	primer.use(&m.scheme, theme)
 	primer.use_fonts(FONTS)
+	// The frame's language, cleared on return: words must not outlive the Model.
 	words = m.strings
+	defer words = nil
 	tell_language(gtx, m)
 	ops.fill(
 		gtx.scene,

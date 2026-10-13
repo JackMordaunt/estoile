@@ -2135,9 +2135,10 @@ an_export_compares_with_the_scan_before :: proc(t: ^testing.T) {
 	first := r.m.generation
 	added := make([]byte, 2 << 20, context.temp_allocator)
 	testing.expect(t, os.write_entire_file(fmt.tprintf("%s/added.bin", root), added) == nil)
-	// The rescan updates from the first scan's tree. Sent at once, on macOS 15.7
-	// (2026-10-13), it missed added.bin, whose event was not yet in the history it
-	// replayed; 2 s lets the system record the change first.
+	// The rescan updates from the first scan's tree, and this test asserts that it
+	// holds added.bin. fseventsd puts a change in the history 10 ms to 1.2 s after
+	// the file is closed (macOS 15.7, 2026-10-13), and a rescan sent sooner reads it
+	// only on the next update (changes_darwin.odin), so the wait outlasts that.
 	time.sleep(2 * time.Second)
 
 	stream.port_send(r.h.cmd_port, command.Command(command.Scan{path = command.text_make(root)}))

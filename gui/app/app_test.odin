@@ -30,6 +30,7 @@ import "jm:ui/ops"
 import "jm:ui/primer"
 import "jm:ui/render"
 
+import "../../changes"
 import "../../licence"
 import "../../monitor"
 import "../../scan"
@@ -2133,13 +2134,17 @@ an_export_compares_with_the_scan_before :: proc(t: ^testing.T) {
 		"the status does not say how the first scan read the place",
 	)
 	first := r.m.generation
+	cursor, has_events := changes.now(root)
 	added := make([]byte, 2 << 20, context.temp_allocator)
 	testing.expect(t, os.write_entire_file(fmt.tprintf("%s/added.bin", root), added) == nil)
 	// The rescan updates from the first scan's tree, and this test asserts that it
 	// holds added.bin. fseventsd puts a change in the history 10 ms to 1.2 s after
 	// the file is closed (macOS 15.7, 2026-10-13), and a rescan sent sooner reads it
-	// only on the next update (changes_darwin.odin), so the wait outlasts that.
-	time.sleep(2 * time.Second)
+	// only on the next update (changes_darwin.odin), so the rescan waits until a
+	// replay names the change.
+	if has_events {
+		testing.expect(t, named_within(root, cursor, 5 * time.Second), "no replay named root")
+	}
 
 	stream.port_send(r.h.cmd_port, command.Command(command.Scan{path = command.text_make(root)}))
 	deadline := time.tick_now()._nsec + i64(30 * time.Second)
@@ -2179,6 +2184,31 @@ an_export_compares_with_the_scan_before :: proc(t: ^testing.T) {
 	grown := top["largest_files"].(json.Array)[0].(json.Object)
 	testing.expect_value(t, grown["path"].(json.String), under(root, "added.bin"))
 	testing.expect(t, grown["bytes_before"].(json.Null) == nil, "the added file is new")
+}
+
+/*
+named_within asks what changed in place since cursor every 100 ms until the answer
+names place itself or cannot name directories, a probe or a rescan, which read what
+changed without waiting; false when within passes first.
+*/
+@(private = "file")
+named_within :: proc(place: string, cursor: changes.Cursor, within: time.Duration) -> bool {
+	start := time.tick_now()
+	for time.tick_since(start) < within {
+		set, _, err := changes.since(place, cursor)
+		named :=
+			err == nil &&
+			(set.probe ||
+					set.rescan ||
+					slice.contains(set.shallow[:], place) ||
+					slice.contains(set.deep[:], place))
+		changes.change_set_destroy(&set)
+		if named {
+			return true
+		}
+		time.sleep(100 * time.Millisecond)
+	}
+	return false
 }
 
 /*

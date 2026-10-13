@@ -633,14 +633,11 @@ anew when there is none, or when it names another.
 */
 @(private = "file")
 ensure_header :: proc(fs: ^Recorded_Filesystem) -> bool {
-	head: [len(MAGIC) + 2 + PATH_MAX]byte
-	n := 0
-	if f, err := os.open(fs.path); err == nil {
-		n, _ = os.read_at(f, head[:], 0)
+	if f, head, _, ok := open_log(fs.path); ok {
 		os.close(f)
-	}
-	if mount, _, ok := header_read(head[:max(n, 0)]); ok && mount == fs.point {
-		return true
+		if head.mount == fs.point {
+			return true
+		}
 	}
 	return(
 		os.write_entire_file(

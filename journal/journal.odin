@@ -175,6 +175,49 @@ header_read :: proc(data: []byte) -> (mount: string, size: int, ok: bool) {
 	return string(data[len(MAGIC) + 2:size]), size, true
 }
 
+// HEADER_MAX is the most bytes of a header open_log reads: MAGIC, the length, and a
+// mount point of at most PATH_MAX (4096, limits.h). A log spelt from a longer mount
+// point does not open, and a scan there asks each folder instead.
+HEADER_MAX :: len(MAGIC) + 2 + 4096
+
+// A log's header, as open_log reads it: the mount point its paths are spelt from,
+// and the offset at which its records begin.
+Log_Header :: struct {
+	mount: string,
+	at:    i64,
+}
+
+/*
+open_log opens the log at path to read, and reads its header, the mount point in
+allocator, and how many whole records follow it. Not ok, and f nil, when the log
+cannot be opened or does not begin with a whole header. The caller closes f.
+*/
+open_log :: proc(
+	path: string,
+	allocator := context.temp_allocator,
+) -> (
+	f: ^os.File,
+	header: Log_Header,
+	count: i64,
+	ok: bool,
+) {
+	open_err: os.Error
+	f, open_err = os.open(path)
+	if open_err != nil {
+		return nil, {}, 0, false
+	}
+	head: [HEADER_MAX]byte
+	n, _ := os.read_at(f, head[:], 0)
+	mount, at, header_ok := header_read(head[:max(n, 0)])
+	size, size_err := os.file_size(f)
+	if !header_ok || size_err != nil {
+		os.close(f)
+		return nil, {}, 0, false
+	}
+	header = {strings.clone(mount, allocator), i64(at)}
+	return f, header, (size - i64(at)) / RECORD_SIZE, true
+}
+
 // record_put writes r into the first RECORD_SIZE bytes of buf.
 record_put :: proc(buf: []byte, r: Record) {
 	buf[0] = u8(r.kind)
@@ -220,25 +263,20 @@ window :: proc(
 	w: Window,
 	why: string,
 ) {
-	f, open_err := os.open(path)
-	if open_err != nil {
+	f, head, count, ok := open_log(path)
+	if !ok && !os.exists(path) {
 		return {}, "no changes are recorded for this filesystem"
 	}
-	defer os.close(f)
-	size, _ := os.file_size(f)
-	head: [len(MAGIC) + 2 + 4096]byte
-	n, _ := os.read_at(f, head[:], 0)
-	mount, at, ok := header_read(head[:n])
 	if !ok {
 		return {}, "the record of changes cannot be read"
 	}
-	count := (size - i64(at)) / RECORD_SIZE
-	first := last_at_or_before(f, i64(at), count, from)
+	defer os.close(f)
+	first := last_at_or_before(f, head.at, count, from)
 	if first < 0 {
 		return {}, "changes were not recorded when the place was last read"
 	}
 	body := make([]byte, (count - first) * RECORD_SIZE, context.temp_allocator)
-	if !read_full(f, body, i64(at) + first * RECORD_SIZE) {
+	if !read_full(f, body, head.at + first * RECORD_SIZE) {
 		return {}, "the record of changes cannot be read"
 	}
 	records := make([]Record, count - first, context.temp_allocator)
@@ -249,7 +287,7 @@ window :: proc(
 	if gap != "" {
 		return {}, gap
 	}
-	w.mount = strings.clone(mount, allocator)
+	w.mount = strings.clone(head.mount, allocator)
 	w.end = end
 	w.hashes = make(map[u64]struct{}, allocator)
 	for r in records {

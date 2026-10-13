@@ -237,24 +237,18 @@ say_status :: proc(style: term.Style, w: io.Writer) {
 	}
 }
 
-// log_tail is the size of the log at path and its last whole record.
+// log_tail is the size of the log at path, 0 when it cannot be read, and its last
+// whole record.
 @(private = "file")
 log_tail :: proc(path: string) -> (size: i64, last: Record, ok: bool) {
-	f, err := os.open(path)
-	if err != nil {
+	f, head, count, opened := open_log(path)
+	if !opened {
 		return 0, {}, false
 	}
 	defer os.close(f)
 	size, _ = os.file_size(f)
-	head: [len(MAGIC) + 2 + PATH_MAX]byte
-	n, _ := os.read_at(f, head[:], 0)
-	_, at, header_ok := header_read(head[:max(n, 0)])
-	count := (size - i64(at)) / RECORD_SIZE
-	if !header_ok || count <= 0 {
-		return size, {}, false
-	}
 	buf: [RECORD_SIZE]byte
-	if !read_full(f, buf[:], i64(at) + (count - 1) * RECORD_SIZE) {
+	if count <= 0 || !read_full(f, buf[:], head.at + (count - 1) * RECORD_SIZE) {
 		return size, {}, false
 	}
 	return size, record_get(buf[:]), true

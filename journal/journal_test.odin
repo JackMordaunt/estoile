@@ -378,3 +378,34 @@ test_a_suspend_is_covered_only_by_a_slept_record :: proc(t: ^testing.T) {
 		testing.expectf(t, len(bad.hashes) == 0, "%s: named changes", c.name)
 	}
 }
+
+// A log opens with its header read and its whole records counted, a torn last one
+// left out; a log that is missing, or does not begin with a whole header, does not
+// open, and window says which of the two it was.
+@(test)
+test_a_log_opens_only_with_a_whole_header :: proc(t: ^testing.T) {
+	path := log_file(t, "open", "/mnt/e", {{.Start, T0, 7}, {.Heartbeat, T0 + 10 * SEC, 0}})
+	defer os.remove(path)
+	torn, _ := os.open(path, {.Write, .Append})
+	os.write(torn, []byte{1, 2, 3})
+	os.close(torn)
+	f, head, count, ok := open_log(path)
+	testing.expect(t, ok && f != nil, "a whole log did not open")
+	if f != nil {
+		os.close(f)
+	}
+	testing.expect_value(t, head.mount, "/mnt/e")
+	testing.expect_value(t, head.at, i64(len(MAGIC) + 2 + len("/mnt/e")))
+	testing.expect_value(t, count, i64(2))
+
+	short := log_file(t, "short", "/mnt/e", {})
+	defer os.remove(short)
+	testing.expect(t, os.write_entire_file(short, transmute([]byte)string("LEITAJL1\x06")) == nil)
+	f, _, _, ok = open_log(short)
+	testing.expect(t, !ok && f == nil, "a log with half a header opened")
+	_, why := window(short, T0, T0 + 10 * SEC)
+	testing.expect_value(t, why, "the record of changes cannot be read")
+
+	_, why = window(fmt.tprintf("%s.missing", path), T0, T0 + 10 * SEC)
+	testing.expect_value(t, why, "no changes are recorded for this filesystem")
+}

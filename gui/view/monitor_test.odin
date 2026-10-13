@@ -103,3 +103,43 @@ scheduled_scans_switch_holds_the_click_until_the_host_answers :: proc(t: ^testin
 	testing.expect_value(t, say_switch(p), "On")
 	testing.expect(t, ui.probe_tagged(p, "no"), "the refusal is shown")
 }
+
+// The field's folder button opens the folder dialog where the field points; the
+// folder chosen fills the field, and a cancel or a platform with no dialog
+// leaves what was typed.
+@(test)
+watch_field_folder_button_fills_the_field_from_the_folder_dialog :: proc(t: ^testing.T) {
+	s: Monitor_Rig
+	monitor_open(&s)
+	defer monitor_close(&s)
+	p := &s.h.p
+	ui.text_set(&s.m.watch_text, "/top")
+	// The dialog settles where it opens, so the small button is where it is drawn.
+	ui.probe_advance(p, 30, 1.0 / 60)
+
+	testing.expect(t, ui.probe_click_top(p, "Choose a folder to watch"), "the folder button")
+	q, asked := ui.probe_picking(p)
+	testing.expect(t, asked, "the folder dialog opened")
+	testing.expect_value(t, q.kind, ui.Pick_Kind.Folder)
+	testing.expect_value(t, q.start, "/top")
+	testing.expect(t, ui.probe_pick(p, "/some/dir"))
+	ui.probe_frame(p)
+	testing.expect_value(t, ui.text_string(&s.m.watch_text), "/some/dir")
+	_, watched := sent(p, command.Watch).?
+	testing.expect(t, !watched, "choosing a folder only fills the field")
+
+	// A cancel leaves the field as it was.
+	testing.expect(t, ui.probe_click_top(p, "Choose a folder to watch"))
+	q, asked = ui.probe_picking(p)
+	testing.expect(t, asked, "the folder dialog opened again")
+	testing.expect_value(t, q.start, "/some/dir")
+	testing.expect(t, ui.probe_pick(p, ""))
+	ui.probe_frame(p)
+	testing.expect_value(t, ui.text_string(&s.m.watch_text), "/some/dir")
+
+	// No dialog: the field is still there to type in.
+	testing.expect(t, ui.probe_click_top(p, "Choose a folder to watch"))
+	testing.expect(t, ui.probe_pick_fail(p))
+	ui.probe_frame(p)
+	testing.expect_value(t, ui.text_string(&s.m.watch_text), "/some/dir")
+}

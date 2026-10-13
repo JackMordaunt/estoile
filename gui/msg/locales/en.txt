@@ -357,6 +357,7 @@ last_scan_failed = The scan of {0} failed: {1}
 watch_placeholder = A folder or drive to watch
 watch_place = Place to watch
 watch = Watch
+watch_choose = Choose a folder to watch
 monitor_unkept = Monitoring cannot be changed: the settings file cannot be written.
 monitor_not_there = {0} is not there to watch.
 monitor_cannot_schedule = Could not add the {0}: {1}

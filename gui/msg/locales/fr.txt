@@ -333,6 +333,7 @@ last_scan_failed = L’analyse du {0} a échoué : {1}
 watch_placeholder = Un dossier ou un lecteur à surveiller
 watch_place = Emplacement à surveiller
 watch = Surveiller
+watch_choose = Choisir un dossier à surveiller
 monitor_unkept = Impossible de modifier la surveillance : le fichier de réglages ne peut pas être écrit.
 monitor_not_there = {0} n’existe pas et ne peut pas être surveillé.
 monitor_cannot_schedule = Impossible d’ajouter le {0} : {1}

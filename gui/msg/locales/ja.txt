@@ -301,6 +301,7 @@ last_scan_failed = {0} のスキャンに失敗しました: {1}
 watch_placeholder = 監視するフォルダーまたはドライブ
 watch_place = 監視する場所
 watch = 監視
+watch_choose = 監視するフォルダーを選択
 monitor_unkept = 設定ファイルに書き込めないため、モニタリングを変更できません。
 monitor_not_there = {0} が存在しないため監視できません。
 monitor_cannot_schedule = {0} を追加できませんでした: {1}

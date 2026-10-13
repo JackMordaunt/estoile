@@ -290,6 +290,7 @@ Msg :: enum u16 {
 	Watch_Placeholder,
 	Watch_Place,
 	Watch,
+	Watch_Choose,
 	Monitor_Unkept,
 	Monitor_Not_There,
 	Monitor_Cannot_Schedule,

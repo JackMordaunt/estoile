@@ -315,6 +315,7 @@ last_scan_failed = Der Scan am {0} ist fehlgeschlagen: {1}
 watch_placeholder = Ein Ordner oder Laufwerk zum Überwachen
 watch_place = Zu überwachender Ort
 watch = Überwachen
+watch_choose = Ordner zum Überwachen auswählen
 monitor_unkept = Die Überwachung lässt sich nicht ändern: Die Einstellungsdatei kann nicht geschrieben werden.
 monitor_not_there = {0} existiert nicht und kann nicht überwacht werden.
 monitor_cannot_schedule = {0} konnte nicht hinzugefügt werden: {1}

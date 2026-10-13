@@ -333,6 +333,7 @@ last_scan_failed = A varredura de {0} falhou: {1}
 watch_placeholder = Uma pasta ou unidade para monitorar
 watch_place = Local para monitorar
 watch = Monitorar
+watch_choose = Escolher uma pasta para monitorar
 monitor_unkept = Não é possível alterar o monitoramento: o arquivo de configurações não pode ser gravado.
 monitor_not_there = {0} não existe para ser monitorado.
 monitor_cannot_schedule = Não foi possível adicionar o {0}: {1}

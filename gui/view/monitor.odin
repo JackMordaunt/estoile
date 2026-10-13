@@ -5,6 +5,7 @@ import "core:strconv"
 import "core:strings"
 
 import "jm:ui"
+import "jm:ui/ops"
 import "jm:ui/primer"
 
 import "../../human"
@@ -106,9 +107,9 @@ monitor_dialog :: proc(gtx: ^ui.Ctx, m: ^Model) {
 		}
 		if m.monitor_answered && r.problem != "" {
 			primer.inline_message(gtx, r.problem, .Critical)
-		}
 		if r.note != "" {
 			primer.inline_message(gtx, r.note, .Warning)
+		}
 		}
 		primer.heading(gtx, tr(.Watched_Places), level = 2, variant = .Small)
 		if len(r.watched) == 0 {
@@ -205,9 +206,17 @@ last_run_text :: proc(gtx: ^ui.Ctx, w: query.Watched_Place) -> string {
 	)
 }
 
-// watch_field is the field that names another place to watch, daily.
+// watch_field is the field that names another place to watch, daily. Its
+// trailing folder button opens the platform's folder dialog where the field
+// points, and the folder chosen fills the field for Watch to add; a cancel, or
+// a platform with no dialog to show, leaves the field to be typed in.
 @(private)
 watch_field :: proc(gtx: ^ui.Ctx, m: ^Model, r: ^query.Monitor_Result, locked: bool) {
+	for e in ui.events(gtx, WATCH_PICK) {
+		if e.kind == .Picked && e.text != "" && !locked {
+			ui.text_set(&m.watch_text, e.text)
+		}
+	}
 	ui.row(gtx, gap = 8, align = .Center)
 	ui.flexible(gtx, 1)
 	typed := ui.text_string(&m.watch_text)
@@ -215,10 +224,15 @@ watch_field :: proc(gtx: ^ui.Ctx, m: ^Model, r: ^query.Monitor_Result, locked: b
 		gtx,
 		&m.watch_text,
 		placeholder = tr(.Watch_Placeholder),
+		action = .File_Directory,
+		action_name = tr(.Watch_Choose),
 		block = true,
 		name = tr(.Watch_Place),
 		state = .Disabled if locked else .Live,
 	)
+	if edit.action && !locked {
+		ui.pick_folder(gtx, WATCH_PICK, typed)
+	}
 	add := primer.button(
 		gtx,
 		tr(.Watch),
@@ -234,6 +248,10 @@ watch_field :: proc(gtx: ^ui.Ctx, m: ^Model, r: ^query.Monitor_Result, locked: b
 		)
 	}
 }
+
+// WATCH_PICK is the area the folder dialog for watch_field answers.
+@(private)
+WATCH_PICK :: ops.Area_Id(0x6c65_6974_6177_6174) // "leitawat"
 
 // send_monitor sends a change to monitoring, and waits for the host to say how
 // it went.

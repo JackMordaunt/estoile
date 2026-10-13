@@ -330,6 +330,7 @@ last_scan_failed = La scansione del {0} non è riuscita: {1}
 watch_placeholder = Una cartella o un'unità da monitorare
 watch_place = Percorso da monitorare
 watch = Monitora
+watch_choose = Scegli una cartella da monitorare
 monitor_unkept = Impossibile modificare il monitoraggio: non si può scrivere il file delle impostazioni.
 monitor_not_there = {0} non esiste e non può essere monitorato.
 monitor_cannot_schedule = Impossibile aggiungere il {0}: {1}

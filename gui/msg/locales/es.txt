@@ -333,6 +333,7 @@ last_scan_failed = El escaneo del {0} falló: {1}
 watch_placeholder = Una carpeta o unidad para supervisar
 watch_place = Lugar para supervisar
 watch = Supervisar
+watch_choose = Elegir una carpeta para supervisar
 monitor_unkept = No se puede cambiar la supervisión: no se puede escribir el archivo de ajustes.
 monitor_not_there = {0} no existe, no se puede supervisar.
 monitor_cannot_schedule = No se pudo añadir el {0}: {1}

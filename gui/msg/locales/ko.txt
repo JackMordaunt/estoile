@@ -298,6 +298,7 @@ last_scan_failed = {0} 스캔 실패: {1}
 watch_placeholder = 감시할 폴더 또는 드라이브
 watch_place = 감시할 위치
 watch = 감시
+watch_choose = 감시할 폴더 선택
 monitor_unkept = 설정 파일에 쓸 수 없어 모니터링을 변경할 수 없습니다.
 monitor_not_there = {0}이(가) 없어 감시할 수 없습니다.
 monitor_cannot_schedule = {0}을(를) 추가할 수 없습니다: {1}

@@ -23,10 +23,22 @@ its ids say nothing about the old one's.
 
 The stream reports that it could not keep up, or that events were dropped, as
 MustScanSubDirs on a directory, which is read again whole; on the place or above it,
-the place is scanned whole. A changed root, a wrapped counter, or a history that does
-not finish within HISTORY_WAIT does the same.
+the place is scanned whole. A changed root, a wrapped counter, a cursor more than
+REPLAY_MOST events back, or a history that does not finish within HISTORY_WAIT does
+the same.
 */
 HISTORY_WAIT :: 30 * time.Second
+
+/*
+REPLAY_MOST is the most events since the cursor that `since` replays. A replay
+filters every event on the volume since the cursor, not only the place's, at about
+0.45 µs an event, so a busy volume's day can cost more than the update saves. On an
+M1 Pro (2026-10-13) 7.16M events took 3.0 s to replay, and `leita ~` read 2.57M
+entries whole in 12.6 s and updated them in 0.78 s. 4M events is about 2 s of replay,
+the update then near 3 s against 12.6 s; past that the saving shrinks while the
+replay grows with the volume, not the place, so the place is read whole.
+*/
+REPLAY_MOST :: 4_000_000
 
 // A cursor for `place` as it is now, to take before scanning it whole. Not ok on a
 // volume with no event store, a network share or a read-only image.
@@ -73,6 +85,10 @@ since :: proc(
 	}
 	next = c
 	next.position = i64(FSEventsGetCurrentEventId())
+	if too_much_to_replay(u64(c.position), u64(next.position)) {
+		why :: "too much has happened on the volume since the place was last read"
+		return rescan(why), {}, .None
+	}
 
 	h := History {
 		place     = place,
@@ -95,6 +111,14 @@ since :: proc(
 		return {}, {}, .Out_Of_Memory
 	}
 	return h.changed, next, .None
+}
+
+// Whether more than REPLAY_MOST events lie between the cursor's id and the current
+// one. A current id below the cursor's is left to the replay, which says the counter
+// wrapped.
+@(private)
+too_much_to_replay :: proc(from, current: u64) -> bool {
+	return current > from && current - from > REPLAY_MOST
 }
 
 // One replay's state, which the stream's callback fills.

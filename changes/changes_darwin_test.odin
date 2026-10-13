@@ -2,6 +2,7 @@
 package changes
 
 import "core:fmt"
+import "core:log"
 import "core:os"
 import "core:slice"
 import "core:strings"
@@ -85,4 +86,36 @@ test_an_event_cursor_that_cannot_be_trusted_rescans :: proc(t: ^testing.T) {
 		testing.expect_value(t, err, Error.None)
 		testing.expectf(t, set.rescan && set.why != "", "%v: no rescan", bad)
 	}
+}
+
+// A replay longer than REPLAY_MOST events is not attempted; one at the bound is.
+@(test)
+test_a_replay_too_long_is_not_attempted :: proc(t: ^testing.T) {
+	testing.expect(t, !too_much_to_replay(100, 100), "no events")
+	testing.expect(t, !too_much_to_replay(100, 100 + REPLAY_MOST), "at the bound")
+	testing.expect(t, too_much_to_replay(100, 101 + REPLAY_MOST), "past the bound")
+	testing.expect(t, !too_much_to_replay(100 + REPLAY_MOST, 5), "a wrapped counter")
+}
+
+// since answers a cursor further back than REPLAY_MOST with a rescan, without the
+// replay, on a volume whose counter has gone that far.
+@(test)
+test_an_event_cursor_too_far_back_rescans :: proc(t: ^testing.T) {
+	root := fresh(t, "fsevents_far")
+	defer os.remove_all(root)
+	c, ok := now(root)
+	if !testing.expect(t, ok, "no cursor: the temp directory's volume keeps no event history") {
+		return
+	}
+	if c.position <= REPLAY_MOST {
+		log.warnf("not run: the volume's event counter is at %d, short of a replay's bound", c.position)
+		return
+	}
+	c.position -= REPLAY_MOST + 1
+	start := time.tick_now()
+	set, _, err := since(root, c)
+	defer change_set_destroy(&set)
+	testing.expect_value(t, err, Error.None)
+	testing.expectf(t, set.rescan, "no rescan: %v", set.shallow)
+	testing.expectf(t, time.tick_since(start) < time.Second, "replayed: %v", time.tick_since(start))
 }

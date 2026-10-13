@@ -9,6 +9,7 @@ import "core:testing"
 import "core:time"
 
 import "../history"
+import "../scan"
 import "../schedule"
 import "../settings"
 
@@ -233,13 +234,21 @@ a_run_scans_what_is_due_and_keeps_it_in_history :: proc(t: ^testing.T) {
 	testing.expect(t, strings.contains(out, "2.0 MiB"), out)
 
 	// The first run read the place whole and kept it as the baseline the next
-	// update from; stopping watching it deletes the baseline, not the history.
+	// update from, named as the command line and the window name theirs; stopping
+	// watching it keeps both the baseline and the history, which they share.
 	testing.expect(t, !runs[2].updated)
-	baseline := history.baseline_path(b.c.paths.history, place_of(b.place), context.temp_allocator)
-	testing.expect(t, os.exists(baseline), "the baseline is kept")
+	target, _, err := scan.resolve(b.place)
+	testing.expect_value(t, err, scan.Error.None)
+	defer scan.target_destroy(&target)
+	baseline := history.baseline_path(
+		b.c.paths.history,
+		scan.location(target, context.temp_allocator),
+		context.temp_allocator,
+	)
+	testing.expectf(t, os.exists(baseline), "no baseline at %s", baseline)
 	code, _ = run_monitor(&b, "remove", b.place)
 	testing.expect_value(t, code, 0)
-	testing.expect(t, !os.exists(baseline), "and goes with the place")
+	testing.expect(t, os.exists(baseline), "the baseline went with the place")
 	testing.expect_value(t, snapshot_count(t, &b), 3)
 }
 

@@ -208,8 +208,7 @@ unwatch :: proc(d: ^Desk, c: ^command.Unwatch) {
 		monitor_settle(d, say(d, .Monitor_Unkept))
 		return
 	}
-	if _, err := monitor.forget(d.settings, d.monitoring.paths, command.text_of(&c.path));
-	   err != nil {
+	if _, err := settings.unwatch(d.settings, command.text_of(&c.path)); err != nil {
 		monitor_settle(d, say(d, .Monitor_Unkept))
 		return
 	}

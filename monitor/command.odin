@@ -289,7 +289,7 @@ remove :: proc(c: Context, path: string, w: io.Writer) -> int {
 	defer settings.close(&st)
 	// The place as given first, so one no longer there can still be removed.
 	for place in ([]string{path, place_of(path)}) {
-		found, err := forget(&st, c.paths, place)
+		found, err := settings.unwatch(&st, place)
 		if err != nil {
 			errorf(c, w, "cannot stop watching %s: %s", place, history.describe(err))
 			return EXIT_FAILED

@@ -17,7 +17,10 @@ scan.resolve and survey.fill_run, at the gentle pace, folded once at the end,
 but kept between runs as the place's baseline (history.baseline_path). Each run
 after the first updates the last tree from what the system says changed since,
 and reads the place whole only when that cannot be trusted, saying why
-(survey/update.odin). This is the one place the monitor learns what a place
+(survey/update.odin). The baseline is named for the place as scan.location
+resolves it, as the command line and the window name theirs, so all three share
+one tree of a place; it stays when the place is no longer watched, as long as
+the history beside it. This is the one place the monitor learns what a place
 holds: whatever reads it hands back a Place_Scan whose tree and rollup
 history.keep takes.
 */
@@ -42,12 +45,12 @@ Place_Scan :: struct {
 }
 
 /*
-survey_place scans path to the end at the gentle pace, from its baseline when
-it has one, keeping the result there, and returns what it found, or nil and
-why not, in the temp allocator. The caller frees what it found with
-place_scan_destroy.
+survey_place scans path to the end at the gentle pace, from its baseline beside
+the history store at kept when it has one, keeping the result there, and returns
+what it found, or nil and why not, in the temp allocator. The caller frees what it
+found with place_scan_destroy.
 */
-survey_place :: proc(path, baseline: string) -> (s: ^Place_Scan, problem: string) {
+survey_place :: proc(path, kept: string) -> (s: ^Place_Scan, problem: string) {
 	s = new(Place_Scan)
 	s.path = strings.clone(path)
 	s.started = time.now()
@@ -78,7 +81,11 @@ survey_place :: proc(path, baseline: string) -> (s: ^Place_Scan, problem: string
 	s.fill.engine = choice.engine
 	s.fill.opts = ntfs.Read_Options{}
 	s.fill.tree = &s.tree
-	s.fill.baseline = baseline
+	s.fill.baseline = history.baseline_path(
+		kept,
+		scan.location(target, context.temp_allocator),
+		context.temp_allocator,
+	)
 	survey.fill_run(&s.fill)
 	s.updated = s.fill.how == .Updated
 	s.why = s.fill.why

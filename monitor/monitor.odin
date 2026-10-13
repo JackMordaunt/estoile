@@ -14,12 +14,10 @@ package leita_monitor
 
 import "core:fmt"
 import "core:io"
-import "core:os"
 import "core:strings"
 import "core:time"
 
 import "jm:i18n"
-import "jm:sqlite3"
 
 import "../alert"
 import "../gui/msg"
@@ -174,10 +172,7 @@ run :: proc(opt: Options, w: io.Writer) -> int {
 scan_one :: proc(opt: Options, watch: settings.Watch) -> (r: settings.Run, alerts: []alert.Alert) {
 	r.place = watch.place
 	r.started = time.to_unix_seconds(opt.now)
-	s, problem := survey_place(
-		watch.place,
-		history.baseline_path(opt.paths.history, watch.place, context.temp_allocator),
-	)
+	s, problem := survey_place(watch.place, opt.paths.history)
 	if s == nil {
 		r.problem = problem
 		return
@@ -287,25 +282,6 @@ words_of :: proc(st: ^settings.Store) -> ^msg.Strings {
 	}
 	msg.init(words, locale)
 	return words
-}
-
-/*
-forget stops watching place and deletes what was kept for its next run, its
-baseline, and says whether it was watched. The scans kept in history stay.
-*/
-forget :: proc(
-	st: ^settings.Store,
-	paths: Paths,
-	place: string,
-) -> (
-	found: bool,
-	err: sqlite3.Error,
-) {
-	found = settings.unwatch(st, place) or_return
-	if found {
-		os.remove(history.baseline_path(paths.history, place, context.temp_allocator))
-	}
-	return
 }
 
 // alert_of is an alert as the log kept it, and whether its kind is one this

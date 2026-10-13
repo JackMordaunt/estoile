@@ -12,6 +12,7 @@ import "core:time"
 
 import "jm:sqlite3"
 
+import "changes"
 import "history"
 import "scan"
 import "term"
@@ -300,6 +301,15 @@ fresh :: proc(t: ^testing.T, name: string) -> (root, store: string) {
 	return
 }
 
+// keeps_events says whether root's volume keeps a change history, which a baseline
+// needs; changes.now names a network share and a read-only image as volumes without
+// one. A volume without one fails the test with that reason.
+@(private)
+keeps_events :: proc(t: ^testing.T, root: string) -> bool {
+	_, ok := changes.now(root)
+	return testing.expect(t, ok, "no cursor: the temp directory's volume keeps no change history")
+}
+
 @(private)
 write_zeros :: proc(t: ^testing.T, path: string, size: int) {
 	body := make([]byte, size, context.temp_allocator)
@@ -403,6 +413,61 @@ a_scan_keeps_a_baseline_beside_the_store :: proc(t: ^testing.T) {
 	testing.expectf(t, os.exists(baseline), "no baseline at %s", baseline)
 	testing.expect_value(t, scan_and_say({target = root}, store), 0)
 	testing.expect_value(t, snapshot_count(t, store), 3)
+}
+
+/*
+A live scan with history on keeps the baseline too, though its draw loop frees the
+temp allocator every frame while the reader still reads the place and then writes the
+baseline. A baseline path in the temp allocator was written over by the next frame's
+line, and the baseline renamed to wherever that line's bytes pointed. To show that, the
+place takes several frames to read at the gentle pace (50,000 files, 4 frames on an M1
+Pro), the line spells a path longer than what the scan put in the temp allocator before
+the baseline's, and that allocator is as empty when the scan begins as the binary's is.
+Its draw loop frees this test's temp allocator too, so what the test reads after is in
+the heap. Without the fix it failed 4 runs in 4 (2026-10-13).
+*/
+@(test)
+a_live_scan_keeps_a_baseline_beside_the_store :: proc(t: ^testing.T) {
+	root, store := fresh(t, "leita_live_baseline_cli")
+	root = strings.clone(root)
+	defer delete(root)
+	store = strings.clone(store)
+	defer delete(store)
+	defer os.remove_all(root)
+	defer os.remove_all(filepath.dir(store))
+	if !keeps_events(t, root) {
+		return
+	}
+	for d in 0 ..< 50 {
+		dir := fmt.tprintf("%s/d%02d", root, d)
+		testing.expect(t, os.make_directory(dir) == nil, "could not make a directory")
+		for i in 0 ..< 1000 {
+			write_zeros(t, fmt.tprintf("%s/f%04d", dir, i), 0)
+		}
+	}
+	// The largest thing, whose path each frame's line spells, deep and long enough
+	// to reach past where the scan put the baseline's path.
+	deep := root
+	for _ in 0 ..< 4 {
+		deep = fmt.tprintf("%s/%s", deep, strings.repeat("x", 200, context.temp_allocator))
+		testing.expect(t, os.make_directory(deep) == nil, "could not make a deep directory")
+	}
+	write_zeros(t, fmt.tprintf("%s/big.bin", deep), 1 << 20)
+	target, _, err := scan.resolve(root)
+	testing.expect_value(t, err, scan.Error.None)
+	defer scan.target_destroy(&target)
+	baseline := history.baseline_path(store, scan.location(target, context.temp_allocator))
+	defer delete(baseline)
+
+	free_all(context.temp_allocator)
+	live := Options {
+		target = root,
+		live   = true,
+		whole  = true,
+		gentle = true,
+	}
+	testing.expect_value(t, scan_and_say(live, store), 0)
+	testing.expectf(t, os.exists(baseline), "no baseline at %s", baseline)
 }
 
 // A store another program holds locked for writing past history.BUSY_WAIT leaves

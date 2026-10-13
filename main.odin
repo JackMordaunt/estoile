@@ -377,13 +377,12 @@ scan_and_say :: proc(opt: Options, kept := "", licensee := "", locked := false) 
 		whole  = opt.whole,
 	}
 	defer survey.fill_destroy(&f)
+	// In the heap, not the temp allocator: a live scan's draw loop frees that every
+	// frame while its reader still reads and writes the baseline.
 	if kept != "" {
-		f.baseline = history.baseline_path(
-			kept,
-			scan.location(target, context.temp_allocator),
-			context.temp_allocator,
-		)
+		f.baseline = history.baseline_path(kept, scan.location(target, context.temp_allocator))
 	}
+	defer delete(f.baseline)
 
 	if opt.live {
 		return run_live(&f)

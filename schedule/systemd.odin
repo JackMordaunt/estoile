@@ -122,11 +122,18 @@ install_units :: proc(h: Host, argv: []string) -> (problem: string, logged_in_on
 			return r.err, false
 		}
 	}
-	if h.login != "" {
-		r := h.run({"loginctl", "show-user", h.login, "-p", "Linger"}, h.user)
-		logged_in_only = r.ok && strings.trim_space(r.out) == "Linger=no"
+	return "", logged_in_only_systemd(h)
+}
+
+// logged_in_only_systemd is whether the person's user timers run only while
+// they are logged in: they do unless loginctl says they linger.
+@(private)
+logged_in_only_systemd :: proc(h: Host) -> bool {
+	if h.login == "" {
+		return false
 	}
-	return "", logged_in_only
+	r := h.run({"loginctl", "show-user", h.login, "-p", "Linger"}, h.user)
+	return r.ok && strings.trim_space(r.out) == "Linger=no"
 }
 
 // remove_units stops and disables the timer, deletes both units, and has

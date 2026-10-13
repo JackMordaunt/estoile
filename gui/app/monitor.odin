@@ -24,18 +24,27 @@ line's does; turning it off takes it back. Both are refused while the paid
 features are locked but for turning it off, which always works.
 */
 
-// Monitoring is the desk's part in monitoring: the scheduler it hands the
-// monitor to, what that is to run, and how the last change asked for went.
+/*
+Monitoring is the desk's part in monitoring: the scheduler it hands the monitor
+to, what that is to run, and how the last change asked for went.
+
+Whether scheduled scans would run only while the person is logged in is asked
+of the scheduler with the first answer and again whenever monitoring is turned
+on, and kept: the dialog's warning of it is there from its first frame and
+stays through every change, rather than arriving with the switch and leaving
+with the next place watched, each of which moved everything beneath it.
+*/
 Monitoring :: struct {
-	host:      schedule.Host,
-	own_host:  bool, // host was made by monitor_open, to be freed
-	argv:      []string,
-	scheduler: string, // the host's describe, kept
-	paths:     monitor.Paths, // beside the history store, for a place's baseline
-	changed:   u32,
-	problem:   string,
-	note:      string,
-	answered:  time.Tick, // when a Monitor need was last answered on a tick
+	host:           schedule.Host,
+	own_host:       bool, // host was made by monitor_open, to be freed
+	argv:           []string,
+	scheduler:      string, // the host's describe, kept
+	paths:          monitor.Paths, // beside the history store, for a place's baseline
+	changed:        u32,
+	problem:        string,
+	logged_in_only: bool, // as the scheduler last said, once asked
+	asked:          bool,
+	answered:       time.Tick, // when a Monitor need was last answered on a tick
 }
 
 // MONITOR_FRESH is how often a live Monitor need is answered again on the
@@ -102,19 +111,15 @@ monitor_close :: proc(d: ^Desk) {
 	delete(mo.paths.lock)
 	delete(mo.paths.licence)
 	delete(mo.problem)
-	delete(mo.note)
 	mo^ = {}
 }
 
-// monitor_settle ends a change, with why it was refused, "" when it was made,
-// and a note for the person, "" for none.
+// monitor_settle ends a change, with why it was refused, "" when it was made.
 @(private = "file")
-monitor_settle :: proc(d: ^Desk, problem: string, note := "") {
+monitor_settle :: proc(d: ^Desk, problem: string) {
 	mo := &d.monitoring
 	delete(mo.problem)
-	delete(mo.note)
 	mo.problem = strings.clone(problem)
-	mo.note = strings.clone(note)
 	mo.changed += 1
 }
 
@@ -157,7 +162,8 @@ set_monitoring :: proc(d: ^Desk, c: command.Monitoring) {
 		monitor_settle(d, say(d, .Monitor_Unkept))
 		return
 	}
-	monitor_settle(d, "", say(d, .Monitor_Logged_In_Only, mo.host.login) if logged_in_only else "")
+	mo.logged_in_only, mo.asked = logged_in_only, true
+	monitor_settle(d, "")
 }
 
 // watch has the monitor watch the place c names.
@@ -217,7 +223,12 @@ monitor_answer :: proc(d: ^Desk) -> query.Monitor_Result {
 		scheduler = mo.scheduler,
 		changed   = mo.changed,
 		problem   = mo.problem,
-		note      = mo.note,
+	}
+	if !mo.asked {
+		mo.logged_in_only, mo.asked = schedule.logged_in_only(mo.host), true
+	}
+	if mo.logged_in_only {
+		r.note = say(d, .Monitor_Logged_In_Only, mo.host.login)
 	}
 	if d.settings == nil {
 		return r

@@ -64,10 +64,27 @@ monitor_dialog :: proc(gtx: ^ui.Ctx, m: ^Model) {
 	waiting := m.monitor_sent != nil
 	close := false
 	buttons := [1]primer.Dialog_Button{{content = tr(.Close), clicked = &close}}
-	if primer.dialog(gtx, &m.monitor_open, tr(.Monitoring), footer = buttons[:], width = .XLarge) {
+	// The dialog hangs from the top, not the middle: its content grows and
+	// shrinks with each answer, and a centred dialog would move all of it,
+	// above the change as well as below, by half of each.
+	if primer.dialog(
+		gtx,
+		&m.monitor_open,
+		tr(.Monitoring),
+		footer = buttons[:],
+		width = .XLarge,
+		align = .Top,
+	) {
 		ui.column(gtx, gap = 16, align = .Fill)
 		if locked {
 			primer.inline_message(gtx, tr(.Monitoring_Locked), .Warning)
+		}
+		// The note is how scans will run here, which the host says from its
+		// first answer and keeps saying, so it sits above the switch: the line
+		// of where they run, which comes and goes with the switch, is beneath
+		// it and cannot move it.
+		if r.note != "" {
+			primer.inline_message(gtx, r.note, .Warning)
 		}
 		if ui.row(gtx, gap = 12, align = .Center) {
 			ui.flexible(gtx, 1)
@@ -107,9 +124,6 @@ monitor_dialog :: proc(gtx: ^ui.Ctx, m: ^Model) {
 		}
 		if m.monitor_answered && r.problem != "" {
 			primer.inline_message(gtx, r.problem, .Critical)
-		if r.note != "" {
-			primer.inline_message(gtx, r.note, .Warning)
-		}
 		}
 		primer.heading(gtx, tr(.Watched_Places), level = 2, variant = .Small)
 		if len(r.watched) == 0 {

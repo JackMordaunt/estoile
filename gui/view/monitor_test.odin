@@ -143,3 +143,24 @@ watch_field_folder_button_fills_the_field_from_the_folder_dialog :: proc(t: ^tes
 	ui.probe_frame(p)
 	testing.expect_value(t, ui.text_string(&s.m.watch_text), "/some/dir")
 }
+
+// The note of how scans will run sits above the switch, so turning scans on,
+// which adds the line of where they run, moves nothing above that line.
+@(test)
+monitoring_note_holds_still_as_scans_turn_on :: proc(t: ^testing.T) {
+	s: Monitor_Rig
+	monitor_open(&s)
+	defer monitor_close(&s)
+	p := &s.h.p
+	note := "Scans run only while ann is logged in."
+
+	monitor_answer(&s, {on = false, scheduler = "systemd", note = note})
+	ui.probe_advance(p, 30, 1.0 / 60)
+	before := ui.probe_bounds(p, note)
+	switch_before := ui.probe_bounds(p, "Scheduled scans")
+	monitor_answer(&s, {on = true, scheduler = "systemd", note = note})
+	ui.probe_advance(p, 30, 1.0 / 60)
+	testing.expect(t, ui.probe_tagged(p, "Run every hour by the systemd."), "where scans run shows")
+	testing.expect_value(t, ui.probe_bounds(p, note), before)
+	testing.expect_value(t, ui.probe_bounds(p, "Scheduled scans"), switch_before)
+}

@@ -132,6 +132,15 @@ install :: proc(h: Host, argv: []string) -> (problem: string, logged_in_only: bo
 	return
 }
 
+/*
+logged_in_only is whether the entry install writes runs only while the person
+is logged in, as install says after writing it: it is so whether or not one is
+written, so this answers before install has been asked.
+*/
+logged_in_only :: proc(h: Host) -> bool {
+	return h.system == .Systemd && logged_in_only_systemd(h)
+}
+
 // remove stops the entry and deletes it, and says why it could not, or "". An
 // entry that is not there is already removed.
 remove :: proc(h: Host) -> string {

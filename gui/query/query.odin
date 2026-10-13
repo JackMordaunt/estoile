@@ -369,8 +369,9 @@ Monitor_Result :: struct {
 	on:        bool,
 	scheduler: string, // where the system keeps the schedule, as a person would look for it
 	// Each change asked for moves changed on once it is made or refused;
-	// problem says why it was refused, "" when it was made, and note anything
-	// the person should know of how it will run.
+	// problem says why it was refused, "" when it was made. note is anything
+	// the person should know of how scans will run here, in every answer from
+	// the first whether monitoring is on or not.
 	changed:   u32,
 	problem:   string,
 	note:      string,

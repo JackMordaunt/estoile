@@ -2895,3 +2895,63 @@ monitoring_watches_a_place_and_hands_it_to_the_scheduler :: proc(t: ^testing.T) 
 	)
 	testing.expect(t, !os.exists(timer), "turning it off takes the timer away")
 }
+
+// refuse_linger runs a scheduler whose person does not linger, so their user
+// timers run only while they are logged in; it does whatever else is asked.
+@(private = "file")
+refuse_linger :: proc(argv: []string, user: rawptr) -> schedule.Outcome {
+	if len(argv) > 0 && argv[0] == "loginctl" {
+		return {ok = true, out = "Linger=no\n"}
+	}
+	return {ok = true}
+}
+
+// Where scheduled scans run only while the person is logged in, Monitoring
+// says so from the first frame it draws, and goes on saying so as the switch
+// is turned and places are watched: the warning neither arrives after the
+// dialog nor leaves with the next change, either of which moved everything
+// beneath it.
+@(test)
+monitoring_warns_of_running_only_while_logged_in_from_the_start :: proc(t: ^testing.T) {
+	root := fixture(t, "linger")
+	defer os.remove_all(root)
+	data := fmt.tprintf("%s-data", root)
+	os.remove_all(data)
+	defer os.remove_all(data)
+	host := schedule.Host {
+		run    = refuse_linger,
+		system = .Systemd,
+		units  = fmt.tprintf("%s/units", data),
+		login  = "ann",
+	}
+	note := "Scheduled scans run only while ann is logged in. To run them always: loginctl enable-linger ann"
+
+	r: Rig
+	rig_open(
+		&r,
+		root,
+		kept = fmt.tprintf("%s/history.db", data),
+		scheduler = &host,
+		monitor_argv = {"/usr/bin/leita"},
+	)
+	defer rig_close(&r)
+	testing.expect(t, settle(&r, "Done"))
+	testing.expect(t, choose(&r, "Monitoring"), "the menu offers monitoring")
+	ui.probe_frame(&r.p)
+	hand_on(&r)
+	testing.expect(t, settle(&r, "Watched places"))
+	testing.expect(t, ui.probe_tagged(&r.p, note), "the warning is there with the dialog")
+
+	ui.probe_advance(&r.p, 20, 1.0 / 60)
+	testing.expect(t, ui.probe_click(&r.p, "Off"), "the switch is off")
+	hand_on(&r)
+	testing.expect(t, settle(&r, "Run every hour by the systemd user timer leita-monitor.timer."))
+	testing.expect(t, ui.probe_tagged(&r.p, note), "the warning stays as the switch turns on")
+
+	ui.text_set(&r.m.watch_text, root)
+	ui.probe_advance(&r.p, 20, 1.0 / 60)
+	testing.expect(t, ui.probe_click_top(&r.p, "Watch"))
+	hand_on(&r)
+	testing.expect(t, settle(&r, "Not scanned yet"), "the place scanned is watched")
+	testing.expect(t, ui.probe_tagged(&r.p, note), "the warning stays as a place is watched")
+}

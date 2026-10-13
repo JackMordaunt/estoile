@@ -269,3 +269,62 @@ test_mounts_are_read_and_judged :: proc(t: ^testing.T) {
 		testing.expectf(t, why == want[i].why, "%s: why %q", m.point, why)
 	}
 }
+
+/*
+What the recorder does with each mount table, less the marks: forget what has gone
+or changed, then judge each mount not tried yet, recording what judge allows. It
+returns the mounts tried this time, by point.
+*/
+@(private = "file")
+judge_table :: proc(j: ^Verdicts, text: string, recorded: []string) -> []string {
+	mounts := mounts_parse(text, context.temp_allocator)
+	verdicts_prune(j, mounts, recorded)
+	tried := make([dynamic]string, context.temp_allocator)
+	for m in mounts {
+		if !verdicts_try(j, m) {
+			continue
+		}
+		append(&tried, m.point)
+		if try, why := judge(m); try {
+			verdicts_record(j, m)
+		} else if why != "" {
+			verdicts_skip(j, m, why)
+		}
+	}
+	return tried[:]
+}
+
+// A disk unplugged leaves no status line behind and is tried again when plugged in,
+// under a new mount id; a filesystem remounted read-write is tried again under the
+// same id; a mount gone whose device stays recorded is not judged again.
+@(test)
+test_mounts_gone_or_changed_are_judged_again :: proc(t: ^testing.T) {
+	j: Verdicts
+	defer verdicts_destroy(&j)
+	root :: "36 1 8:1 / / rw - ext4 /dev/sda1 rw\n"
+	usb :: "50 36 8:17 / /media/usb rw - ext4 /dev/sdb1 ro\n"
+	bind :: "51 36 8:1 /srv /srv rw - ext4 /dev/sda1 rw\n"
+
+	testing.expect_value(t, len(judge_table(&j, root + usb + bind, {})), 3)
+	testing.expect_value(t, len(j.skipped), 1)
+	testing.expect_value(t, len(judge_table(&j, root + usb + bind, {"8:1"})), 0)
+
+	judge_table(&j, root + bind, {"8:1"})
+	testing.expect_value(t, len(j.skipped), 0)
+	testing.expect(t, "8:17" not_in j.devices, "an unplugged disk stayed judged")
+	plugged :: "60 36 8:17 / /media/usb rw - ext4 /dev/sdb1 ro\n"
+	testing.expect_value(t, len(judge_table(&j, root + bind + plugged, {"8:1"})), 1)
+	testing.expect_value(t, len(j.skipped), 1)
+
+	remounted :: "60 36 8:17 / /media/usb rw - ext4 /dev/sdb1 rw\n"
+	testing.expect_value(t, len(judge_table(&j, root + bind + remounted, {"8:1"})), 1)
+	testing.expect_value(t, len(j.skipped), 0)
+	testing.expect(t, "8:17" in j.devices, "a filesystem remounted read-write was not recorded")
+
+	testing.expect_value(t, len(judge_table(&j, root + remounted, {"8:1", "8:17"})), 0)
+	testing.expect(t, "8:1" in j.devices, "a recorded device was forgotten when a bind mount went")
+
+	reused :: "51 36 7:0 / /mnt/e rw - ext4 /dev/loop0 rw\n"
+	testing.expect_value(t, len(judge_table(&j, root + remounted + reused, {"8:1", "8:17"})), 1)
+	testing.expect(t, "7:0" in j.devices, "a mount given a gone mount's id was not tried")
+}

@@ -171,3 +171,187 @@ judge :: proc(m: Mount) -> (try: bool, why: string) {
 	}
 	return true, ""
 }
+
+/*
+The recorder's verdicts on the mount table: each mount tried, by id, with its
+device and the filesystem's options then; each device recorded or skipped; and why
+each skipped one was. A device is judged again once no mount of it is left, or once
+its options change, so a disk plugged in again, or a filesystem remounted read-write,
+is tried again and the status lists no filesystem that has gone.
+*/
+@(private)
+Verdicts :: struct {
+	mounts:  map[int]Tried_Mount,
+	devices: map[string]struct{},
+	skipped: [dynamic]Skipped_Filesystem,
+}
+
+@(private)
+Tried_Mount :: struct {
+	device: string,
+	super:  string,
+}
+
+// A filesystem the recorder does not record, and why.
+@(private)
+Skipped_Filesystem :: struct {
+	device: string,
+	point:  string,
+	fstype: string,
+	why:    string,
+}
+
+// verdicts_try is whether m is new to j, by its id; it is noted as tried either way.
+@(private)
+verdicts_try :: proc(j: ^Verdicts, m: Mount) -> bool {
+	if m.id in j.mounts {
+		return false
+	}
+	j.mounts[m.id] = {strings.clone(m.device), strings.clone(m.super)}
+	return true
+}
+
+// verdicts_record notes m's device as recorded.
+@(private)
+verdicts_record :: proc(j: ^Verdicts, m: Mount) {
+	if m.device not_in j.devices {
+		j.devices[strings.clone(m.device)] = {}
+	}
+}
+
+// verdicts_skip notes m's device as skipped, and why, unless it was judged already.
+@(private)
+verdicts_skip :: proc(j: ^Verdicts, m: Mount, why: string) {
+	if m.device in j.devices {
+		return
+	}
+	j.devices[strings.clone(m.device)] = {}
+	append(
+		&j.skipped,
+		Skipped_Filesystem {
+			device = strings.clone(m.device),
+			point = strings.clone(m.point),
+			fstype = strings.clone(m.fstype),
+			why = strings.clone(why),
+		},
+	)
+}
+
+/*
+verdicts_prune brings j up to date with mounts, the table as it is now. A mount
+gone is forgotten, since its id may be given to a later mount (proc_pid_mountinfo(5)).
+A device with no mount left, or whose options changed, is forgotten with every mount
+of it and its status line, unless it is one of recorded: the caller stops a
+recording whose mount went, and forgets its device, before it prunes.
+*/
+@(private)
+verdicts_prune :: proc(j: ^Verdicts, mounts: []Mount, recorded: []string) {
+	gone := make([dynamic]int, context.temp_allocator)
+	stale := make([dynamic]string, context.temp_allocator)
+	for id, was in j.mounts {
+		now, here := mount_by_id(mounts, id)
+		if !here {
+			append(&gone, id)
+		}
+		changed := here && now.super != was.super
+		if changed || !here && !device_mounted(mounts, was.device) {
+			append(&stale, strings.clone(was.device, context.temp_allocator))
+		}
+	}
+	for id in gone {
+		verdicts_drop_mount(j, id)
+	}
+	for device in stale {
+		if !listed(recorded, device) {
+			verdicts_forget(j, device)
+		}
+	}
+}
+
+// verdicts_forget forgets device: every mount of it is tried again.
+@(private)
+verdicts_forget :: proc(j: ^Verdicts, device: string) {
+	if device in j.devices {
+		key, _ := delete_key(&j.devices, device)
+		delete(key)
+	}
+	ids := make([dynamic]int, context.temp_allocator)
+	for id, m in j.mounts {
+		if m.device == device {
+			append(&ids, id)
+		}
+	}
+	for id in ids {
+		verdicts_drop_mount(j, id)
+	}
+	for i := len(j.skipped) - 1; i >= 0; i -= 1 {
+		if j.skipped[i].device == device {
+			skipped_filesystem_destroy(j.skipped[i])
+			ordered_remove(&j.skipped, i)
+		}
+	}
+}
+
+@(private)
+verdicts_drop_mount :: proc(j: ^Verdicts, id: int) {
+	if id in j.mounts {
+		_, m := delete_key(&j.mounts, id)
+		delete(m.device)
+		delete(m.super)
+	}
+}
+
+@(private)
+verdicts_destroy :: proc(j: ^Verdicts) {
+	for _, m in j.mounts {
+		delete(m.device)
+		delete(m.super)
+	}
+	delete(j.mounts)
+	for k in j.devices {
+		delete(k)
+	}
+	delete(j.devices)
+	for s in j.skipped {
+		skipped_filesystem_destroy(s)
+	}
+	delete(j.skipped)
+}
+
+@(private)
+skipped_filesystem_destroy :: proc(s: Skipped_Filesystem) {
+	delete(s.device)
+	delete(s.point)
+	delete(s.fstype)
+	delete(s.why)
+}
+
+@(private)
+mount_by_id :: proc(mounts: []Mount, id: int) -> (Mount, bool) {
+	for m in mounts {
+		if m.id == id {
+			return m, true
+		}
+	}
+	return {}, false
+}
+
+@(private)
+device_mounted :: proc(mounts: []Mount, device: string) -> bool {
+	for m in mounts {
+		if m.device == device {
+			return true
+		}
+	}
+	return false
+}
+
+@(private)
+listed :: proc(list: []string, s: string) -> bool {
+	for x in list {
+		if x == s {
+			return true
+		}
+	}
+	return false
+}

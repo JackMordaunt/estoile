@@ -123,14 +123,6 @@ Recorded_Filesystem :: struct {
 	buf:      [dynamic]byte, // records to append at the next write
 }
 
-// A filesystem the recorder does not record, and why.
-@(private = "file")
-Skipped_Filesystem :: struct {
-	point:  string,
-	fstype: string,
-	why:    string,
-}
-
 @(private = "file")
 Recorder :: struct {
 	cfg:       Config,
@@ -138,9 +130,7 @@ Recorder :: struct {
 	mountinfo: linux.Fd,
 	own:       u64, // the log folder's hash: its own writes are not recorded
 	recorded:  [dynamic]Recorded_Filesystem,
-	skipped:   [dynamic]Skipped_Filesystem,
-	tried:     map[int]struct{}, // mount ids already judged
-	judged:    map[string]struct{}, // devices already recorded or skipped
+	verdicts:  Verdicts,
 	pending:   map[string]struct{}, // fsid and file handle of each directory heard of
 	events:    []byte,
 }
@@ -250,17 +240,7 @@ recorder_destroy :: proc(r: ^Recorder) {
 		forget(&fs)
 	}
 	delete(r.recorded)
-	for s in r.skipped {
-		delete(s.point)
-		delete(s.fstype)
-		delete(s.why)
-	}
-	delete(r.skipped)
-	delete(r.tried)
-	for k in r.judged {
-		delete(k)
-	}
-	delete(r.judged)
+	verdicts_destroy(&r.verdicts)
 	for k in r.pending {
 		delete(k)
 	}
@@ -439,8 +419,9 @@ write_log :: proc(fs: ^Recorded_Filesystem) {
 
 /*
 sync_mounts reads the mounts again: a filesystem recorded whose mount is gone gets
-a Stop, since what happens to it unmounted is not seen, and each mount not judged
-before is marked if it can be.
+a Stop, since what happens to it unmounted is not seen, and its device is judged
+again; what else has gone or changed is judged again too (verdicts_prune). Each
+mount not judged before is marked if it can be.
 */
 @(private = "file")
 sync_mounts :: proc(r: ^Recorder) {
@@ -448,43 +429,28 @@ sync_mounts :: proc(r: ^Recorder) {
 	mounts := mounts_parse(text, context.temp_allocator)
 	for i := len(r.recorded) - 1; i >= 0; i -= 1 {
 		fs := &r.recorded[i]
-		if !has_mount(mounts, fs.mount_id) {
+		if _, here := mount_by_id(mounts, fs.mount_id); !here {
 			stop_recording(fs)
+			verdicts_forget(&r.verdicts, fs.device)
 			forget(fs)
 			ordered_remove(&r.recorded, i)
 		}
 	}
+	devices := make([dynamic]string, context.temp_allocator)
+	for fs in r.recorded {
+		append(&devices, fs.device)
+	}
+	verdicts_prune(&r.verdicts, mounts, devices[:])
 	for m in mounts {
-		if m.id in r.tried {
+		if !verdicts_try(&r.verdicts, m) {
 			continue
 		}
-		r.tried[m.id] = {}
 		if len(r.cfg.only) > 0 && !listed(r.cfg.only, m.point) {
 			continue
 		}
 		try_mount(r, m, mounts)
 	}
 	write_status(r)
-}
-
-@(private = "file")
-has_mount :: proc(mounts: []Mount, id: int) -> bool {
-	for m in mounts {
-		if m.id == id {
-			return true
-		}
-	}
-	return false
-}
-
-@(private = "file")
-listed :: proc(list: []string, s: string) -> bool {
-	for x in list {
-		if x == s {
-			return true
-		}
-	}
-	return false
 }
 
 // read_mountinfo is the whole of /proc/self/mountinfo, read from its start through
@@ -517,11 +483,11 @@ try_mount :: proc(r: ^Recorder, m: Mount, mounts: []Mount) {
 	try, why := judge(m)
 	if !try {
 		if why != "" {
-			skip(r, m, why)
+			verdicts_skip(&r.verdicts, m, why)
 		}
 		return
 	}
-	if m.device in r.judged {
+	if m.device in r.verdicts.devices {
 		return
 	}
 	if m.root != "/" {
@@ -533,21 +499,21 @@ try_mount :: proc(r: ^Recorder, m: Mount, mounts: []Mount) {
 	}
 	point := strings.clone_to_cstring(m.point, context.temp_allocator)
 	if errno := fan_mark(r.fan, FAN_MARK_ADD | FAN_MARK_FILESYSTEM, point); errno != .NONE {
-		skip(r, m, mark_problem(m, errno))
+		verdicts_skip(&r.verdicts, m, mark_problem(m, errno))
 		return
 	}
 	if m.root != "/" {
 		fan_mark(r.fan, FAN_MARK_REMOVE | FAN_MARK_FILESYSTEM, point)
-		skip(r, m, "only one folder of it is mounted")
+		verdicts_skip(&r.verdicts, m, "only one folder of it is mounted")
 		return
 	}
 	fs, problem := start_recording(r, m)
 	if problem != "" {
 		fan_mark(r.fan, FAN_MARK_REMOVE | FAN_MARK_FILESYSTEM, point)
-		skip(r, m, problem)
+		verdicts_skip(&r.verdicts, m, problem)
 		return
 	}
-	r.judged[strings.clone(m.device)] = {}
+	verdicts_record(&r.verdicts, m)
 	append(&r.recorded, fs)
 }
 
@@ -592,22 +558,6 @@ mark_problem :: proc(m: Mount, errno: linux.Errno) -> string {
 		return "it cannot say which folder changed"
 	}
 	return fmt.tprintf("fanotify_mark: %v", errno)
-}
-
-@(private = "file")
-skip :: proc(r: ^Recorder, m: Mount, why: string) {
-	if m.device in r.judged {
-		return
-	}
-	r.judged[strings.clone(m.device)] = {}
-	append(
-		&r.skipped,
-		Skipped_Filesystem {
-			point = strings.clone(m.point),
-			fstype = strings.clone(m.fstype),
-			why = strings.clone(why),
-		},
-	)
 }
 
 /*
@@ -712,7 +662,7 @@ write_status :: proc(r: ^Recorder) {
 	for fs in r.recorded {
 		fmt.sbprintf(&b, "recorded\t%s\t%s\t%s\n", fs.point, fs.fstype, filepath.base(fs.path))
 	}
-	for s in r.skipped {
+	for s in r.verdicts.skipped {
 		fmt.sbprintf(&b, "skipped\t%s\t%s\t%s\n", s.point, s.fstype, s.why)
 	}
 	path, _ := filepath.join({r.cfg.logs, STATUS}, context.temp_allocator)

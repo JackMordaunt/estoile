@@ -16,8 +16,10 @@ needs to know which:
   unprivileged read Windows 10 1709 added (changes_windows.odin says what that
   needs, and what is not yet shown).
 - macOS replays the volume's FSEvents history from an event id (changes_darwin.odin).
-- Linux has no journal that outlives a listener, so the answer is a probe: the update
-  asks every directory whether it changed since the cursor's time (changes_linux.odin).
+- Linux has no journal that outlives a listener. Where leita's own recorder runs
+  (package journal, installed only on request) its log names the directories that
+  changed, by a hash of each path; elsewhere the answer is a probe: the update asks
+  every directory whether it changed since the cursor's time (changes_linux.odin).
 
 An answer is never stale without saying so: whatever leaves a cursor unusable, a
 journal that wrapped or was recreated, another volume mounted in the place, history
@@ -56,6 +58,9 @@ What changed in a place since a cursor.
 under it did not change is kept. `deep` are directories under which anything may
 have changed, read again whole. With `probe`, there was no journal to ask, and every
 directory is to be asked whether it changed at or after `since`, ns since the epoch.
+With `by_hash`, leita's recorder named the directories that changed by a hash of each
+one's path (package journal): each directory of the place whose path, `root` then
+names joined by slashes, hashes to one in `hashes` is read again, as if shallow.
 Paths are the place's own spelling of them: the place as given, then names joined by
 the platform's separator.
 */
@@ -67,6 +72,9 @@ Change_Set :: struct {
 	deep:    [dynamic]string,
 	probe:   bool,
 	since:   i64,
+	by_hash: bool,
+	root:    string, // the place as the recorder spells it, for by_hash
+	hashes:  map[u64]struct{},
 }
 
 change_set_destroy :: proc(c: ^Change_Set) {
@@ -76,8 +84,10 @@ change_set_destroy :: proc(c: ^Change_Set) {
 	for p in c.deep {
 		delete(p, c.deep.allocator)
 	}
+	delete(c.root, c.shallow.allocator)
 	delete(c.shallow)
 	delete(c.deep)
+	delete(c.hashes)
 	c^ = {}
 }
 

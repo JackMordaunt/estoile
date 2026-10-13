@@ -10,6 +10,7 @@ import "core:thread"
 import "core:time"
 
 import "../changes"
+import "../journal"
 import "../scan"
 import "../walk"
 
@@ -48,7 +49,7 @@ put :: proc(t: ^testing.T, path: string, size: int) {
 	testing.expectf(t, os.write_entire_file(path, body) == nil, "could not write %s", path)
 }
 
-@(private = "file")
+@(private)
 read_tree :: proc(t: ^testing.T, root: string) -> scan.Tree {
 	tree: scan.Tree
 	testing.expect_value(t, scan.tree_init(&tree, 2), scan.Error.None)
@@ -57,13 +58,13 @@ read_tree :: proc(t: ^testing.T, root: string) -> scan.Tree {
 }
 
 // Each used node's path, what it holds on disk, and its flags.
-@(private = "file")
+@(private)
 Record :: struct {
 	disk:  u64,
 	flags: scan.Node_Flags,
 }
 
-@(private = "file")
+@(private)
 seen :: proc(tree: ^scan.Tree) -> map[string]Record {
 	out := make(map[string]Record, context.temp_allocator)
 	for i in 0 ..< scan.slots(tree) {
@@ -76,7 +77,7 @@ seen :: proc(tree: ^scan.Tree) -> map[string]Record {
 	return out
 }
 
-@(private = "file")
+@(private)
 expect_same :: proc(t: ^testing.T, got, want: ^scan.Tree) {
 	g, w := seen(got), seen(want)
 	testing.expectf(t, len(g) == len(w), "%d nodes, want %d", len(g), len(w))
@@ -227,6 +228,79 @@ test_a_change_set_updates_what_it_names :: proc(t: ^testing.T) {
 }
 
 /*
+A change set from the recorder names directories by a hash of their path, spelt from
+its root with slashes: the directory of the base whose path hashes to one named is
+read again, and the rest are copied. A hash nothing in the base has names nothing.
+*/
+@(test)
+test_a_change_set_by_hash_reads_the_named_directories :: proc(t: ^testing.T) {
+	root := fixture(t, "hashed")
+	defer os.remove_all(root)
+	base := read_tree(t, root)
+	defer scan.tree_destroy(&base)
+
+	put(t, join(root, "sub", "new.txt"), 7000)
+	put(t, join(root, "still", "unseen.txt"), 4000)
+
+	spelt := "/as/the/recorder/spells/it"
+	set := changes.Change_Set {
+		shallow = make([dynamic]string, context.temp_allocator),
+		deep    = make([dynamic]string, context.temp_allocator),
+		by_hash = true,
+		root    = spelt,
+		hashes  = make(map[u64]struct{}, context.temp_allocator),
+	}
+	set.hashes[journal.hash_path(fmt.tprintf("%s/sub", spelt))] = {}
+	set.hashes[journal.hash_path(fmt.tprintf("%s/nothing/here", spelt))] = {}
+
+	got: scan.Tree
+	testing.expect_value(t, scan.tree_init(&got, 2), scan.Error.None)
+	defer scan.tree_destroy(&got)
+	f := Fill {
+		tree = &got,
+		wcfg = {workers = 2},
+	}
+	testing.expect_value(t, apply(&f, root, &base, set), walk.Error.None)
+	g := seen(&got)
+	testing.expect(t, join(root, "sub", "new.txt") in g, "sub was not read again")
+	testing.expect(t, join(root, "still", "unseen.txt") not_in g, "still was read again")
+	testing.expect(t, join(root, "still", "k.txt") in g, "k.txt was not copied")
+	testing.expect_value(t, f.reread, 1)
+}
+
+// The root "/" hashes its children without a second slash.
+@(test)
+test_a_change_set_by_hash_from_the_root :: proc(t: ^testing.T) {
+	root := fixture(t, "hashed_root")
+	defer os.remove_all(root)
+	base := read_tree(t, root)
+	defer scan.tree_destroy(&base)
+	put(t, join(root, "sub", "new.txt"), 7000)
+	put(t, join(root, "still", "unseen.txt"), 4000)
+
+	set := changes.Change_Set {
+		shallow = make([dynamic]string, context.temp_allocator),
+		deep    = make([dynamic]string, context.temp_allocator),
+		by_hash = true,
+		root    = "/",
+		hashes  = make(map[u64]struct{}, context.temp_allocator),
+	}
+	set.hashes[journal.hash_path("/sub")] = {}
+	got: scan.Tree
+	testing.expect_value(t, scan.tree_init(&got, 2), scan.Error.None)
+	defer scan.tree_destroy(&got)
+	f := Fill {
+		tree = &got,
+		wcfg = {workers = 2},
+	}
+	testing.expect_value(t, apply(&f, root, &base, set), walk.Error.None)
+	g := seen(&got)
+	testing.expect(t, join(root, "sub", "new.txt") in g, "sub was not read again")
+	testing.expect(t, join(root, "still", "unseen.txt") not_in g, "still was read again")
+	testing.expect_value(t, f.reread, 1)
+}
+
+/*
 A Fill with a baseline reads a place whole the first time and keeps it, then updates
 it from what the system says changed. FSEvents gives a change its id only once
 fseventsd has it, so one it has not had yet when a run takes its cursor is read by a
@@ -342,10 +416,24 @@ test_a_fill_asked_whole_reads_whole_and_keeps :: proc(t: ^testing.T) {
 test_how_a_place_was_read_is_said :: proc(t: ^testing.T) {
 	taken := time.unix(1_760_000_000, 0)
 	one := how_read(true, "", 1, taken)
-	testing.expectf(t, strings.has_prefix(one, "updated: 1 directory read again since 20"), "%q", one)
+	testing.expectf(
+		t,
+		strings.has_prefix(one, "updated: 1 directory read again since 20"),
+		"%q",
+		one,
+	)
 	many := how_read(true, "", 3, taken)
 	testing.expectf(t, strings.has_prefix(many, "updated: 3 directories read again"), "%q", many)
+	testing.expectf(t, !strings.has_suffix(many, ")"), "the system's journal is named: %q", many)
+	recorded := how_read(true, "", 3, taken, .Recorded)
+	testing.expectf(t, strings.has_suffix(recorded, " (recorded changes)"), "%q", recorded)
+	times := how_read(true, "", 3, taken, .Times)
+	testing.expectf(t, strings.has_suffix(times, " (folder times)"), "%q", times)
 	testing.expect_value(t, how_read(true, ""), "updated from the last scan")
-	testing.expect_value(t, how_read(false, "asked to read it whole"), "read whole: asked to read it whole")
+	testing.expect_value(
+		t,
+		how_read(false, "asked to read it whole"),
+		"read whole: asked to read it whole",
+	)
 	testing.expect_value(t, how_read(false, ""), "read whole")
 }

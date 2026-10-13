@@ -43,6 +43,7 @@ Fill :: struct {
 	baseline:  string, //review:ignore odin-destroy-incomplete borrowed from the caller
 	whole:     bool, // with a baseline: read the place whole all the same, and keep it
 	how:       Fill_Kind, // with a baseline: whether the place was read whole or updated
+	by:        Read_Source, // updated: what said which directories changed
 	why:       string, //review:ignore odin-destroy-incomplete a constant, never freed: why it was read whole
 	reread:    u64, // updated: how many directories were read rather than copied
 	taken:     time.Time, // updated: when the tree updated from was kept

@@ -9,6 +9,7 @@ import "jm:timefmt"
 
 import "../changes"
 import "../gui/query"
+import "../journal"
 import "../scan"
 import "../walk"
 
@@ -19,6 +20,17 @@ from what the system says changed since.
 Fill_Kind :: enum u8 {
 	Full,
 	Updated,
+}
+
+/*
+What an update learnt what changed from: the system's own change journal (macOS,
+Windows), leita's recorder on Linux (package journal), or, with neither, each
+directory's modification time.
+*/
+Read_Source :: enum u8 {
+	System,
+	Recorded,
+	Times,
 }
 
 /*
@@ -67,6 +79,7 @@ fill_from_baseline :: proc(f: ^Fill) {
 			// what it read is left as a walk's would be.
 			f.walk_err = apply(f, place, &base, set)
 			f.how = .Updated
+			f.by = .Recorded if set.by_hash else .Times if set.probe else .System
 			if f.walk_err == .None {
 				f.saved = baseline_save(f.baseline, place, f.tree, next)
 			}
@@ -95,9 +108,10 @@ fill_from_baseline :: proc(f: ^Fill) {
 
 /*
 Read `place` into f.tree from `base`, reading again what `set` says changed: each
-directory named shallow listed, each named deep walked, and with a probe every
-directory asked. A path the base does not have marks the nearest directory above it
-that it does, which then finds what is new.
+directory named shallow listed, each named deep walked, each whose path hashes to
+one the set names listed, and with a probe every directory asked. A path the base
+does not have marks the nearest directory above it that it does, which then finds
+what is new.
 */
 @(private)
 apply :: proc(f: ^Fill, place: string, base: ^scan.Tree, set: changes.Change_Set) -> walk.Error {
@@ -114,6 +128,9 @@ apply :: proc(f: ^Fill, place: string, base: ^scan.Tree, set: changes.Change_Set
 		restat = RESTAT,
 	}
 	defer delete(u.marks)
+	if set.by_hash {
+		mark_hashed(&u, base, ix, set)
+	}
 	for path in set.shallow {
 		if n := locate(base, ix, place, path); n != scan.NO_NODE && u.marks[n] != .Deep {
 			u.marks[n] = .List
@@ -133,21 +150,67 @@ apply :: proc(f: ^Fill, place: string, base: ^scan.Tree, set: changes.Change_Set
 }
 
 /*
+mark_hashed marks List each directory of `base` whose path, spelt from set.root,
+hashes to one set.hashes names, as the recorder hashes paths (package journal). The
+paths are hashed as the tree is gone down, each from its parent's, so none is made.
+*/
+@(private)
+mark_hashed :: proc(u: ^walk.Update, base: ^scan.Tree, ix: scan.Index, set: changes.Change_Set) {
+	Dir :: struct {
+		node: u32,
+		hash: u64,
+	}
+	stack := make([dynamic]Dir, context.temp_allocator)
+	append(&stack, Dir{base.root, journal.hash_path(set.root)})
+	for len(stack) > 0 {
+		d := pop(&stack)
+		if d.hash in set.hashes && u.marks[d.node] != .Deep {
+			u.marks[d.node] = .List
+		}
+		// The root's path may end in a slash already, as "/" does.
+		slash := d.node != base.root || !strings.has_suffix(set.root, "/")
+		for c := ix.first[d.node]; c != scan.NO_NODE; c = ix.next[c] {
+			flags := scan.node_flags(scan.node(base, c))
+			if .Directory in flags && .Mount not_in flags {
+				append(&stack, Dir{c, journal.hash_child(d.hash, scan.name_of(base, c), slash)})
+			}
+		}
+	}
+}
+
+/*
 how_read says in words how a fill with a baseline read its place, in the temp
 allocator: "updated: N directories read again since <time>", or "read whole: <why>".
-An update with no time to give, as a run the monitor recorded before it kept the
-count and the time, is "updated from the last scan".
+On Linux an update says what it learnt the changes from: "(recorded changes)" from
+the recorder's log, "(folder times)" from each directory's modification time. An
+update with no time to give, as a run the monitor recorded before it kept the count
+and the time, is "updated from the last scan".
 */
-how_read :: proc(updated: bool, why: string, reread: u64 = 0, taken := time.Time{}) -> string {
+how_read :: proc(
+	updated: bool,
+	why: string,
+	reread: u64 = 0,
+	taken := time.Time{},
+	by := Read_Source.System,
+) -> string {
+	from := ""
+	switch by {
+	case .System:
+	case .Recorded:
+		from = " (recorded changes)"
+	case .Times:
+		from = " (folder times)"
+	}
 	switch {
 	case updated && taken == {}:
 		return "updated from the last scan"
 	case updated:
 		return fmt.tprintf(
-			"updated: %d %s read again since %s",
+			"updated: %d %s read again since %s%s",
 			reread,
 			"directory" if reread == 1 else "directories",
 			timefmt.local(taken, "%Y-%m-%d %H:%M", context.temp_allocator),
+			from,
 		)
 	case why != "":
 		return fmt.tprintf("read whole: %s", why)

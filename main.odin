@@ -490,7 +490,7 @@ say_how_read :: proc(f: ^survey.Fill) {
 	if f.baseline == "" {
 		return
 	}
-	label("read", "%s", survey.how_read(f.how == .Updated, f.why, f.reread, f.taken))
+	label("read", "%s", survey.how_read(f.how == .Updated, f.why, f.reread, f.taken, f.by))
 }
 
 // exit_code is what a verdict reads back as, for a script to test.

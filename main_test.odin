@@ -377,7 +377,8 @@ a_second_scan_reports_what_changed :: proc(t: ^testing.T) {
 	}
 }
 
-// --no-history neither reads the store nor writes it.
+// --no-history neither reads the store nor writes it, though the store is given, as
+// run gives it whatever the flags.
 @(test)
 no_history_leaves_the_store_alone :: proc(t: ^testing.T) {
 	root, store := fresh(t, "leita_no_history_cli")

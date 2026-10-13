@@ -186,12 +186,7 @@ run :: proc() -> int {
 	data := history.default_path(context.temp_allocator)
 	licensee := licence.licensee_kept(licence.path_beside(data, context.temp_allocator))
 	first := licence.first_use(licence.path_beside(data, context.temp_allocator, "first-use"))
-	return scan_and_say(
-		opt,
-		"" if opt.no_history else data,
-		licensee,
-		!licence.unlocked(licensee != "", first),
-	)
+	return scan_and_say(opt, data, licensee, !licence.unlocked(licensee != "", first))
 }
 
 // find_color finds --color among args the way the parser would, as --color=WORD

@@ -5,6 +5,7 @@ Usage:
 	leita [drive-or-image] [flags]     -h lists the flags
 	leita ~/src --report usage.html    the same, written up as a report too
 	leita monitor -h                   scheduled scans of the places watched
+	leita journal -h                   Linux: record which folders change, for faster scans
 
 Reads the volume's MFT directly and prints the largest files and directories. Reading
 a live volume needs an elevated prompt.
@@ -23,6 +24,7 @@ import "core:time"
 import "history"
 import "human"
 @(require) import "jm:debug"
+import "journal"
 import "licence"
 import "monitor"
 import "ntfs"
@@ -47,6 +49,8 @@ Scan
   leita [TARGET]            the largest files and directories of a drive, device,
                             image or directory; your home directory unless named
   leita monitor ...         scheduled scans of the places you watch; leita monitor -h
+  leita journal ...         Linux: record which folders change, so a scan reads only
+                            those; off until leita journal on; leita journal -h
   --live                    draw the answer as it is found rather than once at the end
   --no-history              neither compare with earlier scans of this place nor keep
                             this one
@@ -149,6 +153,10 @@ run :: proc() -> int {
 	// leita monitor ... is monitoring's own command line (package monitor).
 	if len(os.args) > 1 && os.args[1] == "monitor" {
 		return monitor.run_command_line(os.args[2:])
+	}
+	// leita journal ... is the change recorder's (package journal).
+	if len(os.args) > 1 && os.args[1] == "journal" {
+		return journal.run_command_line(os.args[2:])
 	}
 
 	// Plain unless a person is watching, decided before the flags are read,

@@ -52,13 +52,20 @@ Pace :: enum {
 How many directories a walk with `cfg` reads at once: what was asked for, or else a
 count fitted to the machine and to what stores the tree.
 
-A directory read mostly waits on the volume and holds no core while it does, so on
-flash twice as many workers as logical cores keep it busier than one per core would:
+A directory read mostly waits on the volume and holds no core while it does, so more
+workers than logical cores can still keep flash busier than one per core would:
 reading a 2.6 million entry home directory on an 8-core M-series Mac took 15.8 s with
-8 workers, 12.5 s with 16 and 11.5 s with 32. The cap is the most that was measured,
-not a limit anything was seen to hit. A spinning disk gets one, on the assumption,
-not measured, that every read in flight beyond the first moves the head away from
-the last. A volume that did not say what it is gets the flash count.
+8 workers, 12.5 s with 16 and 11.5 s with 32. That walk was cold-ish, though, and a
+warm Linux walk did not show the same climb: on a 24-logical-CPU machine, warm page
+cache, ~/Source gave no further gain past the core count, and 32 workers (2x cores)
+were bimodal under outside load, from 0.65 s to 6.5 s across runs that otherwise
+matched (2026-10-12). Cold Linux was not measured, so this is a choice for stability
+under load over an unmeasured cold gain: the default is the logical core count, not
+twice it. The clamp at 32 is carried over from the Mac measurement and is rarely hit
+at the core count; it still guards a machine with more logical CPUs than that was
+tried on. A spinning disk gets one, on the assumption, not measured, that every read
+in flight beyond the first moves the head away from the last. A volume that did not
+say what it is gets the flash count.
 
 Gentle stops at the knee of the same curve. Below 4 workers the scan slows in step
 and the CPU spent hardly falls: 1 worker took 73 s and 17 s of system time, 4 took
@@ -79,7 +86,7 @@ width :: proc(cfg: Config) -> int {
 	if cfg.pace == .Gentle {
 		return min(GENTLE_WORKERS, cpus())
 	}
-	return clamp(2 * cpus(), 1, MAX_WORKERS)
+	return clamp(cpus(), 1, MAX_WORKERS)
 }
 
 @(private)

@@ -164,11 +164,11 @@ test_walk_stops_when_cancelled :: proc(t: ^testing.T) {
 
 /*
 A count that was asked for is used as given; otherwise a spinning disk gets one reader
-and anything else twice the logical cores, within the cap.
+and anything else the logical core count, within the cap.
 */
 @(test)
 test_width_fits_the_media :: proc(t: ^testing.T) {
-	fitted := clamp(2 * cpus(), 1, MAX_WORKERS)
+	fitted := clamp(cpus(), 1, MAX_WORKERS)
 	cases := []struct {
 		cfg:  Config,
 		want: int,

@@ -141,9 +141,11 @@ Desk :: struct {
 	words:           ^msg.Strings, // what the host says, in the window's language (words.odin)
 	// What Reclaim last offered, by node: Clean deletes only these.
 	reclaimable:     map[u32]reclaim.Category,
-	// The scans kept (history.odin), nil when none are; the snapshot this scan
-	// was kept as, the one it is compared with, and what each node held in that.
+	// The scans kept (history.odin), nil when none are, and the path of the store
+	// opened, whose folder holds each place's baseline; the snapshot this scan was
+	// kept as, the one it is compared with, and what each node held in that.
 	history:         ^history.Store,
+	history_path:    string,
 	snapshot:        i64,
 	compared:        query.Snapshot,
 	was:             map[u32]u64,
@@ -600,7 +602,7 @@ scan_begin :: proc(d: ^Desk, path: string) {
 	// command line and the monitor, and the next scan reads only what changed since.
 	if d.history != nil {
 		s.baseline = history.baseline_path(
-			d.monitoring.paths.history,
+			d.history_path,
 			scan.location(target, context.temp_allocator),
 		)
 		s.fill.baseline = s.baseline

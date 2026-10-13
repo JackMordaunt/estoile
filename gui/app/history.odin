@@ -1,6 +1,7 @@
 package leita_app
 
 import "core:fmt"
+import "core:strings"
 import "core:sync"
 
 import "../../history"
@@ -30,6 +31,7 @@ history_open :: proc(d: ^Desk, path: string) {
 		return
 	}
 	d.history = st
+	d.history_path = strings.clone(path)
 }
 
 history_close :: proc(d: ^Desk) {
@@ -38,6 +40,8 @@ history_close :: proc(d: ^Desk) {
 		free(d.history)
 		d.history = nil
 	}
+	delete(d.history_path)
+	d.history_path = ""
 	delete(d.was)
 }
 

@@ -32,18 +32,24 @@ changed_since :: proc(path: string, since: i64) -> bool {
 @(private)
 RESTATS :: true
 
-// What the file at `path` occupies now, as a walk would charge it, and whether it is
-// still there to ask.
+/*
+What the file at `path` occupies now, as a walk would charge it. Gone only when
+statx says there is no such file (ENOENT, ENOTDIR); any other failure is Unknown,
+and the size copied stands.
+*/
 @(private)
-disk_of :: proc(path: string) -> (disk: u64, found: bool) {
+disk_of :: proc(path: string) -> (disk: u64, verdict: Verdict) {
 	buf: Path
 	cpath, terminated := terminate(path, &buf)
 	if !terminated {
-		return 0, false
+		return 0, .Unknown
 	}
 	st: linux.Statx
-	if linux.statx(linux.AT_FDCWD, cpath, {.SYMLINK_NOFOLLOW}, {.BLOCKS}, &st) != .NONE {
-		return 0, false
+	#partial switch linux.statx(linux.AT_FDCWD, cpath, {.SYMLINK_NOFOLLOW}, {.BLOCKS}, &st) {
+	case .NONE:
+		return st.blocks * 512, .Sized
+	case .ENOENT, .ENOTDIR:
+		return 0, .Gone
 	}
-	return st.blocks * 512, true
+	return 0, .Unknown
 }

@@ -33,6 +33,14 @@ database's write-ahead log held open keeps growing unseen. Every copied director
 at least `restat` bytes are therefore asked their size again, probe or journal, where
 RESTATS says the platform asks (not Windows: stamp_other.odin); 0 asks none.
 */
+// What asking a copied file its size again (disk_of) found.
+@(private)
+Verdict :: enum u8 {
+	Sized, // the file answered: charge the size it gave
+	Gone, // no such file, or its directory went or is no longer one: drop it
+	Unknown, // it could not be asked (no permission, a path too long, I/O): keep the copy
+}
+
 Update :: struct {
 	base:   ^scan.Tree,
 	marks:  map[u32]Mark, // by node of base
@@ -158,11 +166,14 @@ copy_dir :: proc(d: Dir, w: ^Worker) -> (nodes, bytes: u64, ok: bool) {
 					w.err = .Out_Of_Memory
 					return nodes, bytes, false
 				}
-				now, found := disk_of(path)
-				if !found {
+				now, verdict := disk_of(path)
+				switch verdict {
+				case .Sized:
+					disk = now
+				case .Gone:
 					continue
+				case .Unknown:
 				}
-				disk = now
 			}
 		}
 

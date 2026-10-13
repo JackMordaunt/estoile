@@ -1,6 +1,7 @@
 package walk
 
 import "core:fmt"
+import "core:log"
 import "core:os"
 import "core:slice"
 import "core:testing"
@@ -267,6 +268,50 @@ test_a_copied_large_file_is_asked_its_size :: proc(t: ^testing.T) {
 	want := read_tree(t, root)
 	defer scan.tree_destroy(&want)
 	expect_same_shape(t, &got, &want)
+}
+
+/*
+A large file in a directory that can no longer be searched cannot be asked its size,
+but it is still there: the update keeps the size the base gave it rather than
+dropping it as gone. Skipped where the directory can still be searched, as root can.
+*/
+@(test)
+test_a_copied_file_that_cannot_be_asked_keeps_its_size :: proc(t: ^testing.T) {
+	when ODIN_OS == .Windows {
+		return // Windows keeps a copied file's size (stamp_other.odin)
+	}
+	root := place(t, "unaskable")
+	defer os.remove_all(root)
+	big := fmt.tprintf("%s/still/big.bin", root)
+	put(t, big, 1 << 17)
+	base := read_tree(t, root)
+	defer scan.tree_destroy(&base)
+
+	still := fmt.tprintf("%s/still", root)
+	testing.expect(t, os.change_mode(still, {}) == nil, "could not chmod still")
+	defer os.change_mode(still, {.Read_User, .Write_User, .Execute_User})
+	if os.exists(big) {
+		log.info("skipped: still can be searched with no permission, as root can")
+		return
+	}
+
+	u := Update {
+		base   = &base,
+		restat = 1 << 16,
+	}
+	got: scan.Tree
+	testing.expect_value(t, scan.tree_init(&got, 2), scan.Error.None)
+	defer scan.tree_destroy(&got)
+	testing.expect_value(t, update(root, &u, &got, Config{workers = 2}), Error.None)
+
+	// Not fail_now: tried here, it skipped the deferred chmod, and the next run could
+	// not remove the place (2026-10-13).
+	kept := at(&got, "still", "big.bin")
+	testing.expect(t, kept != scan.NO_NODE, "big.bin was dropped as gone")
+	if kept != scan.NO_NODE {
+		was := scan.node(&base, at(&base, "still", "big.bin")).disk
+		testing.expect_value(t, scan.node(&got, kept).disk, was)
+	}
 }
 
 // A hard-linked file keeps the name the base charged it under when the other

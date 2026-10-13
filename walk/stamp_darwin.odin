@@ -2,6 +2,7 @@
 package walk
 
 import "core:c"
+import "core:sys/posix"
 
 foreign import libc "system:System"
 
@@ -18,15 +19,16 @@ RESTATS :: true
 
 /*
 What the file at `path` holds on disk now, asked as read_dir asks it: the allocated
-size of all its forks, the link itself for a symlink. Not found when it is gone or
-cannot be asked, and then dropped, as a read would not find it either.
+size of all its forks, the link itself for a symlink. Gone only when getattrlist
+says there is no such file (ENOENT, ENOTDIR), and then dropped, as a read would not
+find it either; any other failure is Unknown, and the size copied stands.
 */
 @(private)
-disk_of :: proc(path: string) -> (disk: u64, found: bool) {
+disk_of :: proc(path: string) -> (disk: u64, verdict: Verdict) {
 	buf: Path
 	cpath, terminated := terminate(path, &buf)
 	if !terminated {
-		return 0, false
+		return 0, .Unknown
 	}
 	request := Attr_List {
 		bitmapcount = ATTR_BIT_MAP_COUNT,
@@ -38,12 +40,16 @@ disk_of :: proc(path: string) -> (disk: u64, found: bool) {
 		allocated: i64,
 	}
 	if getattrlist(cpath, &request, &reply, size_of(reply), FSOPT_NOFOLLOW) != 0 {
-		return 0, false
+		#partial switch posix.errno() {
+		case .ENOENT, .ENOTDIR:
+			return 0, .Gone
+		}
+		return 0, .Unknown
 	}
 	if reply.length < size_of(reply) {
-		return 0, false
+		return 0, .Unknown
 	}
-	return u64(max(reply.allocated, 0)), true
+	return u64(max(reply.allocated, 0)), .Sized
 }
 
 @(private = "file")

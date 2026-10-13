@@ -48,6 +48,10 @@ count_free = {0} free of {1}
 count_seconds = {0} s
 count_pending.one = {0} waiting on a parent
 count_pending = {0} waiting on a parent
+# How a finished scan read its place: {0} folders read again since {1}, when the last scan was (a date or a time); read_whole's {0} is why, in English
+read_updated.one = Updated: {0} folder read again since {1}
+read_updated = Updated: {0} folders read again since {1}
+read_whole = Read whole: {0}
 
 # The location bar
 location = Location

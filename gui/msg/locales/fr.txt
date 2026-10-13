@@ -43,6 +43,10 @@ count_seconds = {0} s
 count_pending.one = {0} en attente d’un parent
 count_pending.many = {0} en attente d’un parent
 count_pending = {0} en attente d’un parent
+read_updated.one = Mis à jour : {0} dossier relu depuis {1}
+read_updated.many = Mis à jour : {0} de dossiers relus depuis {1}
+read_updated = Mis à jour : {0} dossiers relus depuis {1}
+read_whole = Lu en entier : {0}
 
 # The location bar
 location = Emplacement

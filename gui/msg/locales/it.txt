@@ -40,6 +40,10 @@ count_seconds = {0} s
 count_pending.one = {0} in attesa della cartella superiore
 count_pending.many = {0} di elementi in attesa della cartella superiore
 count_pending = {0} in attesa della cartella superiore
+read_updated.one = Aggiornato: {0} cartella riletta dal {1}
+read_updated.many = Aggiornato: {0} di cartelle rilette dal {1}
+read_updated = Aggiornato: {0} cartelle rilette dal {1}
+read_whole = Letto per intero: {0}
 
 # The location bar
 location = Posizione

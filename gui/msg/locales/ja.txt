@@ -39,6 +39,8 @@ count_items = {0} 項目
 count_free = {1} 中 {0} 空き
 count_seconds = {0} 秒
 count_pending = {0} 項目が親フォルダーを待機中
+read_updated = 更新: {1} 以降 {0} 個のフォルダーを再読み込み
+read_whole = 全体を読み取り: {0}
 
 # The location bar
 location = 場所

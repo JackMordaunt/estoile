@@ -2127,9 +2127,18 @@ an_export_compares_with_the_scan_before :: proc(t: ^testing.T) {
 	rig_open(&r, root, fmt.tprintf("%s/history.db", kept), reports)
 	defer rig_close(&r)
 	testing.expect(t, settle(&r, "Done"))
+	testing.expect(
+		t,
+		settle(&r, "Read whole: no earlier scan of this place was kept whole"),
+		"the status does not say how the first scan read the place",
+	)
 	first := r.m.generation
 	added := make([]byte, 2 << 20, context.temp_allocator)
 	testing.expect(t, os.write_entire_file(fmt.tprintf("%s/added.bin", root), added) == nil)
+	// The rescan updates from the first scan's tree. Sent at once, on macOS 15.7
+	// (2026-10-13), it missed added.bin, whose event was not yet in the history it
+	// replayed; 2 s lets the system record the change first.
+	time.sleep(2 * time.Second)
 
 	stream.port_send(r.h.cmd_port, command.Command(command.Scan{path = command.text_make(root)}))
 	deadline := time.tick_now()._nsec + i64(30 * time.Second)

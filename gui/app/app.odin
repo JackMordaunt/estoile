@@ -122,6 +122,7 @@ Scan :: struct {
 	tree:                  scan.Tree,
 	grown:                 bool, // tree was initialised
 	fill:                  survey.Fill,
+	baseline:              string, // the fill's, owned: where the place's tree is kept
 	roll:                  survey.Rollup,
 	reader:                ^thread.Thread,
 	// The filesystem the target is on, as of the last measure.
@@ -595,6 +596,15 @@ scan_begin :: proc(d: ^Desk, path: string) {
 	s.fill.opts = ntfs.Read_Options{}
 	s.fill.watched = true
 	s.fill.tree = &s.tree
+	// With history on, the place's whole tree is kept beside it, shared with the
+	// command line and the monitor, and the next scan reads only what changed since.
+	if d.history != nil {
+		s.baseline = history.baseline_path(
+			d.monitoring.paths.history,
+			scan.location(target, context.temp_allocator),
+		)
+		s.fill.baseline = s.baseline
+	}
 	sync.atomic_store(&s.fill.scanning, true)
 
 	s.reader = thread.create_and_start_with_poly_data(&s.fill, reader_main, init_context = context)
@@ -649,6 +659,7 @@ scan_end :: proc(d: ^Desk) {
 	}
 	delete(s.path)
 	delete(s.problem)
+	delete(s.baseline)
 	free(s)
 }
 
@@ -762,6 +773,13 @@ progress :: proc(d: ^Desk) -> query.Progress_Result {
 	r.problem = s.problem
 	r.seconds = s.seconds
 	r.pending = s.roll.pending
+	if s.fill.baseline != "" && s.state == .Done {
+		r.kept = true
+		r.updated = s.fill.how == .Updated
+		r.reread = s.fill.reread
+		r.since = time.to_unix_seconds(s.fill.taken)
+		r.why = s.fill.why
+	}
 	switch s.engine {
 	case .Mft:
 		r.engine = "MFT"

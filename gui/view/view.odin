@@ -531,6 +531,9 @@ status :: proc(gtx: ^ui.Ctx, m: ^Model, prog: ^query.Progress_Result) {
 		}
 		primer.text(gtx, counters(gtx, prog), color = primer.color(.Fg_Color_Muted))
 	}
+	if read := how_read(gtx, prog); read != "" {
+		primer.text(gtx, read, .Small, color = primer.color(.Fg_Color_Muted))
+	}
 	notice(gtx, m, prog.notice)
 	trial_banner(gtx, m)
 	if prog.state == .Failed && prog.problem != "" {
@@ -539,6 +542,21 @@ status :: proc(gtx: ^ui.Ctx, m: ^Model, prog: ^query.Progress_Result) {
 	if prog.slow {
 		primer.inline_message(gtx, tr(.Slow_Hint), .Warning, .Small)
 	}
+}
+
+// how_read is how a finished scan with history on read its place, as the command
+// line's summary says it (survey.how_read), in the window's language; "" otherwise.
+@(private)
+how_read :: proc(gtx: ^ui.Ctx, prog: ^query.Progress_Result) -> string {
+	switch {
+	case !prog.kept:
+		return ""
+	case prog.updated:
+		return trf(gtx, .Read_Updated, int(prog.reread), taken_text(prog.since, gtx.allocator))
+	case prog.why != "":
+		return trf(gtx, .Read_Whole, prog.why)
+	}
+	return ""
 }
 
 // counters is what the scan has found, in one line.

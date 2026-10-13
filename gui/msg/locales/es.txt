@@ -43,6 +43,10 @@ count_seconds = {0} s
 count_pending.one = {0} a la espera de su carpeta superior
 count_pending.many = {0} a la espera de su carpeta superior
 count_pending = {0} a la espera de su carpeta superior
+read_updated.one = Actualizado: {0} carpeta leída de nuevo desde {1}
+read_updated.many = Actualizado: {0} de carpetas leídas de nuevo desde {1}
+read_updated = Actualizado: {0} carpetas leídas de nuevo desde {1}
+read_whole = Leído entero: {0}
 
 # The location bar
 location = Ubicación

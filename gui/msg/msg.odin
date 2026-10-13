@@ -51,6 +51,8 @@ Msg :: enum u16 {
 	Count_Free,
 	Count_Seconds,
 	Count_Pending,
+	Read_Updated,
+	Read_Whole,
 	Location,
 	Location_Placeholder,
 	Search,

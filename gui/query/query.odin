@@ -45,6 +45,14 @@ Progress_Result :: struct {
 	notice:     Notice, // what came of the window's last request
 	exporting:  bool, // a report is being written; its notice says how it went
 	reports:    string, // the folder the save dialog opens in, and a report goes to when it names none; "" for none
+	// How the scan read its place, with history on (kept): updated from the last
+	// scan's tree, `reread` directories read again since `since` (unix seconds), or
+	// whole, and `why`, in survey's English. Nothing is said with history off.
+	kept:       bool,
+	updated:    bool,
+	reread:     u64,
+	since:      i64,
+	why:        string,
 }
 
 // Notice is what came of a request the window made: an entry moved to the

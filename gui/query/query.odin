@@ -331,7 +331,7 @@ Thumb_Result :: struct {
 Monitor is monitoring, a paid feature: whether it is on, the places it watches
 and how each one's last scan went. The host reads it from settings.db, which
 the monitor's runs write while the window is closed, and answers again after
-each change the window asks for (command.Monitoring, Watch, Unwatch).
+each change the window asks for (command.Monitoring, Watch, Unwatch, Recording).
 */
 Monitor :: struct {}
 
@@ -374,15 +374,20 @@ Raised_Alert :: struct {
 MONITOR_ALERTS_LIMIT :: 20
 
 Monitor_Result :: struct {
-	on:        bool,
-	scheduler: string, // where the system keeps the schedule, as a person would look for it
+	on:               bool,
+	scheduler:        string, // where the system keeps the schedule, as a person would look for it
 	// Each change asked for moves changed on once it is made or refused;
 	// problem says why it was refused, "" when it was made. note is anything
 	// the person should know of how scans will run here, in every answer from
 	// the first whether monitoring is on or not.
-	changed:   u32,
-	problem:   string,
-	note:      string,
-	watched:   []Watched_Place, // in the order they were added
-	alerts:    []Raised_Alert, // of every place, newest first, at most MONITOR_ALERTS_LIMIT
+	changed:          u32,
+	problem:          string,
+	note:             string,
+	watched:          []Watched_Place, // in the order they were added
+	alerts:           []Raised_Alert, // of every place, newest first, at most MONITOR_ALERTS_LIMIT
+	// The recorder of changes, shown on Linux only: whether its service is
+	// installed, and whether it runs.
+	recorder_shown:   bool,
+	recorder_on:      bool,
+	recorder_running: bool,
 }

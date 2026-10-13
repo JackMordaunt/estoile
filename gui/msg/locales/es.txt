@@ -343,6 +343,10 @@ monitor_not_there = {0} no existe, no se puede supervisar.
 monitor_cannot_schedule = No se pudo añadir el {0}: {1}
 monitor_cannot_unschedule = No se pudo quitar el {0}: {1}
 monitor_logged_in_only = Los escaneos programados solo se ejecutan mientras {0} tiene la sesión iniciada. Para ejecutarlos siempre: loginctl enable-linger {0}
+record_changes = Registrar los cambios al momento
+record_changes_explain = En Linux, {0} puede llevar un registro de qué carpetas cambian, para que un escaneo lea solo esas. Activarlo instala un pequeño servicio del sistema, leita-journal, y pide permisos de administrador; desactivarlo lo elimina.
+record_changes_stopped = El registrador está instalado pero no se ejecuta: systemctl status leita-journal.service dice por qué.
+record_changes_failed = No se pudo cambiar el registrador: {0}
 
 alert_warn_used = El disco de {0} está usado al {1}, por encima del aviso del {2}.
 alert_fail_used = El disco de {0} está usado al {1}, por encima del límite del {2}.

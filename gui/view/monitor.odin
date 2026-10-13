@@ -21,6 +21,10 @@ back, then the places watched, each with how often it is scanned and how its
 last scan went, and a field to watch another, which opens holding the place
 scanned now. Once the trial is over without a licence, the dialog says so and
 only lets monitoring be turned off and places removed.
+
+On Linux a second switch, Record changes as they happen, turns the recorder of
+changes on or off (package journal). It is not a paid feature: it makes every
+scan of a place read before faster, monitored or not.
 */
 
 // monitor_show opens the Monitoring dialog, its field holding the place
@@ -55,6 +59,7 @@ monitor_dialog :: proc(gtx: ^ui.Ctx, m: ^Model) {
 	if sent, ok := m.monitor_sent.?; ok && r.changed != sent {
 		m.monitor_sent = nil
 		m.monitor_want = nil
+		m.recorder_want = nil
 		m.monitor_answered = true
 		if r.problem == "" {
 			ui.text_set(&m.watch_text, "")
@@ -103,13 +108,14 @@ monitor_dialog :: proc(gtx: ^ui.Ctx, m: ^Model) {
 			// answer, with the scheduler being written between.
 			on := m.monitor_want.? or_else r.on
 			if primer.toggle_switch(
-				gtx,
-				&on,
-				name = tr(.Scheduled_Scans),
-				label_on = tr(.On),
-				label_off = tr(.Off),
-				state = .Disabled if locked && !r.on else .Live,
-			) && !waiting {
+				   gtx,
+				   &on,
+				   name = tr(.Scheduled_Scans),
+				   label_on = tr(.On),
+				   label_off = tr(.Off),
+				   state = .Disabled if locked && !r.on else .Live,
+			   ) &&
+			   !waiting {
 				m.monitor_want = on
 				send_monitor(gtx, m, r, command.Monitoring{on = on})
 			}
@@ -121,6 +127,9 @@ monitor_dialog :: proc(gtx: ^ui.Ctx, m: ^Model) {
 				.Small,
 				color = primer.color(.Fg_Color_Muted),
 			)
+		}
+		if r.recorder_shown {
+			recorder_row(gtx, m, r, waiting)
 		}
 		if m.monitor_answered && r.problem != "" {
 			primer.inline_message(gtx, r.problem, .Critical)
@@ -140,6 +149,42 @@ monitor_dialog :: proc(gtx: ^ui.Ctx, m: ^Model) {
 	}
 	if close {
 		m.monitor_open = false
+	}
+}
+
+/*
+recorder_row is the recorder's switch, with what turning it on installs and that
+it asks for administrator rights, and a warning when it is installed but not
+running. Like Scheduled scans, it holds what it was set to until the host answers.
+*/
+@(private)
+recorder_row :: proc(gtx: ^ui.Ctx, m: ^Model, r: ^query.Monitor_Result, waiting: bool) {
+	if ui.row(gtx, gap = 12, align = .Center) {
+		ui.flexible(gtx, 1)
+		if ui.column(gtx, gap = 4) {
+			primer.text(gtx, tr(.Record_Changes), weight = .Semibold)
+			primer.text(
+				gtx,
+				trf(gtx, .Record_Changes_Explain, version.NAME),
+				.Small,
+				color = primer.color(.Fg_Color_Muted),
+			)
+		}
+		on := m.recorder_want.? or_else r.recorder_on
+		if primer.toggle_switch(
+			   gtx,
+			   &on,
+			   name = tr(.Record_Changes),
+			   label_on = tr(.On),
+			   label_off = tr(.Off),
+		   ) &&
+		   !waiting {
+			m.recorder_want = on
+			send_monitor(gtx, m, r, command.Recording{on = on})
+		}
+	}
+	if r.recorder_on && !r.recorder_running && m.recorder_want == nil {
+		primer.inline_message(gtx, tr(.Record_Changes_Stopped), .Warning)
 	}
 }
 

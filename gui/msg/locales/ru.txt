@@ -357,6 +357,10 @@ monitor_not_there = {0} не существует, отслеживать неч
 monitor_cannot_schedule = Не удалось добавить {0}: {1}
 monitor_cannot_unschedule = Не удалось удалить {0}: {1}
 monitor_logged_in_only = Сканирование по расписанию идёт только пока {0} в системе. Чтобы оно шло всегда: loginctl enable-linger {0}
+record_changes = Записывать изменения по мере их появления
+record_changes_explain = В Linux {0} может записывать, какие папки меняются, чтобы сканирование читало только их. Включение устанавливает небольшую системную службу leita-journal и требует прав администратора; выключение удаляет её.
+record_changes_stopped = Служба записи установлена, но не запущена: причину покажет systemctl status leita-journal.service.
+record_changes_failed = Не удалось изменить службу записи: {0}
 
 alert_warn_used = Диск с {0} заполнен на {1}, выше предупреждения в {2}.
 alert_fail_used = Диск с {0} заполнен на {1}, выше предела в {2}.

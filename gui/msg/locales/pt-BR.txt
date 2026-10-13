@@ -343,6 +343,10 @@ monitor_not_there = {0} não existe para ser monitorado.
 monitor_cannot_schedule = Não foi possível adicionar o {0}: {1}
 monitor_cannot_unschedule = Não foi possível remover o {0}: {1}
 monitor_logged_in_only = As varreduras agendadas só rodam enquanto {0} está conectado. Para rodá-las sempre: loginctl enable-linger {0}
+record_changes = Registrar as mudanças na hora
+record_changes_explain = No Linux, o {0} pode registrar quais pastas mudam, para que uma varredura leia só essas. Ativar instala um pequeno serviço do sistema, leita-journal, e pede direitos de administrador; desativar o remove.
+record_changes_stopped = O registrador está instalado, mas não está em execução: systemctl status leita-journal.service diz por quê.
+record_changes_failed = Não foi possível alterar o registrador: {0}
 
 alert_warn_used = O disco de {0} está com {1} de uso, acima do aviso de {2}.
 alert_fail_used = O disco de {0} está com {1} de uso, acima do limite de {2}.

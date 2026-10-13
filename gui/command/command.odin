@@ -45,6 +45,7 @@ Command :: union {
 	Monitoring,
 	Watch,
 	Unwatch,
+	Recording,
 }
 
 // Scan reads what is at path, calling off any scan still running.
@@ -184,4 +185,11 @@ Watch :: struct {
 // Unwatch stops the monitor scanning the place at path.
 Unwatch :: struct {
 	path: Text,
+}
+
+// Recording turns the recorder of changes on or off, on Linux: this binary's
+// `journal on` or `journal off`, under pkexec for the administrator's rights it
+// needs.
+Recording :: struct {
+	on: bool,
 }

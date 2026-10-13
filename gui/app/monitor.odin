@@ -22,6 +22,10 @@ Turning monitoring on hands the monitor to the system's scheduler as this
 binary, `Leita monitor run`, which the window's main answers as the command
 line's does; turning it off takes it back. Both are refused while the paid
 features are locked but for turning it off, which always works.
+
+On Linux the dialog also turns the recorder of changes on and off (package
+journal), which is not a paid feature: `pkexec Leita journal on|off`, since it
+installs a system service. Whether it is on is read from the system each answer.
 */
 
 /*
@@ -115,7 +119,7 @@ monitor_close :: proc(d: ^Desk) {
 }
 
 // monitor_settle ends a change, with why it was refused, "" when it was made.
-@(private = "file")
+@(private)
 monitor_settle :: proc(d: ^Desk, problem: string) {
 	mo := &d.monitoring
 	delete(mo.problem)
@@ -229,6 +233,7 @@ monitor_answer :: proc(d: ^Desk) -> query.Monitor_Result {
 	if mo.logged_in_only {
 		r.note = say(d, .Monitor_Logged_In_Only, mo.host.login)
 	}
+	recorder_answer(&r)
 	if d.settings == nil {
 		return r
 	}

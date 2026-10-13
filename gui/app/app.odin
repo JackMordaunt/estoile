@@ -520,6 +520,9 @@ desk_step :: proc(d: ^Desk, v: Desk_In) {
 		case command.Unwatch:
 			unwatch(d, &c)
 			answer_all(d)
+		case command.Recording:
+			set_recording(d, c)
+			answer_all(d)
 		case command.Locate,
 		     command.Open,
 		     command.Trash,

@@ -104,6 +104,59 @@ scheduled_scans_switch_holds_the_click_until_the_host_answers :: proc(t: ^testin
 	testing.expect(t, ui.probe_tagged(p, "no"), "the refusal is shown")
 }
 
+// The recorder's switch shows only where the host offers it (Linux): a click sends
+// Recording and holds until the host answers; installed but not running, the
+// dialog says so.
+@(test)
+recorder_switch_shows_where_offered_and_sends_recording :: proc(t: ^testing.T) {
+	s: Monitor_Rig
+	monitor_open(&s)
+	defer monitor_close(&s)
+	p := &s.h.p
+	testing.expect(
+		t,
+		!ui.probe_tagged(p, "Record changes as they happen"),
+		"shown where not offered",
+	)
+
+	monitor_answer(&s, {scheduler = "systemd", recorder_shown = true})
+	testing.expect(
+		t,
+		ui.probe_tagged(p, "Record changes as they happen"),
+		"not shown where offered",
+	)
+	testing.expect(
+		t,
+		ui.probe_click_top(p, "Record changes as they happen"),
+		"the switch is clicked",
+	)
+	c, ok := sent(p, command.Recording).?
+	testing.expect(t, ok && c.on, "the click sends Recording on")
+	testing.expect(t, ui.probe_click_top(p, "Record changes as they happen"))
+	_, again := sent(p, command.Recording).?
+	testing.expect(t, !again, "no second Recording while one is in flight")
+
+	monitor_answer(
+		&s,
+		{scheduler = "systemd", changed = 1, recorder_shown = true, recorder_on = true},
+	)
+	stopped :=
+		"The recorder is installed but not running: " +
+		"systemctl status leita-journal.service says why."
+	testing.expect(t, ui.probe_tagged(p, stopped), "a recorder not running is not said")
+	monitor_answer(
+		&s,
+		{
+			scheduler = "systemd",
+			changed = 1,
+			recorder_shown = true,
+			recorder_on = true,
+			recorder_running = true,
+		},
+	)
+	testing.expect(t, !ui.probe_tagged(p, stopped), "a running recorder is said to have stopped")
+}
+
 // The field's folder button opens the folder dialog where the field points; the
 // folder chosen fills the field, and a cancel or a platform with no dialog
 // leaves what was typed.
@@ -160,7 +213,11 @@ monitoring_note_holds_still_as_scans_turn_on :: proc(t: ^testing.T) {
 	switch_before := ui.probe_bounds(p, "Scheduled scans")
 	monitor_answer(&s, {on = true, scheduler = "systemd", note = note})
 	ui.probe_advance(p, 30, 1.0 / 60)
-	testing.expect(t, ui.probe_tagged(p, "Run every hour by the systemd."), "where scans run shows")
+	testing.expect(
+		t,
+		ui.probe_tagged(p, "Run every hour by the systemd."),
+		"where scans run shows",
+	)
 	testing.expect_value(t, ui.probe_bounds(p, note), before)
 	testing.expect_value(t, ui.probe_bounds(p, "Scheduled scans"), switch_before)
 }

@@ -212,7 +212,11 @@ no_threshold_flags_leaves_the_exit_code_unchanged :: proc(t: ^testing.T) {
 	testing.expect(t, os.make_directory(root) == nil, "could not make the root")
 	testing.expect(
 		t,
-		os.write_entire_file(fmt.tprintf("%s/a.bin", root), make([]byte, 4096)) == nil,
+		os.write_entire_file(
+			fmt.tprintf("%s/a.bin", root),
+			make([]byte, 4096, context.temp_allocator),
+		) ==
+		nil,
 	)
 	out := fmt.tprintf("%s.json", root)
 	defer os.remove(out)

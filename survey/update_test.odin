@@ -1,10 +1,12 @@
 package survey
 
+import "core:encoding/endian"
 import "core:fmt"
 import "core:os"
 import "core:slice"
 import "core:strings"
 import "core:testing"
+import "core:thread"
 import "core:time"
 
 import "../changes"
@@ -119,6 +121,67 @@ test_a_baseline_reads_back_what_was_kept :: proc(t: ^testing.T) {
 	short: scan.Tree
 	_, why, ok = baseline_load(file, root, &short)
 	testing.expect(t, !ok && why != "", "a short baseline was read")
+
+	// Counting fewer nodes than it holds, it is refused rather than read as a
+	// smaller tree. The count follows the magic, the cursor and the place.
+	fewer := slice.clone(data, context.temp_allocator)
+	at := len(BASELINE_MAGIC) + 1 + 5 * 8 + 4 + len(root)
+	count, _ := endian.get_u32(fewer[at:], .Little)
+	endian.put_u32(fewer[at:], .Little, count - 1)
+	testing.expect(t, os.write_entire_file(file, fewer) == nil)
+	smaller: scan.Tree
+	_, why, ok = baseline_load(file, root, &smaller)
+	testing.expect(t, !ok && why != "", "a baseline counting fewer nodes was read")
+}
+
+@(private = "file")
+Saver :: struct {
+	file, place: string,
+	tree:        ^scan.Tree,
+	kept:        int,
+}
+
+/*
+Two writers saving the same place at once, as the monitor and the window finishing
+a scan together do, each write a temporary file of their own: what is left is a whole
+baseline, and no temporary file.
+*/
+@(test)
+test_baselines_saved_at_once_leave_a_whole_one :: proc(t: ^testing.T) {
+	root := fixture(t, "race")
+	defer os.remove_all(root)
+	dir := join(root, "..", "leita_survey_race_kept")
+	os.remove_all(dir)
+	testing.expect(t, os.make_directory(dir) == nil, "could not make the folder")
+	defer os.remove_all(dir)
+	file := join(dir, "place.tree")
+	tree := read_tree(t, root)
+	defer scan.tree_destroy(&tree)
+
+	save := proc(s: ^Saver) {
+		for _ in 0 ..< 50 {
+			if baseline_save(s.file, s.place, s.tree, {}) {
+				s.kept += 1
+			}
+		}
+	}
+	savers := [2]Saver{{file, root, &tree, 0}, {file, root, &tree, 0}}
+	threads: [2]^thread.Thread
+	for &s, i in savers {
+		threads[i] = thread.create_and_start_with_poly_data(&s, save)
+	}
+	for th in threads {
+		thread.join(th)
+		thread.destroy(th)
+	}
+	testing.expect_value(t, savers[0].kept + savers[1].kept, 100)
+	back: scan.Tree
+	_, why, ok := baseline_load(file, root, &back)
+	defer scan.tree_destroy(&back)
+	testing.expectf(t, ok, "not read back: %s", why)
+	expect_same(t, &back, &tree)
+	left, _ := os.read_all_directory_by_path(dir, context.temp_allocator)
+	testing.expectf(t, len(left) == 1, "files left beside the baseline: %d", len(left))
 }
 
 /*

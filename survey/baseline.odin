@@ -1,8 +1,9 @@
 package survey
 
 import "core:encoding/endian"
+import "core:fmt"
 import "core:os"
-import "core:strings"
+import "core:sync"
 
 import "../changes"
 import "../scan"
@@ -13,9 +14,11 @@ cursor taken before it was read, so the next run can apply what changed since ra
 than read the place again. History keeps far less, entries of at least a megabyte, so
 it cannot serve: an update needs every file to copy.
 
-The file is written whole to a temporary name and renamed over the old one, so a run
-that stops part way leaves the last good baseline, never a torn one. It is written
-for this machine, little-endian:
+The file is written whole to a temporary name of its own and renamed over the old
+one, so a run that stops part way leaves the last good baseline, never a torn one. The
+command line, the window and the monitor may each finish a scan of the same place at
+once: each writes its own temporary file, and the last whole one renamed wins. It is
+written for this machine, little-endian:
 
 	magic        "LEITABL1"
 	cursor       source u8, volume 2 x u64, journal u64, position i64, full i64
@@ -29,6 +32,10 @@ Roughly 15 bytes and the name a node: a home directory of 2.6 million is 70 to 8
 
 @(private)
 BASELINE_MAGIC :: "LEITABL1"
+
+// Numbers each temporary file this process writes, so two threads never share one.
+@(private = "file")
+baseline_writes: u64
 
 /*
 Keep `t`, a finished scan of `place`, in the file at `path` with `cursor`. Whether
@@ -96,7 +103,12 @@ baseline_save :: proc(path, place: string, t: ^scan.Tree, cursor: changes.Cursor
 	}
 	assert(w.at == len(out), "a baseline's size was miscounted")
 
-	temporary := strings.concatenate({path, ".new"}, context.temp_allocator)
+	temporary := fmt.tprintf(
+		"%s.%d-%d.new",
+		path,
+		os.get_pid(),
+		sync.atomic_add(&baseline_writes, 1),
+	)
 	if dir, _ := os.split_path(path); dir != "" {
 		_ = os.make_directory_all(dir)
 	}
@@ -167,6 +179,11 @@ baseline_load :: proc(
 		n.disk = disk
 		n.name = scan.intern(&w, name)
 		scan.node_publish(n, flags | {.Used, .Settled})
+	}
+	// Bytes past the last node: the count does not match what was written.
+	if r.at != len(r.data) {
+		scan.tree_destroy(t)
+		return {}, "the scan kept of this place is longer than it says", false
 	}
 	t.root = root
 	return cursor, "", true

@@ -126,6 +126,8 @@ test_walk_does_not_follow_a_symlink_by_default :: proc(t: ^testing.T) {
 	link, _ := named(&tree, "link")
 	testing.expect(t, .Reparse in link.flags, "the symlink is not marked a reparse")
 	testing.expect(t, .Directory not_in link.flags, "the symlink is counted as a directory")
+	testing.expect_value(t, link.disk, u64(0)) // a symlink is never charged
+
 	// Descending it would record sub's contents a second time.
 	_, subs := named(&tree, "b.txt")
 	testing.expect_value(t, subs, 1)

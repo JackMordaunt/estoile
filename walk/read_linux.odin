@@ -14,10 +14,13 @@ one statx against the directory answers everything the tree records. Walking 14,
 entries cost 64,235 calls that way against du's 21,511 for the same tree, and the
 procfs readlink was over half of it.
 
-getdents also names each entry's type, so most are settled without asking again, and
-statx reports allocated blocks as readily as length. That makes the on-disk figure
-exact here rather than the length rounded up to a guessed block, so a sparse or
-compressed file is charged what it occupies.
+getdents also names each entry's type, so only a regular file is asked about again,
+along with the rare entry whose filesystem left the type out. A directory and a
+symlink are never charged, so their statx bought nothing but the syscall; on
+~/Source, 86,466 of 639,221 statx calls (13.5%) were spent on directories that way
+(2026-10-12). statx reports allocated blocks as readily as length, so the on-disk
+figure stays exact for the entries still asked, rather than the length rounded up to
+a guessed block: a sparse or compressed file is charged what it occupies.
 */
 @(private)
 read_dir :: proc(d: Dir, w: ^Worker) -> (nodes, bytes: u64, ok: bool) {
@@ -83,23 +86,31 @@ read_dir :: proc(d: Dir, w: ^Worker) -> (nodes, bytes: u64, ok: bool) {
 			directory = l.type == .DIR,
 			symlink   = l.type == .LNK,
 		}
-		mask := linux.Statx_Mask{.TYPE, .BLOCKS, .NLINK}
-		st: linux.Statx
-		if linux.statx(fd, cstring(&s.names[l.at]), {.SYMLINK_NOFOLLOW}, mask, &st) == .NONE {
-			// Some filesystems leave the type out of a directory entry. Those are
-			// the only ones that have to be told apart here.
-			if l.type == .UNKNOWN {
-				e.directory = linux.S_ISDIR(st.mode)
-				e.symlink = linux.S_ISLNK(st.mode)
-			}
-			if !e.directory && !e.symlink {
-				// Blocks are counted in 512 byte units whatever the filesystem
-				// builds them from.
-				e.disk = st.blocks * 512
-				e.links = st.nlink
-				e.id = {
-					device = u64(st.dev_major) << 32 | u64(st.dev_minor),
-					inode  = u64(l.ino),
+		// Only a regular file can be charged anything, and only an entry whose
+		// type getdents left out (.UNKNOWN) needs asking what it even is. A
+		// directory, a symlink, and the other special types (FIFO, socket,
+		// device, whiteout) are none of them regular files, so record charges
+		// them nothing whether or not they are stat'd; skipping the call for
+		// them changes no result, only the syscall count.
+		if l.type == .REG || l.type == .UNKNOWN {
+			mask := linux.Statx_Mask{.TYPE, .BLOCKS, .NLINK}
+			st: linux.Statx
+			if linux.statx(fd, cstring(&s.names[l.at]), {.SYMLINK_NOFOLLOW}, mask, &st) == .NONE {
+				// Some filesystems leave the type out of a directory entry. Those
+				// are the only ones that have to be told apart here.
+				if l.type == .UNKNOWN {
+					e.directory = linux.S_ISDIR(st.mode)
+					e.symlink = linux.S_ISLNK(st.mode)
+				}
+				if !e.directory && !e.symlink {
+					// Blocks are counted in 512 byte units whatever the
+					// filesystem builds them from.
+					e.disk = st.blocks * 512
+					e.links = st.nlink
+					e.id = {
+						device = u64(st.dev_major) << 32 | u64(st.dev_minor),
+						inode  = u64(l.ino),
+					}
 				}
 			}
 		}

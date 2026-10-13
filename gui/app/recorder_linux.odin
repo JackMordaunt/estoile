@@ -18,6 +18,7 @@ scheduler when monitoring is turned on.
 set_recording :: proc(d: ^Desk, c: command.Recording) {
 	argv := []string{"pkexec", d.monitoring.argv[0], "journal", "on" if c.on else "off"}
 	r := sh.exec(argv, {}, context.temp_allocator)
+	recorder_refresh(d)
 	why := ""
 	switch {
 	case r.ok:
@@ -41,10 +42,18 @@ PKEXEC_DISMISSED :: 126
 @(private = "file")
 PKEXEC_REFUSED :: 127
 
-// recorder_answer says in r whether the recorder is installed and running.
+// recorder_refresh asks the system whether the recorder is installed and running,
+// and keeps the answer for recorder_answer.
 @(private)
-recorder_answer :: proc(r: ^query.Monitor_Result) {
+recorder_refresh :: proc(d: ^Desk) {
+	installed := journal.installed()
+	d.monitoring.recorder = {installed, installed && journal.active()}
+}
+
+// recorder_answer says in r what recorder_refresh last found.
+@(private)
+recorder_answer :: proc(d: ^Desk, r: ^query.Monitor_Result) {
 	r.recorder_shown = true
-	r.recorder_on = journal.installed()
-	r.recorder_running = r.recorder_on && journal.active()
+	r.recorder_on = d.monitoring.recorder.installed
+	r.recorder_running = d.monitoring.recorder.running
 }

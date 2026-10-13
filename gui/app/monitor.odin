@@ -25,7 +25,9 @@ features are locked but for turning it off, which always works.
 
 On Linux the dialog also turns the recorder of changes on and off (package
 journal), which is not a paid feature: `pkexec Leita journal on|off`, since it
-installs a system service. Whether it is on is read from the system each answer.
+installs a system service. Whether it is on is asked of the system when the dialog
+opens and after each switch, and kept: asking forks systemctl, too much for an
+answer given every MONITOR_FRESH.
 */
 
 /*
@@ -49,6 +51,13 @@ Monitoring :: struct {
 	logged_in_only: bool, // as the scheduler last said, once asked
 	asked:          bool,
 	answered:       time.Tick, // when a Monitor need was last answered on a tick
+	recorder:       Recorder_Status, // as last asked (recorder_refresh)
+}
+
+// What the system said of the recorder of changes when last asked.
+Recorder_Status :: struct {
+	installed: bool,
+	running:   bool,
 }
 
 // MONITOR_FRESH is how often a live Monitor need is answered again on the
@@ -233,7 +242,7 @@ monitor_answer :: proc(d: ^Desk) -> query.Monitor_Result {
 	if mo.logged_in_only {
 		r.note = say(d, .Monitor_Logged_In_Only, mo.host.login)
 	}
-	recorder_answer(&r)
+	recorder_answer(d, &r)
 	if d.settings == nil {
 		return r
 	}

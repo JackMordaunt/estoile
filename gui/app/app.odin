@@ -470,8 +470,11 @@ desk_step :: proc(d: ^Desk, v: Desk_In) {
 			return
 		}
 		d.live[e.key] = e.q
-		if q, is := e.q.(query.Search); is {
+		#partial switch q in e.q {
+		case query.Search:
 			find_open(d, e.key, q)
+		case query.Monitor:
+			recorder_refresh(d)
 		}
 		answer(d, e.key, e.q)
 		notify(d)

@@ -60,6 +60,20 @@ The tree takes about 40 bytes an entry on disk: 99 MB for a home directory of
 2.57 million entries. A place not scanned for 30 days has its tree deleted; its
 next scan reads it whole, as it would have anyway.
 
+Linux keeps no record of what changed while nothing was listening, so there leita
+asks each folder when it last changed, which misses a small file written in place.
+`sudo leita journal on`, or Record changes as they happen in the window's
+Monitoring, installs a recorder that keeps that record: a system service,
+leita-journal, running a root-owned copy of leita at
+/usr/local/libexec/leita/leita with only the two capabilities fanotify needs. It is
+off until you turn it on, and `leita journal off` removes the service, the copy and
+the logs. The logs, one a filesystem in /var/lib/leita/journal, hold a hash of the
+path of each folder that changed and when, never a name, and forget what is older
+than 30 days. `leita journal status` says which filesystems are recorded and which
+are not. btrfs subvolumes, which / and /home usually are on Fedora and openSUSE,
+are not recorded yet; a scan there asks each folder as before. A scan says which it
+used: "(recorded changes)" or "(folder times)".
+
 Comparing scans comes with a licence too, with the same 30-day trial. leita
 keeps every scan either way, so your history is all there when you add one.
 

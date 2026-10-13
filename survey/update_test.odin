@@ -305,6 +305,11 @@ test_a_fill_asked_whole_reads_whole_and_keeps :: proc(t: ^testing.T) {
 	target, choice, err := scan.resolve(root)
 	testing.expect_value(t, err, scan.Error.None)
 	defer scan.target_destroy(&target)
+	// A baseline is kept only on a volume that can say what changed since.
+	_, has_events := changes.now(root)
+	if !testing.expect(t, has_events, "no cursor: the volume keeps no change history") {
+		return
+	}
 
 	runs := [3]Fill{}
 	for &f, i in runs {

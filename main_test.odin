@@ -405,6 +405,9 @@ a_scan_keeps_a_baseline_beside_the_store :: proc(t: ^testing.T) {
 		scan.location(target, context.temp_allocator),
 		context.temp_allocator,
 	)
+	if !keeps_events(t, root) {
+		return
+	}
 
 	testing.expect_value(t, scan_and_say({target = root, whole = true}, store), 0)
 	testing.expectf(t, os.exists(baseline), "no baseline at %s", baseline)

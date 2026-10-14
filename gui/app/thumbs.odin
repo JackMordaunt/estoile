@@ -5,6 +5,7 @@ import "core:hash"
 import "core:mem"
 import "core:os"
 import "core:path/filepath"
+import "core:slice"
 import "core:strings"
 import "core:sync"
 import "core:time"
@@ -37,6 +38,17 @@ THUMB_QUIET :: 60 * time.Millisecond
 // THUMB_MAX is the largest picture read for a thumbnail: one bigger is shown by
 // its kind's icon, rather than a worker spending a second on it.
 THUMB_MAX :: 64 << 20
+
+// THUMB_MAX_AGE is how long a thumbnail may sit unused before thumbs_prune
+// drops it: a month, assumed long enough that it is not worth keeping a
+// thumbnail against a maybe-return to the same picture.
+THUMB_MAX_AGE :: 30 * 24 * time.Hour
+
+// THUMB_MAX_BYTES bounds the thumbnail folder once the stale ones are gone:
+// past it, thumbs_prune drops the least recently used until it fits. 256 MiB,
+// a size picked to let even a large library's thumbnails sit around a while
+// without the folder growing without bound.
+THUMB_MAX_BYTES :: 256 << 20
 
 // Thumbs is the host's thumbnail half: the port needs go in by, the job for
 // each live need, and the folder thumbnails are kept in. Only a need's key goes
@@ -80,6 +92,15 @@ thumbs_init :: proc(h: ^Host, folder: string) {
 	}
 	if t.folder != "" {
 		os.make_directory_all(t.folder)
+		// Off the pool, so a large cache never holds up the first frame. The
+		// pool is several threads pulling from one queue (jm/stream/workers.odin),
+		// so nothing orders this ahead of thumb_make there, and a cold folder's
+		// read could easily run past the view's first ask (THUMB_QUIET later);
+		// thumbs_prune guards each remove against a hit landing mid-walk, rather
+		// than relying on going first.
+		job := new(Thumb_Prune_Job)
+		job.folder = t.folder
+		stream.submit(h.workers, thumb_prune_run, job)
 	}
 	requests: stream.Stream(ui.Need_Key)
 	requests, t.port = stream.port(h.p, ui.Need_Key, cap = 256, name = "thumbs")
@@ -94,6 +115,21 @@ thumbs_init :: proc(h: ^Host, folder: string) {
 		name = "thumbnail",
 	)
 	stream.for_each_with(made, t, thumb_deliver, name = "thumbnail delivered")
+}
+
+// Thumb_Prune_Job is thumbs_prune's call, boxed for stream.submit. folder
+// points at the live Thumbs.folder: workers_stop runs every queued job before
+// thumbs_destroy frees it, so the job never outlives the string it reads.
+@(private = "file")
+Thumb_Prune_Job :: struct {
+	folder: string,
+}
+
+@(private = "file")
+thumb_prune_run :: proc(data: rawptr) {
+	job := (^Thumb_Prune_Job)(data)
+	thumbs_prune(job.folder, THUMB_MAX_AGE, THUMB_MAX_BYTES)
+	free(job)
 }
 
 // thumbs_cancel calls off every thumbnail being made, for a host stopping.
@@ -185,7 +221,15 @@ thumb_make :: proc(t: ^Thumbs, key: ui.Need_Key) -> (done: Thumb_Made) {
 		return
 	}
 	kept := thumb_file(t.folder, path, time.time_to_unix_nano(info.modification_time), job.px)
-	if !os.exists(kept) {
+	if os.exists(kept) {
+		// A hit: thumbs_prune reads modification time as "last used", so touch
+		// it here rather than lean on access_time, which relatime and noatime
+		// mounts (common defaults; see mount(8)) are meant not to move on a
+		// plain read. Cheap enough, since a hit is the common case and a write
+		// is one syscall.
+		now := time.now()
+		os.change_times(kept, now, now)
+	} else {
 		// Written beside, then renamed into place, so a reader never finds half
 		// of one, and two workers making the same one do not collide. Still a
 		// .png: bl.image_write_to_file picks its encoder by the extension, and
@@ -208,6 +252,96 @@ thumb_make :: proc(t: ^Thumbs, key: ui.Need_Key) -> (done: Thumb_Made) {
 thumb_file :: proc(folder, path: string, modified: i64, px: int) -> string {
 	name := hash.fnv64a(transmute([]byte)path)
 	return fmt.tprintf("%s%c%016x-%x-%d.png", folder, filepath.SEPARATOR, name, modified, px)
+}
+
+// thumb_prune_is_unmoved re-stats path right before a remove thumbs_prune has
+// otherwise decided on, and says whether its modification time still matches
+// snapshot, the one the walk saw: false means something moved it since - a
+// hit, thumb_make's touch landing between its exists check and handing back
+// the path, a gap the walk itself cannot see - so the caller keeps it rather
+// than drop a thumbnail in use. A brief window remains even so, between this
+// stat and the remove that follows it; losing it costs one thumbnail remade
+// on the next ask, the same cost thumb_make already pays for a miss.
+@(private)
+thumb_prune_is_unmoved :: proc(path: string, snapshot: time.Time) -> (unmoved: bool, size: i64) {
+	info, err := os.stat(path, context.temp_allocator)
+	if err != nil {
+		return false, 0
+	}
+	return time.diff(snapshot, info.modification_time) == 0, info.size
+}
+
+/*
+thumbs_prune keeps folder bounded: first it drops every thumbnail whose last
+use (thumb_make's touch on a hit, or its making) is older than max_age, then,
+if the folder still holds more than max_bytes, the least recently used go next
+until it does. A file modified since this call began is left alone either
+way - made or read by this same run, not stale from the last one.
+
+thumb_make runs on the same pool as this and nothing orders the two, so a hit
+can land between the walk below and a remove it decided on; thumb_prune_is_unmoved
+guards each one.
+*/
+thumbs_prune :: proc(folder: string, max_age: time.Duration, max_bytes: i64) {
+	cutoff := time.now()
+	dir, open_err := os.open(folder)
+	if open_err != nil {
+		return
+	}
+	defer os.close(dir)
+	entries, read_err := os.read_dir(dir, -1, context.temp_allocator)
+	if read_err != nil {
+		return
+	}
+
+	Live :: struct {
+		path: string,
+		size: i64,
+		used: time.Time,
+	}
+	live := make([dynamic]Live, 0, len(entries), context.temp_allocator)
+	total: i64
+	for e in entries {
+		if e.type != .Regular {
+			continue
+		}
+		age := time.diff(e.modification_time, cutoff)
+		switch {
+		case age <= 0:
+			// Made or touched since cutoff.
+			total += e.size
+		case age > max_age:
+			if unmoved, size := thumb_prune_is_unmoved(e.fullpath, e.modification_time); unmoved {
+				os.remove(e.fullpath)
+			} else {
+				total += size // kept live, not dropped out from under a hit
+			}
+		case:
+			append(&live, Live{e.fullpath, e.size, e.modification_time})
+			total += e.size
+		}
+	}
+	if total <= max_bytes {
+		return
+	}
+
+	slice.sort_by(
+		live[:],
+		proc(a, b: Live) -> bool {
+			return time.diff(a.used, b.used) > 0 // oldest used first
+		},
+	)
+	for l in live {
+		if total <= max_bytes {
+			break
+		}
+		// Its size is already in total, whether this drops it or, touched
+		// since the walk, leaves it live.
+		if unmoved, _ := thumb_prune_is_unmoved(l.path, l.used);
+		   unmoved && os.remove(l.path) == nil {
+			total -= l.size
+		}
+	}
 }
 
 /*

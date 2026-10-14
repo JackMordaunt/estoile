@@ -204,7 +204,8 @@ a_thumbnail_is_made_once_and_kept :: proc(t: ^testing.T) {
 	bl.image_destroy(&square)
 	made, _ := os.stat(r.image, context.temp_allocator)
 
-	// Asked again in another need, it is the same file, not made again.
+	// Asked again in another need, it is the same file, not made again - only
+	// touched, so thumbs_prune reads the hit as just used rather than stale.
 	ask(&h, query.Thumb{path = picture, px = 16}, added = false)
 	time.sleep(20 * time.Millisecond)
 	again, again_ok := answer_to(
@@ -216,7 +217,11 @@ a_thumbnail_is_made_once_and_kept :: proc(t: ^testing.T) {
 	testing.expect(t, again_ok)
 	testing.expect_value(t, again.image, r.image)
 	kept, _ := os.stat(again.image, context.temp_allocator)
-	testing.expect_value(t, kept.modification_time, made.modification_time)
+	testing.expect(
+		t,
+		time.diff(made.modification_time, kept.modification_time) > 0,
+		"a hit touches the file forward",
+	)
 
 	// What is not a picture has none.
 	none :: proc(r: ^query.Thumb_Result) -> bool {return r.image == ""}

@@ -222,3 +222,11 @@ install: (cli "release")
     fi
     echo "installed $dest/{{bin}} and $dest/{{short}}"
 
+# leita against fd on one seeded tree: the host filesystem, then throw-away
+# ext4 and btrfs images, then tmpfs. Loop images sit on this disk, so they
+# are not a raw drive. Warm cache only. `just fsbench "--files 20000"`
+# shortens the seed. vfat is opt-in (`--only vfat`); its desktop mount syncs
+# every created file.
+fsbench args="": (cli "release")
+    python3 tools/fsbench {{args}}
+

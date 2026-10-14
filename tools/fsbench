@@ -1,0 +1,536 @@
+#!/usr/bin/env python3
+"""Compare leita with fd on one seeded tree, across filesystems.
+
+The tree is fixed by a seed: a nested source checkout, a wide vendor
+directory, and a shallow documents tree. Files are small on purpose. A walk
+never reads their bytes, so a large file would only slow the seeding.
+
+ext4 and btrfs are throw-away images, mounted with udisks. The image file
+sits on this machine's own filesystem, so those rows are not a raw disk. The
+host row is the seed directory itself. tmpfs is a private mount in a user
+namespace. Caches stay warm; dropping them needs root.
+
+vfat is not in the default run. udisks mounts it with `flush`, which syncs
+every created file, so seeding the same tree takes hours. `--only vfat` runs
+it anyway. xfs is included when mkfs.xfs is installed; this machine's tools
+may not have it.
+
+    tools/fsbench
+    tools/fsbench --files 20000
+    tools/fsbench --only host,ext4
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import platform
+import shutil
+import subprocess
+import sys
+import time
+from dataclasses import dataclass
+from pathlib import Path
+
+SEED = 20261014
+EXTS = ("go", "rs", "c", "h", "py", "md", "json", "txt")
+REPO = Path(__file__).resolve().parent.parent
+WORK = REPO / "build" / "fsbench"
+# vfat stays opt-in: a desktop mount uses `flush`, one sync per created file.
+DEFAULT = ("host", "ext4", "btrfs", "tmpfs")
+KINDS = DEFAULT + ("vfat", "xfs")
+
+
+class Rng:
+    def __init__(self, seed: int) -> None:
+        self.s = seed & 0xFFFFFFFFFFFFFFFF
+
+    def next(self) -> int:
+        self.s = (self.s + 0x9E3779B97F4A7C15) & 0xFFFFFFFFFFFFFFFF
+        z = self.s
+        z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9 & 0xFFFFFFFFFFFFFFFF
+        z = (z ^ (z >> 27)) * 0x94D049BB133111EB & 0xFFFFFFFFFFFFFFFF
+        return z ^ (z >> 31)
+
+    def below(self, n: int) -> int:
+        return self.next() % n
+
+
+def say(text: str) -> None:
+    print(text, flush=True)
+
+
+def which(name: str) -> str | None:
+    return shutil.which(name)
+
+
+def run(argv: list[str], quiet: bool = False) -> None:
+    if not quiet:
+        subprocess.run(argv, check=True)
+        return
+    done = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    if done.returncode != 0:
+        sys.stderr.write(done.stdout)
+        raise subprocess.CalledProcessError(done.returncode, argv, done.stdout)
+
+
+def fd_bin() -> str:
+    found = which("fd") or which("fdfind")
+    if not found:
+        sys.exit("fsbench: fd (or fdfind) is not on PATH")
+    return found
+
+
+def leita_bin(given: str) -> str:
+    path = Path(given) if given else REPO / "build" / "release" / "leita"
+    if not path.is_file() or not os.access(path, os.X_OK):
+        sys.exit(f"fsbench: {path} is not a release binary; run: just cli release")
+    return str(path)
+
+
+def write_file(path: Path, rng: Rng) -> None:
+    k = rng.below(100)
+    if k < 40:
+        data = b""
+    elif k < 80:
+        data = b"x" * 32
+    elif k < 95:
+        data = b"x" * 256
+    else:
+        data = b"x" * 4096
+    fd = os.open(path, os.O_CREAT | os.O_WRONLY | os.O_EXCL, 0o644)
+    try:
+        if data:
+            os.write(fd, data)
+    finally:
+        os.close(fd)
+
+
+def write_n(directory: Path, count: int, rng: Rng, made: list[Path], start: int) -> None:
+    directory.mkdir(parents=True, exist_ok=True)
+    for i in range(start, start + count):
+        ext = EXTS[rng.below(len(EXTS))]
+        path = directory / f"f{i:05d}.{ext}"
+        write_file(path, rng)
+        made.append(path)
+        if len(made) % 50000 == 0:
+            say(f"  {len(made)} files")
+
+
+def fill_source(directory: Path, budget: int, rng: Rng, depth: int, made: list[Path]) -> None:
+    directory.mkdir(parents=True, exist_ok=True)
+    if budget <= 0:
+        return
+    if depth >= 5 or budget <= 8:
+        write_n(directory, budget, rng, made, 0)
+        return
+    n_sub = 1 + rng.below(4)
+    n_here = rng.below(8)
+    if n_here > budget - n_sub:
+        n_here = max(0, budget - n_sub)
+    write_n(directory, n_here, rng, made, 0)
+    remain = budget - n_here
+    n_sub = min(n_sub, remain)
+    if n_sub == 0:
+        write_n(directory, remain, rng, made, n_here)
+        return
+    base, extra = divmod(remain, n_sub)
+    for s in range(n_sub):
+        fill_source(directory / f"p{s}", base + (1 if s < extra else 0), rng, depth + 1, made)
+
+
+def split(total: int, parts: int) -> list[int]:
+    base, extra = divmod(total, parts)
+    return [base + (1 if i < extra else 0) for i in range(parts)]
+
+
+def generate(tree: Path, nfiles: int) -> dict:
+    if tree.exists():
+        shutil.rmtree(tree)
+    tree.mkdir(parents=True)
+    rng = Rng(SEED)
+    made: list[Path] = []
+    n_src = nfiles * 70 // 100
+    n_vendor = nfiles * 20 // 100
+    n_docs = nfiles - n_src - n_vendor
+    say(f"seeding {nfiles} files under {tree}")
+    for i, budget in enumerate(split(n_src, 12)):
+        fill_source(tree / "src" / f"proj{i:02d}", budget, rng, 0, made)
+    for i, budget in enumerate(split(n_vendor, 20)):
+        write_n(tree / "vendor" / f"mod{i:02d}", budget, rng, made, 0)
+    for i, budget in enumerate(split(n_docs, max(1, n_docs // 25))):
+        write_n(tree / "docs" / f"d{i:04d}", budget, rng, made, 0)
+    for i in range(20):
+        (tree / "docs" / "empty" / f"e{i:02d}").mkdir(parents=True, exist_ok=True)
+    if len(made) != nfiles:
+        sys.exit(f"fsbench: seeded {len(made)} files, wanted {nfiles}")
+    link_dir = tree / "links"
+    link_dir.mkdir()
+    n_links = min(400, nfiles // 10)
+    step = max(1, len(made) // n_links)
+    for i in range(n_links):
+        target = made[i * step]
+        (link_dir / f"s{i:03d}").symlink_to(os.path.relpath(target, link_dir))
+    say(f"  {nfiles} files, {n_links} symlinks")
+    return {"files": nfiles, "symlinks": n_links, "seed": SEED}
+
+
+def image_bytes(nfiles: int) -> int:
+    # One block a small file, plus inodes and a journal, with room to spare.
+    # Two blocks a file covers a filesystem that cannot inline a small file,
+    # plus the inode table and a journal.
+    return max(512 << 20, nfiles * 16384)
+
+
+def detach(img: Path) -> None:
+    listed = subprocess.run(["losetup", "-j", str(img)], capture_output=True, text=True)
+    for line in listed.stdout.splitlines():
+        dev = line.split(":", 1)[0]
+        if not dev.startswith("/dev/loop"):
+            continue
+        subprocess.run(["udisksctl", "unmount", "-b", dev], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(["udisksctl", "loop-delete", "-b", dev], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(["losetup", "-d", dev], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def mount_image(img: Path) -> tuple[str, Path]:
+    detach(img)
+    out = subprocess.run(["udisksctl", "loop-setup", "-f", str(img)], capture_output=True, text=True)
+    if out.returncode != 0:
+        raise RuntimeError(out.stderr.strip() or "udisksctl loop-setup failed")
+    dev = ""
+    for token in out.stdout.split():
+        if token.startswith("/dev/loop"):
+            dev = token.rstrip(".")
+            break
+    if not dev:
+        raise RuntimeError(f"no loop device in: {out.stdout.strip()}")
+    mount = ""
+    for _ in range(50):
+        found = subprocess.run(["findmnt", "-no", "TARGET", dev], capture_output=True, text=True)
+        mount = found.stdout.strip().splitlines()[0] if found.stdout.strip() else ""
+        if mount:
+            break
+        time.sleep(0.1)
+    if not mount:
+        mounted = subprocess.run(["udisksctl", "mount", "-b", dev], capture_output=True, text=True)
+        if mounted.returncode != 0:
+            detach(img)
+            raise RuntimeError(mounted.stderr.strip() or "udisksctl mount failed")
+        found = subprocess.run(["findmnt", "-no", "TARGET", dev], capture_output=True, text=True)
+        mount = found.stdout.strip().splitlines()[0] if found.stdout.strip() else ""
+    if not mount:
+        detach(img)
+        raise RuntimeError(f"{dev} did not mount")
+    return dev, Path(mount)
+
+
+def make_image(kind: str, seed: Path, img: Path, nfiles: int) -> None:
+    detach(img)
+    if img.exists():
+        img.unlink()
+    size = str(image_bytes(nfiles))
+    run(["truncate", "-s", size, str(img)])
+    uid = f"{os.getuid()}:{os.getgid()}"
+    if kind == "ext4":
+        # The default is one inode per 16KiB, which runs out once every file is
+        # tiny. Ask for two inodes a file so the directories fit as well.
+        inodes = str(nfiles * 2)
+        run(["mkfs.ext4", "-F", "-q", "-L", "leita-ext4", "-N", inodes, "-E", f"root_owner={uid}", "-d", str(seed), str(img)], quiet=True)
+    elif kind == "btrfs":
+        run(["mkfs.btrfs", "-f", "-L", "leita-btrfs", "-r", str(seed), str(img)], quiet=True)
+    elif kind == "vfat":
+        run(["mkfs.vfat", "-F", "32", "-n", "LEITAVFAT", str(img)], quiet=True)
+    elif kind == "xfs":
+        # xfs has no rootdir flag. The caller copies the tree after mount.
+        run(["mkfs.xfs", "-f", "-L", "leita-xfs", "-q", str(img)], quiet=True)
+    else:
+        raise RuntimeError(kind)
+
+
+def copy_files(src: Path, dst: Path) -> None:
+    """Copy the tree, skipping symlinks. vfat has nowhere to put one."""
+    if dst.exists():
+        shutil.rmtree(dst)
+    for dirpath, dirnames, filenames in os.walk(src):
+        dirnames[:] = [d for d in dirnames if not (Path(dirpath) / d).is_symlink()]
+        rel = Path(dirpath).relative_to(src)
+        target = dst / rel
+        target.mkdir(parents=True, exist_ok=True)
+        for name in filenames:
+            origin = Path(dirpath) / name
+            if origin.is_symlink():
+                continue
+            shutil.copy2(origin, target / name)
+
+
+def shell(argv: list[str]) -> str:
+    return " ".join(quote(a) for a in argv) + " >/dev/null"
+
+
+def quote(text: str) -> str:
+    return "'" + text.replace("'", "'\\''") + "'"
+
+
+@dataclass
+class Row:
+    name: str
+    entries: int
+    leita: float
+    fd_u: float
+    fd_s: float
+    user: float
+    system: float
+    options: str
+    note: str = ""
+
+    def ratio(self) -> float:
+        if self.fd_s == 0:
+            return 0
+        return self.leita / self.fd_s
+
+
+def count_entries(tree: Path, fd: str) -> int:
+    out = subprocess.run([fd, "-u", ".", str(tree)], stdout=subprocess.PIPE, text=True, check=True)
+    return out.stdout.count("\n")
+
+
+def options_of(path: Path) -> str:
+    found = subprocess.run(["findmnt", "-no", "FSTYPE,OPTIONS", "-T", str(path)], capture_output=True, text=True)
+    return found.stdout.strip().replace("\n", " ")
+
+
+def time_tree(tree: Path, leita: str, fd: str, runs: int, warmup: int, export: Path) -> Row:
+    say(f"timing {tree}")
+    commands = [
+        ("leita", [leita, "--color", "never", "--no-history", "--whole", str(tree)]),
+        ("fd -u", [fd, "-u", ".", str(tree)]),
+        ("fd -S", [fd, "-u", "-S", "+0b", ".", str(tree)]),
+    ]
+    argv = ["hyperfine", "--warmup", str(warmup), "--runs", str(runs), "--export-json", str(export), "--style", "basic"]
+    for name, cmd in commands:
+        argv += ["-n", name, shell(cmd)]
+    run(argv)
+    data = json.loads(export.read_text())
+    by_name = {}
+    for result in data["results"]:
+        codes = result.get("exit_codes") or []
+        if any(code != 0 for code in codes):
+            raise RuntimeError(f"{result.get('command')} exited {codes}")
+        # hyperfine keeps the -n name out of the json; the command order matches.
+        by_name[len(by_name)] = result
+    if len(by_name) != 3:
+        raise RuntimeError(f"hyperfine wrote {len(by_name)} results")
+    def ms(result: dict) -> float:
+        return result["mean"] * 1000
+    entries = count_entries(tree, fd)
+    return Row(
+        name="",
+        entries=entries,
+        leita=ms(by_name[0]),
+        fd_u=ms(by_name[1]),
+        fd_s=ms(by_name[2]),
+        user=by_name[0].get("user", 0) * 1000,
+        system=by_name[0].get("system", 0) * 1000,
+        options=options_of(tree),
+    )
+
+
+def bench_mounted(kind: str, seed: Path, tree_name: str, leita: str, fd: str, runs: int, warmup: int, nfiles: int, keep: bool) -> Row:
+    img = WORK / f"{kind}.img"
+    say(f"making {kind} image")
+    make_image(kind, seed, img, nfiles)
+    _dev, mount = mount_image(img)
+    try:
+        walked = mount / tree_name
+        if kind == "vfat":
+            say("copying the tree onto vfat")
+            copy_files(seed / tree_name, walked)
+        elif kind == "xfs":
+            say("copying the tree onto xfs")
+            if walked.exists():
+                shutil.rmtree(walked)
+            shutil.copytree(seed / tree_name, walked, symlinks=True)
+        if not walked.is_dir():
+            raise RuntimeError(f"{walked} is missing after mkfs")
+        row = time_tree(walked, leita, fd, runs, warmup, WORK / f"{kind}.json")
+        row.name = kind
+        return row
+    finally:
+        if not keep:
+            detach(img)
+
+
+def bench_tmpfs(seed_tree: Path, leita: str, fd: str, runs: int, warmup: int) -> Row:
+    mnt = WORK / "tmpmnt"
+    mnt.mkdir(parents=True, exist_ok=True)
+    export = WORK / "tmpfs.json"
+    inner = WORK / "tmpfs.sh"
+    tree = mnt / "tree"
+    # Each hyperfine command is one shell string. Quoting the words separately
+    # makes hyperfine treat --color as its own flag.
+    commands = {
+        "leita": f"{leita} --color never --no-history --whole {tree} >/dev/null",
+        "fd -u": f"{fd} -u . {tree} >/dev/null",
+        "fd -S": f"{fd} -u -S +0b . {tree} >/dev/null",
+    }
+    timed = " ".join(f"-n {quote(name)} {quote(cmd)}" for name, cmd in commands.items())
+    noted = WORK / "tmpfs.mount"
+    body = "\n".join([
+        "#!/bin/bash",
+        "set -euo pipefail",
+        f"mount -t tmpfs -o size=4G,mode=755 tmpfs {quote(str(mnt))}",
+        f"trap {quote(f'umount {mnt} || true')} EXIT",
+        f"mkdir -p {quote(str(tree))}",
+        f"cp -a {quote(str(seed_tree))}/. {quote(str(tree))}/",
+        f"findmnt -no FSTYPE,OPTIONS -T {quote(str(tree))} > {quote(str(noted))}",
+        f"hyperfine --warmup {warmup} --runs {runs} --export-json {quote(str(export))} --style basic {timed}",
+    ]) + "\n"
+    inner.write_text(body)
+    inner.chmod(0o755)
+    say("timing tmpfs")
+    run(["unshare", "--user", "--map-root-user", "--mount", "--propagation", "private", "bash", str(inner)])
+    # Re-read the json the inner script wrote. time_tree would time again.
+    data = json.loads(export.read_text())
+    mounted = noted.read_text().strip().replace("\n", " ") if noted.exists() else "tmpfs"
+    results = data["results"]
+    if len(results) != 3:
+        raise RuntimeError("tmpfs hyperfine did not write three results")
+    def ms(i: int) -> float:
+        return results[i]["mean"] * 1000
+    # The tree is gone with the mount. Count from the seed, plus nothing the
+    # copy dropped: tmpfs keeps the symlinks.
+    entries = count_entries(seed_tree, fd)
+    return Row("tmpfs", entries, ms(0), ms(1), ms(2), results[0].get("user", 0) * 1000, results[0].get("system", 0) * 1000, mounted or "tmpfs")
+
+
+def bench_host(tree: Path, leita: str, fd: str, runs: int, warmup: int) -> Row:
+    row = time_tree(tree, leita, fd, runs, warmup, WORK / "host.json")
+    row.name = "host"
+    return row
+
+
+def fmt(ms: float) -> str:
+    return f"{ms:.1f}"
+
+
+def render(rows: list[Row], skipped: list[tuple[str, str]], meta: dict, leita: str, fd: str) -> str:
+    version = subprocess.run([leita, "--version"], capture_output=True, text=True).stdout.strip()
+    fd_version = subprocess.run([fd, "--version"], capture_output=True, text=True).stdout.splitlines()[0].strip()
+    lines = [
+        "# leita vs fd on a seeded tree",
+        "",
+        f"{version}",
+        f"{fd_version}",
+        f"{platform.platform()}",
+        f"files: {meta['files']}, symlinks: {meta['symlinks']}, seed: {meta['seed']}",
+        "shape: 70% nested source (12 projects), 20% wide vendor (20 directories), 10% shallow docs, 20 empty directories, symlinks under links/",
+        "Loop images are files on the host filesystem, mounted with udisks. tmpfs is a private user-namespace mount.",
+        "Warm cache. Caches were not dropped.",
+        "",
+        "| filesystem | entries | leita ms | fd -u ms | fd -S ms | leita/fd-S | leita user/sys ms |",
+        "|---|---:|---:|---:|---:|---:|---:|",
+    ]
+    for row in rows:
+        flag = ""
+        if row.ratio() > 1.05:
+            flag = " slow"
+        lines.append(
+            f"| {row.name}{flag} | {row.entries} | {fmt(row.leita)} | {fmt(row.fd_u)} | {fmt(row.fd_s)} | {row.ratio():.2f} | {fmt(row.user)}/{fmt(row.system)} |"
+        )
+    lines.append("")
+    lines.append("Mounts:")
+    for row in rows:
+        lines.append(f"- {row.name}: {row.options}")
+    if skipped:
+        lines.append("")
+        lines.append("Skipped:")
+        for name, reason in skipped:
+            lines.append(f"- {name}: {reason}")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def selected(text: str) -> list[str]:
+    if not text:
+        return list(DEFAULT)
+    kinds = [part.strip() for part in text.split(",") if part.strip()]
+    unknown = [kind for kind in kinds if kind not in KINDS]
+    if unknown:
+        sys.exit(f"fsbench: unknown filesystem {', '.join(unknown)}; choose from {', '.join(KINDS)}")
+    return kinds
+
+
+def main() -> None:
+    if platform.system() != "Linux":
+        sys.exit("fsbench measures Linux filesystems. This machine is not Linux.")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--files", type=int, default=200_000)
+    parser.add_argument("--runs", type=int, default=5)
+    parser.add_argument("--warmup", type=int, default=2)
+    parser.add_argument("--leita", default="")
+    parser.add_argument("--only", default="", help="comma list: host,ext4,btrfs,vfat,tmpfs")
+    parser.add_argument("--keep", action="store_true", help="leave images mounted")
+    args = parser.parse_args()
+    if args.files < 100:
+        sys.exit("fsbench: --files must be at least 100")
+    for tool in ("hyperfine", "truncate", "findmnt"):
+        if not which(tool):
+            sys.exit(f"fsbench: {tool} is not on PATH")
+    leita = leita_bin(args.leita)
+    fd = fd_bin()
+    kinds = selected(args.only)
+    WORK.mkdir(parents=True, exist_ok=True)
+    seed = WORK / "seed"
+    tree = seed / "tree"
+    meta = generate(tree, args.files)
+    rows: list[Row] = []
+    skipped: list[tuple[str, str]] = []
+    try:
+        if "host" in kinds:
+            rows.append(bench_host(tree, leita, fd, args.runs, args.warmup))
+        if "vfat" not in kinds:
+            skipped.append(("vfat", "not in the default run: udisks mounts it with flush, so creating the seed syncs every file. Pass --only vfat to run it."))
+        if "xfs" not in kinds and not which("mkfs.xfs"):
+            skipped.append(("xfs", "mkfs.xfs is not installed"))
+        for kind in ("ext4", "btrfs", "vfat", "xfs"):
+            if kind not in kinds:
+                continue
+            tool = {"ext4": "mkfs.ext4", "btrfs": "mkfs.btrfs", "vfat": "mkfs.vfat", "xfs": "mkfs.xfs"}[kind]
+            if not which(tool) or not which("udisksctl"):
+                skipped.append((kind, f"{tool} or udisksctl is not installed"))
+                continue
+            if kind == "vfat":
+                say("vfat is mounted with flush; seeding syncs every file and may take a long time")
+            try:
+                rows.append(bench_mounted(kind, seed, "tree", leita, fd, args.runs, args.warmup, args.files, args.keep))
+            except (RuntimeError, subprocess.CalledProcessError) as err:
+                detach(WORK / f"{kind}.img")
+                skipped.append((kind, str(err).strip().splitlines()[-1] if str(err).strip() else kind))
+                say(f"{kind} failed: {err}")
+        if "tmpfs" in kinds:
+            if not which("unshare"):
+                skipped.append(("tmpfs", "unshare is not installed"))
+            else:
+                try:
+                    rows.append(bench_tmpfs(tree, leita, fd, args.runs, args.warmup))
+                except (RuntimeError, subprocess.CalledProcessError) as err:
+                    skipped.append(("tmpfs", str(err).strip().splitlines()[-1] if str(err).strip() else "tmpfs"))
+                    say(f"tmpfs failed: {err}")
+    finally:
+        if not args.keep:
+            for kind in ("ext4", "btrfs", "vfat", "xfs"):
+                detach(WORK / f"{kind}.img")
+    text = render(rows, skipped, meta, leita, fd)
+    out = WORK / "results.md"
+    out.write_text(text)
+    say("")
+    say(text)
+    say(f"wrote {out}")
+    if not rows:
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

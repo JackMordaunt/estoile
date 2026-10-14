@@ -83,8 +83,10 @@ Tree :: struct {
 	committed:  u32, // slots backed by an allocated block
 	mutex:      sync.Mutex, // guards block allocation and lending a pool
 	// One per writer, then one for names given outside any writer. Names live here
-	// for the tree's life.
-	arenas:     []virtual.Arena,
+	// for the tree's life. Each arena sits on a cache line of its own: packed
+	// together, one's mutex shares a line with the next writer's header, and a
+	// ~/Source walk spent 18% of its samples on that line (2026-10-12).
+	arenas:     []Arena_Slot,
 	// Every arena above, then any a reader has lent. A slot is filled before any node
 	// names it, so whoever has seen the node's flags may read its pool.
 	pools:      [MAX_POOLS]Pool,
@@ -107,22 +109,33 @@ Writer :: struct {
 	pool:  u8,
 }
 
+// One arena, aligned so the next one starts on the following cache line. The
+// heap aligns a plain slice to 16 bytes and virtual.Arena ends in its mutex, so
+// without this a worker's lock word shares a line with its neighbour's header.
+@(private)
+Arena_Slot :: struct #align (64) {
+	arena: virtual.Arena,
+}
+
+#assert(align_of(Arena_Slot) == 64)
+#assert(size_of(Arena_Slot) % 64 == 0)
+
 tree_init :: proc(t: ^Tree, writers := 1, allocator := context.allocator) -> Error {
 	t.allocator = allocator
 	if max(writers, 1) + 1 > MAX_POOLS {
 		return .Out_Of_Memory
 	}
-	arenas, err := make([]virtual.Arena, max(writers, 1) + 1, allocator)
+	arenas, err := make([]Arena_Slot, max(writers, 1) + 1, allocator)
 	if err != nil {
 		return .Out_Of_Memory
 	}
 	t.arenas = arenas
 	for &a in t.arenas {
-		if virtual.arena_init_static(&a, POOL_RESERVE) != nil {
+		if virtual.arena_init_static(&a.arena, POOL_RESERVE) != nil {
 			tree_destroy(t)
 			return .Out_Of_Memory
 		}
-		t.pools[t.pool_count] = {a.curr_block.base, a.curr_block.reserved}
+		t.pools[t.pool_count] = {a.arena.curr_block.base, a.arena.curr_block.reserved}
 		t.pool_count += 1
 	}
 	return .None
@@ -133,8 +146,8 @@ tree_destroy :: proc(t: ^Tree) {
 		free(t.blocks[i], t.allocator)
 	}
 	for &a in t.arenas {
-		if a.curr_block != nil {
-			virtual.arena_destroy(&a)
+		if a.arena.curr_block != nil {
+			virtual.arena_destroy(&a.arena)
 		}
 	}
 	delete(t.arenas, t.allocator)
@@ -144,7 +157,7 @@ tree_destroy :: proc(t: ^Tree) {
 // The writer for worker `index`. The tree's last arena is not one of them.
 writer :: proc(t: ^Tree, index := 0) -> Writer {
 	assert(index < writers(t), "a writer past the tree's count")
-	return {tree = t, arena = &t.arenas[index], pool = u8(index)}
+	return {tree = t, arena = &t.arenas[index].arena, pool = u8(index)}
 }
 
 // How many workers can write at once, each with a writer of its own.
@@ -204,6 +217,45 @@ intern :: proc(w: ^Writer, name: string) -> Name {
 	return copy_into(w.arena, w.pool, name)
 }
 
+// Where a run of names was stored. `name_at` turns a position in that run into a Name.
+Name_Span :: struct {
+	offset: u32,
+	pool:   u8,
+}
+
+/*
+Copy a directory's names in one allocation.
+
+`buf` is copied whole, including whatever separators the caller kept between names,
+so a name that lay at `at` for `n` bytes still lies there in the copy. One directory
+then takes one arena lock instead of one per entry. An empty buffer succeeds and
+names nothing. Failure stores nothing.
+*/
+intern_span :: proc(w: ^Writer, buf: []byte) -> (span: Name_Span, ok: bool) {
+	if len(buf) == 0 {
+		return {}, true
+	}
+	data, err := virtual.arena_alloc(w.arena, uint(len(buf)), 1)
+	if err != nil {
+		return {}, false
+	}
+	copy(data, buf)
+	// The same subtraction `copy_into` uses, so a Name built from this span is read
+	// back by `name_of` like any other. A pool is no larger than a Name's offset.
+	at := uintptr(raw_data(data)) - uintptr(w.arena.curr_block.base)
+	assert(at <= uintptr(max(u32)), "a name past what an offset can name")
+	return Name_Span{offset = u32(at), pool = w.pool}, true
+}
+
+// The Name for `n` bytes at `at` inside `span`. Too long for a Name, or empty, is the
+// empty name, as `intern` returns for a name a Name cannot hold.
+name_at :: proc(span: Name_Span, at, n: int) -> Name {
+	if n <= 0 || n > int(max(u16)) {
+		return {}
+	}
+	return {offset = span.offset + u32(at), length = u16(n), pool = span.pool}
+}
+
 /*
 Copy a name given outside any writer: a rename, or a root named after the scan.
 
@@ -213,7 +265,7 @@ life even if another replaces it, so call it once per name rather than once per 
 name_copy :: proc(t: ^Tree, name: string) -> Name {
 	sync.guard(&t.naming)
 	last := len(t.arenas) - 1
-	return copy_into(&t.arenas[last], u8(last), name)
+	return copy_into(&t.arenas[last].arena, u8(last), name)
 }
 
 /*

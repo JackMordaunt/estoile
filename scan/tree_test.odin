@@ -89,6 +89,69 @@ test_each_writer_names_into_a_pool_of_its_own :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_a_span_keeps_every_name_after_the_source_is_reused :: proc(t: ^testing.T) {
+	// A directory's names are copied once, then the scratch buffer is reused for the
+	// next directory. Each name has to outlive that.
+	tree := fresh(t)
+	defer tree_destroy(&tree)
+	w := writer(&tree)
+	claim(&w, 2)
+
+	buf := [8]byte{'o', 'n', 'e', 0, 't', 'w', 'o', 0}
+	span, ok := intern_span(&w, buf[:])
+	testing.expect(t, ok, "the span was not stored")
+	node(&tree, 0).name = name_at(span, 0, 3)
+	node(&tree, 1).name = name_at(span, 4, 3)
+	buf = {}
+	testing.expect_value(t, name_of(&tree, 0), "one")
+	testing.expect_value(t, name_of(&tree, 1), "two")
+}
+
+@(test)
+test_a_span_name_too_long_for_a_handle_comes_back_empty :: proc(t: ^testing.T) {
+	tree := fresh(t)
+	defer tree_destroy(&tree)
+	w := writer(&tree)
+	buf := make([]byte, int(max(u16)) + 1, context.temp_allocator)
+	for &b in buf {
+		b = 'x'
+	}
+	span, ok := intern_span(&w, buf)
+	testing.expect(t, ok, "the span was not stored")
+	testing.expect_value(t, name_at(span, 0, len(buf)), Name{})
+	claim(&w, 1)
+	node(&tree, 0).name = name_at(span, 0, int(max(u16)))
+	testing.expect_value(t, len(name_of(&tree, 0)), int(max(u16)))
+}
+
+@(test)
+test_an_empty_span_names_nothing :: proc(t: ^testing.T) {
+	tree := fresh(t)
+	defer tree_destroy(&tree)
+	w := writer(&tree)
+	span, ok := intern_span(&w, {})
+	testing.expect(t, ok, "an empty span failed")
+	testing.expect_value(t, span, Name_Span{})
+	testing.expect_value(t, name_at(span, 0, 0), Name{})
+}
+
+@(test)
+test_writer_arenas_do_not_share_a_cache_line :: proc(t: ^testing.T) {
+	tree := fresh(t, 3)
+	defer tree_destroy(&tree)
+	line :: uintptr(64)
+	prev: uintptr
+	for i in 0 ..< writers(&tree) {
+		at := uintptr(writer(&tree, i).arena)
+		testing.expect_value(t, at % line, uintptr(0))
+		if i > 0 {
+			testing.expect(t, at / line != prev / line, "two writers share a cache line")
+		}
+		prev = at
+	}
+}
+
+@(test)
 test_a_name_too_long_for_a_handle_comes_back_empty :: proc(t: ^testing.T) {
 	tree := fresh(t)
 	defer tree_destroy(&tree)

@@ -5,6 +5,8 @@ import "core:mem"
 import "core:slice"
 import "core:sys/linux"
 
+import "../scan"
+
 /*
 Read one directory with the calls the work actually needs.
 
@@ -79,7 +81,28 @@ read_dir :: proc(d: Dir, w: ^Worker) -> (nodes, bytes: u64, ok: bool) {
 	}
 	slice.sort_by_key(s.listed[:], proc(l: Dirent) -> u64 {return l.ino})
 
-	for l in s.listed {
+	// One claim and one copy for the whole directory. Doing both per entry put a
+	// shared counter and every worker's arena mutex on the profile: the arenas sit
+	// side by side, so neighbours fought over one cache line (2026-10-12). The names
+	// are already contiguous in the scratch buffer, separators included.
+	count := len(s.listed)
+	first: u32
+	span: scan.Name_Span
+	if count > 0 {
+		claimed, claim_err := scan.claim(&w.writer, u32(count))
+		if claim_err != nil {
+			w.err = .Out_Of_Memory
+			return 0, 0, false
+		}
+		copied, names_ok := scan.intern_span(&w.writer, s.names[:])
+		if !names_ok {
+			w.err = .Out_Of_Memory
+			return 0, 0, false
+		}
+		first, span = claimed, copied
+	}
+
+	for l, i in s.listed {
 		name := string(s.names[l.at:][:l.len])
 		e := Entry {
 			name      = name,
@@ -114,7 +137,9 @@ read_dir :: proc(d: Dir, w: ^Worker) -> (nodes, bytes: u64, ok: bool) {
 				}
 			}
 		}
-		index, descend, charged, recorded := record(w, d.index, e)
+		index := first + u32(i)
+		stored := scan.name_at(span, l.at, l.len)
+		descend, charged, recorded := record_at(w, index, d.index, e, stored)
 		if !recorded {
 			return nodes, bytes, false
 		}

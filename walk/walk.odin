@@ -348,10 +348,32 @@ record :: proc(
 		w.err = .Out_Of_Memory
 		return 0, false, 0, false
 	}
-	index = slot
+	descend, charged, ok = record_at(w, slot, parent, e, scan.intern(&w.writer, e.name))
+	return slot, descend, charged, ok
+}
+
+/*
+Fill one slot this worker already claimed, with a name it already stored.
+
+The Linux reader claims a directory's slots and copies its names once, then fills
+each entry here. Readers that learn an entry only as its buffer arrives still go
+through `record`, one claim and one copy at a time.
+*/
+@(private)
+record_at :: proc(
+	w: ^Worker,
+	index: u32,
+	parent: u32,
+	e: Entry,
+	name: scan.Name,
+) -> (
+	descend: bool,
+	charged: u64,
+	ok: bool,
+) {
 	n := scan.node(w.writer.tree, index)
 	n.parent = parent
-	n.name = scan.intern(&w.writer, e.name)
+	n.name = name
 
 	// A walker reaches a child through its parent, so the link is never in doubt.
 	flags := scan.Node_Flags{.Used, .Settled}
@@ -372,7 +394,7 @@ record :: proc(
 			first, map_err := mark_charged(w.linked, e.id)
 			if map_err != nil {
 				w.err = .Out_Of_Memory
-				return 0, false, 0, false
+				return false, 0, false
 			}
 			// A name the tree being updated already had keeps the choice made
 			// there, since the name charged in its place may be in a directory
@@ -388,5 +410,5 @@ record :: proc(
 	}
 	// Last, so a builder watching this tree never sees a node before its size.
 	scan.node_publish(n, flags)
-	return index, descend, charged, true
+	return descend, charged, true
 }

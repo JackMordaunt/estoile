@@ -30,6 +30,10 @@ Rollup :: struct {
 	// caller that browses the tree rather than ranking all of it. A node joins its
 	// parent's list when it is charged, so a list holds exactly what the totals do.
 	linked:     bool,
+	// `next` still lives on the tree's fold, so a pass that only copies totals
+	// does not also copy every node's sibling. Cleared once this rollup takes
+	// its own copy, or once the totals are thrown out.
+	borrowed:   bool,
 	first:      [dynamic]u32, // by directory number: its most recently charged child, or NONE
 	next:       [dynamic]u32, // by node: the sibling charged before it, or NONE
 	// Nodes taken out of the tree after it was read, a bit each: whatever is under
@@ -84,12 +88,14 @@ next_child :: proc(it: ^Children) -> (node: u32, ok: bool) {
 		return NONE, false
 	}
 	node = it.cur
-	it.cur = it.r.next[node]
+	it.cur = sibling(it.r, node)
 	return node, true
 }
 
 // Forget every total, for a reader that has restated what it already said.
 rollup_restate :: proc(r: ^Rollup) {
+	// The fold keeps its own lists. This pass rebuilds the rollup's.
+	r.borrowed = false
 	for i in 0 ..< len(r.dir_totals) {
 		r.dir_totals[i] = 0
 	}
@@ -105,9 +111,21 @@ rollup_restate :: proc(r: ^Rollup) {
 	r.pending = 0
 }
 
-// Charge every settled node not charged already.
+// Charge every settled node not charged already. A walk that already folded
+// its totals is copied instead, and that is the whole pass.
 rollup_advance :: proc(r: ^Rollup, t: ^scan.Tree) {
 	assert(r.tree == nil || r.tree == t, "one rollup rolling up two trees")
+	if rollup_install(r, t) {
+		return
+	}
+	// Nothing new has arrived, and the fold's lists are already installed.
+	if r.borrowed && int(scan.slots(t)) == int(r.seen) {
+		r.pending = 0
+		return
+	}
+	if r.borrowed {
+		rollup_own(r)
+	}
 	r.tree = t
 	count := int(scan.slots(t))
 	if words := (count + 63) / 64; words > len(r.charged) {
@@ -188,10 +206,103 @@ charge :: proc(r: ^Rollup, t: ^scan.Tree, i: u32) -> bool {
 	}
 	if r.linked && depth > 0 {
 		p := number(r, n.parent)
-		r.next[i] = r.first[p]
+		set_sibling(r, i, r.first[p])
 		r.first[p] = i
 	}
 	return true
+}
+
+// Copy totals a walk folded while it read. False when nothing was folded, or
+// when this rollup has already charged a node: a watcher folds on its own
+// thread, and handing it the walk's totals as well would count every byte twice.
+@(private)
+rollup_install :: proc(r: ^Rollup, t: ^scan.Tree) -> bool {
+	g := t.folded
+	if g == nil || !g.complete || r.seen != 0 {
+		return false
+	}
+	count := int(scan.slots(t))
+	words := (count + 63) / 64
+	if count > len(g.total) || count > len(g.head) || count > len(g.next) || words > len(g.charged) {
+		return false
+	}
+	r.tree = t
+	r.seen = u32(count)
+	r.pending = 0
+	if words > len(r.charged) {
+		resize(&r.charged, words)
+	}
+	copy(r.charged[:words], g.charged[:words])
+	// One slot a directory, so numbering does not grow the arrays per entry.
+	// A repeated id keeps the later total, which is what charging it twice did.
+	nd := len(g.dirs)
+	resize(&r.dir_totals, nd)
+	if r.linked {
+		resize(&r.first, nd)
+	}
+	at := 0
+	for id in g.dirs {
+		if int(id) >= count {
+			continue
+		}
+		n := scan.node(t, id)
+		if n.dir != 0 {
+			d := n.dir - 1
+			r.dir_totals[d] = g.total[id]
+			if r.linked {
+				r.first[d] = g.head[id]
+			}
+			continue
+		}
+		n.dir = u32(at) + 1
+		r.dir_totals[at] = g.total[id]
+		if r.linked {
+			r.first[at] = g.head[id]
+		}
+		at += 1
+	}
+	resize(&r.dir_totals, at)
+	if r.linked {
+		resize(&r.first, at)
+	}
+	r.borrowed = true
+	return true
+}
+
+// Copy the fold's sibling lists into this rollup. A tree that grew past the
+// fold has to charge the new nodes itself, and it needs a list it can edit
+// without changing the fold a later pass might still read.
+@(private)
+rollup_own :: proc(r: ^Rollup) {
+	if !r.borrowed {
+		return
+	}
+	if r.linked {
+		g := r.tree.folded
+		count := len(g.next)
+		if count > len(r.next) {
+			resize(&r.next, count)
+		}
+		copy(r.next[:count], g.next[:count])
+	}
+	r.borrowed = false
+}
+
+@(private)
+sibling :: proc(r: ^Rollup, i: u32) -> u32 {
+	if r.borrowed {
+		return r.tree.folded.next[i]
+	}
+	return r.next[i]
+}
+
+@(private)
+set_sibling :: proc(r: ^Rollup, i, next: u32) {
+	if r.borrowed {
+		r.tree.folded.next[i] = next
+		return
+	}
+	r.next[i] = next
 }
 
 // The number of the directory at node `i`, given one now if it has none.
@@ -277,12 +388,12 @@ is_forgotten :: proc(r: ^Rollup, i: u32) -> bool {
 @(private)
 unlink :: proc(r: ^Rollup, dir, i: u32) {
 	if r.first[dir] == i {
-		r.first[dir] = r.next[i]
+		r.first[dir] = sibling(r, i)
 		return
 	}
-	for c := r.first[dir]; c != NONE; c = r.next[c] {
-		if r.next[c] == i {
-			r.next[c] = r.next[i]
+	for c := r.first[dir]; c != NONE; c = sibling(r, c) {
+		if sibling(r, c) == i {
+			set_sibling(r, c, sibling(r, i))
 			return
 		}
 	}

@@ -144,7 +144,10 @@ apply :: proc(f: ^Fill, place: string, base: ^scan.Tree, set: changes.Change_Set
 		// Not in the base: new, so the directory above it finds it and walks it.
 		u.marks[n] = .Deep if exact else max(u.marks[n], walk.Mark.List)
 	}
-	err := walk.update(place, &u, f.tree, f.wcfg)
+	cfg := f.wcfg
+	// The watcher charges on its own thread. Folding here too would count twice.
+	cfg.fold = !f.watched
+	err := walk.update(place, &u, f.tree, cfg)
 	f.reread = u.read
 	return err
 }

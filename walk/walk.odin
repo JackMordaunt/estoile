@@ -26,6 +26,10 @@ Config :: struct {
 	follow:  bool, // descend through symlinks and junctions; loops are not detected
 	media:   scan.Media, // what holds the tree, which `width` fits the choice to
 	pace:    Pace,
+	// Add each directory's total as it finishes, so a rollup afterwards copies
+	// directories instead of charging every node. Off when a watcher is already
+	// folding the same tree on its own thread.
+	fold:    bool,
 }
 
 /*
@@ -147,6 +151,16 @@ run :: proc(seed: Dir, t: ^scan.Tree, cfg: Config, u: ^Update) -> Error {
 	// for fewer caps how wide this can run.
 	workers := min(width(cfg), scan.writers(t))
 
+	fold: ^Fold
+	if cfg.fold {
+		made, started := fold_start(allocator, seed.index)
+		if !started {
+			return .Out_Of_Memory
+		}
+		fold = made
+	}
+	defer fold_release(fold)
+
 	linked := Linked_Files {
 		seen = make(map[File_Id]struct{}, allocator),
 	}
@@ -163,18 +177,33 @@ run :: proc(seed: Dir, t: ^scan.Tree, cfg: Config, u: ^Update) -> Error {
 			scratch   = scratch_make(allocator),
 			update    = u,
 			siblings  = make(map[string]u32, allocator),
+			fold      = fold,
+			dirs      = make([dynamic]u32, allocator),
 			allocator = allocator,
 		}
 	}
 	defer for &s in states {
 		delete(s.found)
 		delete(s.siblings)
+		delete(s.dirs)
 		scratch_destroy(&s.scratch)
 	}
 
 	first := seed
 	first.path = strings.clone(seed.path, allocator)
 	flow.manage([]Dir{first}, states, walk_dir, hand_over, drop)
+
+	if fold != nil {
+		for &s in states {
+			if s.err != nil {
+				sync.atomic_store(&fold.bad, true)
+			}
+		}
+		if scan.cancelled(t) {
+			sync.atomic_store(&fold.bad, true)
+		}
+		fold_publish(fold, t, states)
+	}
 
 	for &s in states {
 		if s.err != nil {
@@ -240,6 +269,11 @@ Worker :: struct {
 	scratch:   Scratch, // reused by the platform's reader between directories
 	// An update's, shared by every worker and read only. nil for a walk.
 	update:    ^Update,
+	// Shared by every worker when the walk is folding totals. Nil otherwise.
+	fold:      ^Fold,
+	// Containers this worker recorded: child directories as it linked them, and
+	// a root or a followed link when it finished the directory.
+	dirs:      [dynamic]u32,
 	// While a List job reads its directory: the entries the tree updated had in it,
 	// by name, so a name it still has keeps the decision made about it there.
 	siblings:  map[string]u32,
@@ -265,6 +299,17 @@ walk_dir :: proc(d: Dir, w: ^Worker) -> bool {
 		nodes, bytes, ok = copy_dir(d, w)
 	case .List:
 		nodes, bytes, ok = list_dir(d, w)
+	}
+	// Settle even when the directory would not open: it is in the tree with
+	// whatever entries were recorded, and its parent is waiting on it. A worker
+	// that has failed leaves the fold unfinished instead, and the rollup charges
+	// the tree itself.
+	if w.fold != nil {
+		if w.err != nil || scan.cancelled(w.writer.tree) {
+			sync.atomic_store(&w.fold.bad, true)
+		} else if !fold_settle(w, d.index, bytes) {
+			return false
+		}
 	}
 	scan.progress(w.writer.tree, nodes, bytes)
 	return ok
@@ -410,5 +455,8 @@ record_at :: proc(
 	}
 	// Last, so a builder watching this tree never sees a node before its size.
 	scan.node_publish(n, flags)
+	if w.fold != nil && !fold_link(w, parent, index, flags) {
+		return false, 0, false
+	}
 	return descend, charged, true
 }

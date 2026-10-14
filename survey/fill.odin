@@ -185,7 +185,10 @@ fill_mft_read :: proc(f: ^Fill) {
 fill_walk :: proc(f: ^Fill) {
 	root := scan.location(f.target, context.allocator)
 	defer delete(root)
-	f.walk_err = walk.read(root, f.tree, f.wcfg)
+	cfg := f.wcfg
+	// The watcher charges on its own thread. Folding here too would count twice.
+	cfg.fold = !f.watched
+	f.walk_err = walk.read(root, f.tree, cfg)
 }
 
 // Make the disk up, at the pace of a walk, for the day scan.SYNTHETIC_ENV names.

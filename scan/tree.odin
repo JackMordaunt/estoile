@@ -99,6 +99,9 @@ Tree :: struct {
 	cancel:     b32,
 	restated:   b32,
 	allocator:  mem.Allocator,
+	// A walk that folded totals as directories finished. Nil for every other reader,
+	// and for a walk that was told not to. Freed with the tree.
+	folded:     ^Folded,
 }
 
 // One writer per worker. Holding two in the same thread, or one in two, is the
@@ -142,6 +145,7 @@ tree_init :: proc(t: ^Tree, writers := 1, allocator := context.allocator) -> Err
 }
 
 tree_destroy :: proc(t: ^Tree) {
+	folded_destroy(t.folded, t.allocator)
 	for i in 0 ..< t.committed >> BLOCK_SHIFT {
 		free(t.blocks[i], t.allocator)
 	}

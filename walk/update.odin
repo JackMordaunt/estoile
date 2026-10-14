@@ -182,6 +182,9 @@ copy_dir :: proc(d: Dir, w: ^Worker) -> (nodes, bytes: u64, ok: bool) {
 		n.name = scan.intern(&w.writer, name)
 		n.disk = disk
 		scan.node_publish(n, flags | {.Used, .Settled})
+		if w.fold != nil && !fold_link(w, d.index, slot, flags) {
+			return nodes, bytes, false
+		}
 		nodes += 1
 		if file && .Extra_Name not_in flags {
 			bytes += disk

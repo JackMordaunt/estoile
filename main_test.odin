@@ -46,6 +46,15 @@ the_usage_names_every_flag :: proc(t: ^testing.T) {
 	}
 }
 
+// The usage's first line names the short name install puts beside leita, the
+// one the build was given.
+@(test)
+the_usage_names_the_short_form :: proc(t: ^testing.T) {
+	first, _, _ := strings.partition(USAGE, "\n")
+	short := fmt.tprintf("(or %s)", version.SHORT)
+	testing.expectf(t, strings.contains(first, short), "%q does not name %s", first, short)
+}
+
 // Styled, the usage carries weight; plain, it is USAGE byte for byte.
 @(test)
 the_usage_is_styled_only_for_a_person :: proc(t: ^testing.T) {

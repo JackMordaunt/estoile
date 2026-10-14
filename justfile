@@ -36,13 +36,14 @@ jm    := env("JM", root / "jm")
 # described, or a bare commit as git describe names one, g and its hash, so Odin
 # never reads it as a number; dev without git. LEITA_VERSION=<v> sets it instead.
 version := env("LEITA_VERSION", `git describe --tags --dirty 2>/dev/null || { h=$(git describe --always --dirty 2>/dev/null) && echo "g$h"; } || echo dev`)
-flags := "-vet -strict-style -collection:jm=" + jm + " -define:LEITA_VERSION=" + version
+flags := "-vet -strict-style -collection:jm=" + jm + " -define:LEITA_VERSION=" + version + " -define:LEITA_SHORT=" + short
 san   := env("SAN", "-sanitize:address")
 exe   := if os() == "windows" { ".exe" } else { "" }
 bin   := "leita"
 # The short name install puts beside leita, the same command in two letters, as
 # fd and rg are. Debian and Homebrew carry an old editor called le; it is rare
-# enough that leita takes the name, and changing it is this one line.
+# enough that leita takes the name. The build hands it to version.SHORT, so a
+# change here fails just test until -h names the new one.
 short := "le"
 # The window is Leita and builds into app/ beside the CLI: macOS and Windows
 # fold case by default, so leita and Leita in one directory are one file.

@@ -43,7 +43,7 @@ USAGE is what -h prints: plain, byte for byte, in a pipe or to an agent; for a
 person at a terminal, with the weight term.usage gives its shape. It names
 every flag Options has, and a test holds it to that.
 */
-USAGE :: `leita — find out what is using the disk.
+USAGE :: `leita (or le) — find out what is using the disk.
 
 Scan
   leita [TARGET]            the largest files and directories of a drive, device,

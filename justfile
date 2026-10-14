@@ -7,6 +7,7 @@
 #   just run [release] [dir]  build the window, then open it on a directory, the
 #                             home directory by default
 #   just test                 run every imported package's tests under ASan -> build/test/
+#   just install              put the release command line on PATH as leita and le
 #   just check                type-check both modes without producing a binary
 #   just clean                remove build/
 #   just deps                 fetch the jm submodule and the native libraries the window links
@@ -39,6 +40,10 @@ flags := "-vet -strict-style -collection:jm=" + jm + " -define:LEITA_VERSION=" +
 san   := env("SAN", "-sanitize:address")
 exe   := if os() == "windows" { ".exe" } else { "" }
 bin   := "leita"
+# The short name install puts beside leita, the same command in two letters, as
+# fd and rg are. Debian and Homebrew carry an old editor called le; it is rare
+# enough that leita takes the name, and changing it is this one line.
+short := "le"
 # The window is Leita and builds into app/ beside the CLI: macOS and Windows
 # fold case by default, so leita and Leita in one directory are one file.
 gui   := "Leita"
@@ -187,9 +192,11 @@ gui-test: deps
 clean:
     rm -rf build
 
-# Copy the release binary to a directory on PATH. An installed copy is replaced in
-# place; otherwise ~/.local/bin, ~/bin, GOBIN, GOPATH/bin, /usr/local/bin, else the
-# first writable PATH entry.
+# Copy the release binary to a directory on PATH, with the short name beside it:
+# a symlink to leita on Unix, a second copy on Windows, where a symlink needs
+# administrator rights or developer mode. An installed copy is replaced in place;
+# otherwise ~/.local/bin, ~/bin, GOBIN, GOPATH/bin, /usr/local/bin, else the first
+# writable PATH entry.
 install: (cli "release")
     #!/usr/bin/env bash
     set -euo pipefail
@@ -207,5 +214,10 @@ install: (cli "release")
     fi
     [[ -n $dest ]] || { echo "install: no writable directory on PATH" >&2; exit 1; }
     install -m 755 build/release/{{bin}}{{exe}} "$dest/{{bin}}"
-    echo "installed $dest/{{bin}}"
+    if [[ "{{os()}}" == windows ]]; then
+        install -m 755 build/release/{{bin}}{{exe}} "$dest/{{short}}"
+    else
+        ln -sf {{bin}} "$dest/{{short}}"
+    fi
+    echo "installed $dest/{{bin}} and $dest/{{short}}"
 

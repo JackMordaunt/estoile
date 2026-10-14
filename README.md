@@ -136,7 +136,7 @@ Open **Leita** and pick a drive or folder. To scan a whole drive, run it as
 an administrator.
 
 Prefer the terminal? The `leita` command does the same, and writes reports
-too, under a licence or during the trial:
+too, under a licence or during the trial. `le` is the same command, shorter:
 
 ```sh
 leita D: --report usage.pdf
@@ -191,6 +191,7 @@ leita is written in [Odin](https://odin-lang.org) and builds with
 
 ```sh
 just build release   # build/release/leita and build/release/app/Leita
+just install         # the release command line on PATH, as leita and as le
 just run             # a debug build of the window, opened on the home directory
 just test
 ```

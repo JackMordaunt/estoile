@@ -114,6 +114,55 @@ case_is_smart_and_unicode_folds :: proc(t: ^testing.T) {
 }
 
 @(test)
+latin_accents_fold_as_fzf_folds_them :: proc(t: ^testing.T) {
+	// The name's accents fold to the term's letters, and spans keep the bytes
+	// of the accented letters: é is two bytes and one character.
+	testing.expect_value(t, highlight("resume", "Résumé.pdf"), "[Résumé].pdf")
+	testing.expect_value(t, highlight("resume", "resume.pdf"), "[resume].pdf")
+	testing.expect_value(t, highlight("sme", "Résumé.pdf"), "Ré[s]u[mé].pdf")
+	testing.expect_value(t, highlight("pdf", "Résumé.pdf"), "Résumé.[pdf]")
+	// The term's accents fold too, so either spelling finds either.
+	testing.expect_value(t, highlight("résumé", "Resume.pdf"), "[Resume].pdf")
+	testing.expect_value(t, highlight("résumé", "Résumé.pdf"), "[Résumé].pdf")
+	testing.expect_value(t, highlight("nono", "Núñez/Ñoño.txt"), "Núñez/[Ñoño].txt")
+	testing.expect_value(t, highlight("oresund", "Øresund"), "[Øresund]")
+	// ß is one character, s, as fzf has it: a fold keeps every position.
+	testing.expect_value(t, highlight("strase", "Straße"), "[Straße]")
+	// Case survives the fold: a capital in the term still asks for one.
+	testing.expect_value(t, highlight("Ecole", "École"), "[École]")
+	testing.expect_value(t, highlight("Ecole", "école"), "no match")
+	// The cheap test agrees with the score, through the ASCII byte path.
+	p := pattern_make("resume")
+	testing.expect(t, p.ascii, "an accented term folds to ASCII")
+	testing.expect(t, matches(&p, "Résumé.pdf"))
+	testing.expect(t, matches(&p, "CV/RÉSUMÉ"))
+	testing.expect(t, !matches(&p, "Résumé"[:4]))
+	// A folded name scores as its ASCII spelling: an accented letter is the
+	// same class as its base.
+	a, oka := score_of("resume", "Résumé.pdf")
+	b, okb := score_of("resume", "resume.pdf")
+	testing.expect(t, oka && okb)
+	testing.expect_value(t, a, b)
+	// r at the start, 16 + 9 * 2; the five after it in its run, 16 + 9 each.
+	testing.expect_value(t, a, 159)
+}
+
+// The byte path over ASCII scores as it did before accents folded: these are
+// worked by hand from the constants.
+@(test)
+ascii_scores_are_unchanged :: proc(t: ^testing.T) {
+	// r at the start, 16 + 9 * 2; e and p in its run, 16 + 9 each.
+	v, ok := score_of("rep", "report.pdf")
+	testing.expect(t, ok)
+	testing.expect_value(t, v, 84)
+	// f at the start, 16 + 9 * 2; a gap of three, -3 - 1 - 1; b after a space,
+	// 16 + 8.
+	v, ok = score_of("fb", "foo bar")
+	testing.expect(t, ok)
+	testing.expect_value(t, v, 53)
+}
+
+@(test)
 an_empty_term_matches_everything_and_marks_nothing :: proc(t: ^testing.T) {
 	p := pattern_make("")
 	testing.expect_value(t, p.count, 0)

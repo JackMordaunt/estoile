@@ -75,13 +75,14 @@ Class :: enum u8 {
 }
 
 // Pattern is a term made ready to match: its characters folded as the texts it
-// is matched against will be.
+// is matched against will be. There is no literal mode, so accents always fold.
 Pattern :: struct {
 	runes: [MAX_TERM]rune,
 	count: int,
 	// Case matters only when the term has a capital in it, as fzf's smart case.
 	exact: bool,
-	// Every character is ASCII, so a text can be matched a byte at a time.
+	// Every character is ASCII once folded, so a text can be matched a byte at a
+	// time until it holds a character that is not.
 	ascii: bool,
 }
 
@@ -111,19 +112,29 @@ pattern_make :: proc(term: string) -> (p: Pattern) {
 	return
 }
 
-// fold is r as matching compares it: lower case unless exact, and either path
-// separator as a slash, so a term typed with / finds a Windows path.
+/*
+fold is r as matching compares it: lower case unless exact, either path
+separator as a slash, so a term typed with / finds a Windows path, and a Latin
+letter with a diacritic as its base letter (LATIN), as fzf folds it, so resume
+finds Résumé.pdf and résumé finds Resume.pdf. Case is kept through the fold: É
+is E, which exact tells from e.
+*/
 fold :: #force_inline proc(r: rune, exact: bool) -> rune {
+	r := r
+	if r >= utf8.RUNE_SELF {
+		base := latin_base(r)
+		if base == 0 {
+			return r if exact else unicode.to_lower(r)
+		}
+		r = rune(base)
+	}
 	if r == '\\' {
 		return '/'
 	}
-	if r < utf8.RUNE_SELF {
-		if !exact && r >= 'A' && r <= 'Z' {
-			return r + ('a' - 'A')
-		}
-		return r
+	if !exact && r >= 'A' && r <= 'Z' {
+		return r + ('a' - 'A')
 	}
-	return r if exact else unicode.to_lower(r)
+	return r
 }
 
 class_of :: proc(r: rune) -> Class {
@@ -197,13 +208,21 @@ advance :: proc(p: ^Pattern, k: int, text: string) -> int {
 		return k
 	}
 	if p.ascii {
+		// A byte at a time, each folded by a table, while the text is ASCII. A
+		// byte past ASCII starts a character that is decoded and folded, since
+		// a Latin letter with a diacritic may be one the term holds without it.
+		fold_byte := &FOLD_BYTE[int(p.exact)]
 		want := u8(p.runes[k])
-		for i in 0 ..< len(text) {
-			c := text[i]
-			if c == '\\' {
-				c = '/'
-			} else if !p.exact && c >= 'A' && c <= 'Z' {
-				c += 'a' - 'A'
+		for i := 0; i < len(text); i += 1 {
+			c := fold_byte[text[i]]
+			if c == NOT_ASCII {
+				r, size := utf8.decode_rune_in_string(text[i:])
+				i += size - 1
+				f := fold(r, p.exact)
+				if f >= utf8.RUNE_SELF {
+					continue
+				}
+				c = u8(f)
 			}
 			if c == want {
 				k += 1
@@ -224,6 +243,35 @@ advance :: proc(p: ^Pattern, k: int, text: string) -> int {
 		}
 	}
 	return k
+}
+
+// NOT_ASCII is what FOLD_BYTE gives a byte that starts or continues a character
+// past ASCII: no term's character, once folded to ASCII, is it.
+@(private)
+NOT_ASCII :: u8(utf8.RUNE_SELF)
+
+// FOLD_BYTE is fold for every byte, as a table: the first as a term without a
+// capital folds, the second as one with. A byte past ASCII is NOT_ASCII.
+@(private)
+FOLD_BYTE: [2][256]u8
+
+@(private, init)
+fold_byte_init :: proc "contextless" () {
+	// As fold folds ASCII, which needs no context.
+	for b in 0 ..< utf8.RUNE_SELF {
+		c := u8(b)
+		if c == '\\' {
+			c = '/'
+		}
+		FOLD_BYTE[1][b] = c
+		if c >= 'A' && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		FOLD_BYTE[0][b] = c
+	}
+	for b in utf8.RUNE_SELF ..< 256 {
+		FOLD_BYTE[0][b], FOLD_BYTE[1][b] = NOT_ASCII, NOT_ASCII
+	}
 }
 
 // matches is whether text holds the whole of p, in order.

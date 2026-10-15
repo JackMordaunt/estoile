@@ -120,18 +120,118 @@ measure_fd :: proc(m: ^Measure, fd: linux.Fd) -> Error {
 
 /*
 Every file extent item of one inode, from the subvolume fd lies in, charged to f
-and u. The kernel fills the buffer with as many items as fit; the next call starts
-past the last one's offset, until a call finds none.
+and u.
 */
 @(private)
 search :: proc(fd: linux.Fd, ino: u64, args: ^Search_Args, u: ^Usage, f: ^File) -> Error {
-	next: u64
+	it := Items {
+		fd   = fd,
+		ino  = ino,
+		args = args,
+	}
 	for {
+		item, ok, err := next_item(&it)
+		if !ok {
+			return err
+		}
+		if charge(item, u, f) != .None {
+			return .Malformed
+		}
+	}
+}
+
+/*
+Charge one regular file to a pool's Extents: every file extent item of inode `ino`
+in the subvolume `fd` lies in. fd need not be the file's own: any file or directory
+of the same subvolume searches the same tree, so a walk can pass the directory it is
+listing and open nothing per file. args is the caller's, reused from file to file.
+
+Not_Permitted without CAP_SYS_ADMIN and Not_Btrfs off btrfs, before anything is
+claimed. A search that fails part way leaves what it claimed paid for by this file,
+though the caller then charges it something else.
+*/
+charge_file :: proc(
+	fd: linux.Fd,
+	ino: u64,
+	args: ^Search_Args,
+	e: ^Extents,
+	owner: u64,
+) -> (
+	c: Charge,
+	err: Error,
+) {
+	it := Items {
+		fd   = fd,
+		ino  = ino,
+		args = args,
+	}
+	for {
+		item, ok, next_err := next_item(&it)
+		if !ok {
+			return c, next_err
+		}
+		#partial switch charge_shared(item, e, owner, &c) {
+		case .None:
+		case .Out_Of_Memory:
+			return c, .Out_Of_Memory
+		case:
+			return c, .Malformed
+		}
+	}
+}
+
+/*
+The file extent items of one inode, a buffer at a time. The kernel fills the buffer
+with as many items as fit; the next call starts past the last one's offset, until a
+call finds none.
+*/
+@(private)
+Items :: struct {
+	fd:   linux.Fd,
+	ino:  u64,
+	args: ^Search_Args,
+	next: u64, // the offset the next call starts at
+	rest: []u8, // what the last call returned that is not yet handed out
+	left: u32, // items in rest
+	done: bool, // the last call reached the end
+}
+
+// The next file extent item, or ok clear once there are none, err saying whether
+// that is the end or a failure.
+@(private)
+next_item :: proc(it: ^Items) -> (item: []u8, ok: bool, err: Error) {
+	for {
+		for it.left > 0 {
+			it.left -= 1
+			if len(it.rest) < size_of(Search_Header) {
+				return nil, false, .Malformed
+			}
+			h := (^Search_Header)(raw_data(it.rest))^
+			it.rest = it.rest[size_of(Search_Header):]
+			if int(h.len) > len(it.rest) {
+				return nil, false, .Malformed
+			}
+			body := it.rest[:h.len]
+			it.rest = it.rest[h.len:]
+			if it.left == 0 {
+				if h.offset == max(u64) {
+					it.done = true
+				}
+				it.next = h.offset + 1
+			}
+			if h.type == BTRFS_EXTENT_DATA_KEY {
+				return body, true, .None
+			}
+		}
+		if it.done {
+			return nil, false, .None
+		}
+		args := it.args
 		args.key = {
 			tree_id      = 0,
-			min_objectid = ino,
-			max_objectid = ino,
-			min_offset   = next,
+			min_objectid = it.ino,
+			max_objectid = it.ino,
+			min_offset   = it.next,
 			max_offset   = max(u64),
 			min_transid  = 0,
 			max_transid  = max(u64),
@@ -140,43 +240,21 @@ search :: proc(fd: linux.Fd, ino: u64, args: ^Search_Args, u: ^Usage, f: ^File) 
 			nr_items     = max(u32),
 		}
 		args.buf_size = size_of(args.buf)
-		got := int(linux.ioctl(fd, BTRFS_IOC_TREE_SEARCH_V2, uintptr(args)))
+		got := int(linux.ioctl(it.fd, BTRFS_IOC_TREE_SEARCH_V2, uintptr(args)))
 		if got < 0 {
 			#partial switch linux.Errno(-got) {
 			case .EPERM, .EACCES:
-				return .Not_Permitted
+				return nil, false, .Not_Permitted
 			case .ENOTTY, .EINVAL, .EOPNOTSUPP:
-				return .Not_Btrfs
+				return nil, false, .Not_Btrfs
 			}
-			return .Io
+			return nil, false, .Io
 		}
-		count := args.key.nr_items
-		if count == 0 {
-			return .None
+		if args.key.nr_items == 0 {
+			return nil, false, .None
 		}
-		items := args.buf[:]
-		last: u64
-		for _ in 0 ..< count {
-			if len(items) < size_of(Search_Header) {
-				return .Malformed
-			}
-			h := (^Search_Header)(raw_data(items))^
-			items = items[size_of(Search_Header):]
-			if int(h.len) > len(items) {
-				return .Malformed
-			}
-			if h.type == BTRFS_EXTENT_DATA_KEY {
-				if charge(items[:h.len], u, f) != .None {
-					return .Malformed
-				}
-			}
-			items = items[h.len:]
-			last = h.offset
-		}
-		if last == max(u64) {
-			return .None
-		}
-		next = last + 1
+		it.left = args.key.nr_items
+		it.rest = args.buf[:]
 	}
 }
 
@@ -209,7 +287,6 @@ Search_Key :: struct {
 // struct btrfs_ioctl_search_args_v2 with a 64 KiB buffer, room for 771 regular
 // extents a call: each is a 32 byte Search_Header and a 53 byte
 // struct btrfs_file_extent_item (ITEM_SIZE, from linux/btrfs_tree.h). The ioctl's size names only the fixed part.
-@(private)
 Search_Args :: struct {
 	key:      Search_Key,
 	buf_size: u64,

@@ -97,59 +97,85 @@ Item_Error :: enum {
 	Out_Of_Memory,
 }
 
+// One file extent item, read: its header and, unless it is inline, where it lies.
+@(private)
+Item :: struct {
+	compression: Compression,
+	inline:      bool,
+	ram:         u64,
+	// Inline: the bytes the item holds after its header. Otherwise the extent's.
+	disk:        u64,
+	at:          u64, // first byte on disk; 0 for a hole or an inline extent
+	refers:      u64,
+}
+
+@(private)
+parse :: proc(item: []u8) -> (it: Item, err: Item_Error) {
+	if len(item) < ITEM_INLINE_HEADER {
+		return {}, .Short
+	}
+	it.ram, _ = endian.get_u64(item[8:16], .Little)
+	kind := item[20]
+	stored := item[16]
+	if stored > u8(Compression.Zstd) {
+		return {}, .Compression
+	}
+	it.compression = Compression(stored)
+	if kind == EXTENT_INLINE {
+		// The data lies in the item itself, after the header.
+		it.inline = true
+		it.disk = u64(len(item) - ITEM_INLINE_HEADER)
+		return it, .None
+	}
+	if len(item) < ITEM_SIZE {
+		return {}, .Short
+	}
+	if kind == EXTENT_PREALLOC {
+		it.compression = .Prealloc
+	}
+	it.at, _ = endian.get_u64(item[21:29], .Little)
+	it.disk, _ = endian.get_u64(item[29:37], .Little)
+	it.refers, _ = endian.get_u64(item[45:53], .Little)
+	return it, .None
+}
+
 /*
 Charge one file extent item, as the tree search hands it back, to the file and to
 the run. A hole, an extent whose disk_bytenr is 0, is charged nothing.
 */
 charge :: proc(item: []u8, u: ^Usage, f: ^File) -> Item_Error {
-	if len(item) < ITEM_INLINE_HEADER {
-		return .Short
+	it, err := parse(item)
+	if err != .None {
+		return err
 	}
-	ram, _ := endian.get_u64(item[8:16], .Little)
-	kind := item[20]
-	stored := item[16]
-	if stored > u8(Compression.Zstd) {
-		return .Compression
-	}
-	c := Compression(stored)
-	if kind == EXTENT_INLINE {
-		// The data lies in the item itself, after the header. It belongs to this
-		// file alone.
-		disk := u64(len(item) - ITEM_INLINE_HEADER)
-		u.by[c].disk += disk
-		u.by[c].uncompressed += ram
-		u.by[c].referenced += ram
+	c := it.compression
+	if it.inline {
+		// It belongs to this file alone.
+		u.by[c].disk += it.disk
+		u.by[c].uncompressed += it.ram
+		u.by[c].referenced += it.ram
 		u.inline += 1
-		f.disk += disk
-		f.uncompressed += ram
-		f.referenced += ram
-		f.charged += disk
+		f.disk += it.disk
+		f.uncompressed += it.ram
+		f.referenced += it.ram
+		f.charged += it.disk
 		return .None
 	}
-	if len(item) < ITEM_SIZE {
-		return .Short
-	}
-	if kind == EXTENT_PREALLOC {
-		c = .Prealloc
-	}
-	at, _ := endian.get_u64(item[21:29], .Little)
-	disk, _ := endian.get_u64(item[29:37], .Little)
-	refers, _ := endian.get_u64(item[45:53], .Little)
-	if at == 0 {
+	if it.at == 0 {
 		return .None
 	}
 	u.refs += 1
-	u.by[c].referenced += refers
-	f.referenced += refers
-	new_here := at not_in f.own
+	u.by[c].referenced += it.refers
+	f.referenced += it.refers
+	new_here := it.at not_in f.own
 	if new_here {
-		if _, _, _, err := map_entry(&f.own, at); err != nil {
+		if _, _, _, map_err := map_entry(&f.own, it.at); map_err != nil {
 			return .Out_Of_Memory
 		}
-		f.disk += disk
-		f.uncompressed += ram
+		f.disk += it.disk
+		f.uncompressed += it.ram
 	}
-	if at in u.seen {
+	if it.at in u.seen {
 		// Charged already: to an earlier file, which is sharing, or to this one
 		// through an earlier range, which is not.
 		if new_here {
@@ -157,12 +183,12 @@ charge :: proc(item: []u8, u: ^Usage, f: ^File) -> Item_Error {
 		}
 		return .None
 	}
-	if _, _, _, err := map_entry(&u.seen, at); err != nil {
+	if _, _, _, map_err := map_entry(&u.seen, it.at); map_err != nil {
 		return .Out_Of_Memory
 	}
-	u.by[c].disk += disk
-	u.by[c].uncompressed += ram
+	u.by[c].disk += it.disk
+	u.by[c].uncompressed += it.ram
 	u.extents += 1
-	f.charged += disk
+	f.charged += it.disk
 	return .None
 }

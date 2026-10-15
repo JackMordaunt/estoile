@@ -5,6 +5,7 @@ import "core:mem"
 import "core:slice"
 import "core:sys/linux"
 
+import "../btrfs"
 import "../scan"
 
 /*
@@ -43,13 +44,19 @@ read_dir :: proc(d: Dir, w: ^Worker) -> (nodes, bytes: u64, ok: bool) {
 	// The device and filesystem this directory lies on: handed down by the parent
 	// that asked about it, or, for the root and a followed link, asked of the open
 	// directory here.
-	device, filesystem := d.device, d.filesystem
+	device, filesystem, on_btrfs := d.device, d.filesystem, d.btrfs
 	if device == 0 {
 		st: linux.Statx
 		if linux.statx(fd, "", {.EMPTY_PATH}, {}, &st) == .NONE {
 			device = statx_device(st)
 		}
-		filesystem = filesystem_of(fd)
+		filesystem, on_btrfs = filesystem_of(fd)
+	}
+	// On btrfs, each regular file's extents are searched for through this
+	// directory's fd (see btrfs_linux.odin); nil when the search is off.
+	pool: ^Btrfs_Pool
+	if on_btrfs || w.btrfs.stand_in {
+		pool = btrfs_pool_for(w, filesystem)
 	}
 
 	// Every name first, then every statx in inode order (see Scratch).
@@ -130,7 +137,7 @@ read_dir :: proc(d: Dir, w: ^Worker) -> (nodes, bytes: u64, ok: bool) {
 		//
 		// NO_AUTOMOUNT, so asking about an automount point does not mount it
 		// (AT_NO_AUTOMOUNT in statx(2)).
-		child_device, child_filesystem := device, filesystem
+		child_device, child_filesystem, child_btrfs := device, filesystem, on_btrfs
 		if l.type == .REG || l.type == .UNKNOWN || l.type == .DIR {
 			mask := linux.Statx_Mask{.TYPE, .BLOCKS, .NLINK}
 			if l.type == .DIR {
@@ -148,7 +155,13 @@ read_dir :: proc(d: Dir, w: ^Worker) -> (nodes, bytes: u64, ok: bool) {
 				if e.directory {
 					child_device = statx_device(st)
 					if device != 0 && child_device != device {
-						e.mount, child_filesystem = stops_at(fd, &s.names[l.at], st, filesystem)
+						e.mount, child_filesystem, child_btrfs = stops_at(
+							fd,
+							&s.names[l.at],
+							st,
+							filesystem,
+							on_btrfs,
+						)
 					}
 				} else if !e.symlink {
 					// Blocks are counted in 512 byte units whatever the
@@ -158,6 +171,11 @@ read_dir :: proc(d: Dir, w: ^Worker) -> (nodes, bytes: u64, ok: bool) {
 					e.id = {
 						device = statx_device(st),
 						inode  = u64(l.ino),
+					}
+					if pool != nil && linux.S_ISREG(st.mode) {
+						if !charge_extents(w, fd, &pool, &e) {
+							return nodes, bytes, false
+						}
 					}
 				}
 			}
@@ -182,6 +200,7 @@ read_dir :: proc(d: Dir, w: ^Worker) -> (nodes, bytes: u64, ok: bool) {
 			}
 			if e.directory {
 				next.device, next.filesystem = child_device, child_filesystem
+				next.btrfs = child_btrfs
 			}
 			append(&w.found, next)
 		}
@@ -189,6 +208,34 @@ read_dir :: proc(d: Dir, w: ^Worker) -> (nodes, bytes: u64, ok: bool) {
 		bytes += charged
 	}
 	return nodes, bytes, true
+}
+
+/*
+Charge a regular file on btrfs what its extents occupy that no file before it was
+charged for, in place of st_blocks, searched for through its directory's fd. A
+refusal turns the search off for the pool, and *pool to nil, so the rest of the
+walk charges st_blocks without asking again. A search that fails otherwise leaves
+this one file at st_blocks, logical as the refused ones are. False only when out of
+memory.
+*/
+@(private)
+charge_extents :: proc(w: ^Worker, dir: linux.Fd, pool: ^^Btrfs_Pool, e: ^Entry) -> bool {
+	owner := btrfs.owner_of(e.id.device, e.id.inode)
+	c, err := w.btrfs.search(dir, e.id.inode, w.scratch.args, &pool^.extents, owner)
+	switch err {
+	case .None:
+		e.disk = c.disk
+		e.shared = c.shared
+	case .Not_Permitted, .Not_Btrfs, .Unsupported:
+		btrfs_search_stop(w, pool^)
+		pool^ = nil
+	case .Out_Of_Memory:
+		w.err = .Out_Of_Memory
+		return false
+	case .Not_Found, .Io, .Malformed:
+		scan.mark_logical(w.writer.tree)
+	}
+	return true
 }
 
 // The device a statx answer lies on, as one number.
@@ -225,62 +272,64 @@ stops_at :: proc(
 	name: ^u8,
 	st: linux.Statx,
 	parent: u128,
+	parent_btrfs: bool,
 ) -> (
 	mount: bool,
 	filesystem: u128,
+	on_btrfs: bool,
 ) {
 	if .AUTOMOUNT in st.attributes {
-		return true, 0
+		return true, 0, false
 	}
 	// O_PATH needs no permission on the directory itself (open(2)), so a mount
 	// this user cannot read, such as a /boot of mode 0700, is still told apart.
 	path, path_errno := linux.openat(dir, cstring(name), {.PATH, .DIRECTORY, .NOFOLLOW, .CLOEXEC})
 	if path_errno != .NONE {
 		// Gone since it was listed; recorded as the directory it appeared to be.
-		return false, parent
+		return false, parent, parent_btrfs
 	}
 	fs: linux.Stat_FS
 	statfs_errno := linux.fstatfs(path, &fs)
 	linux.close(path)
 	if statfs_errno != .NONE {
-		return false, parent
+		return false, parent, parent_btrfs
 	}
 	if fs.type != .BTRFS_SUPER_MAGIC {
 		filesystem = statfs_id(fs)
-		return filesystem != parent, filesystem
+		return filesystem != parent, filesystem, false
 	}
 	// The pool's UUID and the subvolume's flags need a descriptor opened for
 	// reading. A btrfs directory this user cannot open is walked as any unreadable
 	// directory is, which reads nothing beneath it.
 	fd, errno := linux.openat(dir, cstring(name), {.DIRECTORY, .NOFOLLOW, .CLOEXEC})
 	if errno != .NONE {
-		return false, parent
+		return false, parent, parent_btrfs
 	}
 	defer linux.close(fd)
 	filesystem = btrfs_pool(fd, fs)
 	if filesystem != parent {
-		return true, filesystem
+		return true, filesystem, true
 	}
 	flags: u64
 	got := linux.ioctl(fd, BTRFS_IOC_SUBVOL_GETFLAGS, uintptr(&flags))
-	return int(got) >= 0 && flags & BTRFS_SUBVOL_RDONLY != 0, filesystem
+	return int(got) >= 0 && flags & BTRFS_SUBVOL_RDONLY != 0, filesystem, true
 }
 
 /*
 What tells one filesystem from another: the pool's UUID on btrfs, whose statfs fsid
 differs from one subvolume to the next, and the statfs fsid and type elsewhere. 0
-when statfs fails.
+when statfs fails. on_btrfs says which of the two it is.
 */
 @(private)
-filesystem_of :: proc(fd: linux.Fd) -> u128 {
+filesystem_of :: proc(fd: linux.Fd) -> (filesystem: u128, on_btrfs: bool) {
 	fs: linux.Stat_FS
 	if linux.fstatfs(fd, &fs) != .NONE {
-		return 0
+		return 0, false
 	}
 	if fs.type == .BTRFS_SUPER_MAGIC {
-		return btrfs_pool(fd, fs)
+		return btrfs_pool(fd, fs), true
 	}
-	return statfs_id(fs)
+	return statfs_id(fs), false
 }
 
 @(private)
@@ -344,8 +393,13 @@ read in 133 to 189 ms with the sort and without (2026-10-08).
 */
 @(private)
 Scratch :: struct {
-	names:  [dynamic]u8,
-	listed: [dynamic]Dirent,
+	names:     [dynamic]u8,
+	listed:    [dynamic]Dirent,
+	// The btrfs pool this worker last charged files to, and the buffer its searches
+	// reuse, taken when the first pool to search is met (btrfs_linux.odin).
+	pool:      ^Btrfs_Pool,
+	args:      ^btrfs.Search_Args,
+	allocator: mem.Allocator,
 }
 
 // Dirent is one directory entry as getdents described it: its inode, where its
@@ -360,11 +414,16 @@ Dirent :: struct {
 
 @(private)
 scratch_make :: proc(allocator: mem.Allocator) -> Scratch {
-	return {names = make([dynamic]u8, allocator), listed = make([dynamic]Dirent, allocator)}
+	return {
+		names = make([dynamic]u8, allocator),
+		listed = make([dynamic]Dirent, allocator),
+		allocator = allocator,
+	}
 }
 
 @(private)
 scratch_destroy :: proc(s: ^Scratch) {
 	delete(s.names)
 	delete(s.listed)
+	free(s.args, s.allocator)
 }

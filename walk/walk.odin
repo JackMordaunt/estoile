@@ -166,6 +166,10 @@ run :: proc(seed: Dir, t: ^scan.Tree, cfg: Config, u: ^Update) -> Error {
 	}
 	defer delete(linked.seen)
 
+	search: Btrfs_Search
+	btrfs_search_init(&search, t, allocator)
+	defer btrfs_search_destroy(&search)
+
 	states := make([]Worker, workers, allocator)
 	defer delete(states, allocator)
 	for i in 0 ..< workers {
@@ -174,6 +178,7 @@ run :: proc(seed: Dir, t: ^scan.Tree, cfg: Config, u: ^Update) -> Error {
 			found     = make([dynamic]Dir, allocator),
 			follow    = cfg.follow,
 			linked    = &linked,
+			btrfs     = &search,
 			scratch   = scratch_make(allocator),
 			update    = u,
 			siblings  = make(map[string]u32, allocator),
@@ -254,6 +259,7 @@ Dir :: struct {
 	// Linux reader uses them, to tell where a walk crosses onto another filesystem.
 	device:     u64,
 	filesystem: u128,
+	btrfs:      bool, // filesystem is a btrfs pool's UUID
 }
 
 // What becomes of a directory waiting to be read.
@@ -270,6 +276,7 @@ Worker :: struct {
 	found:     [dynamic]Dir,
 	follow:    bool,
 	linked:    ^Linked_Files, // shared by every worker
+	btrfs:     ^Btrfs_Search, // shared by every worker
 	err:       Error, // why this worker gave up, which only the manager acts on
 	scratch:   Scratch, // reused by the platform's reader between directories
 	// An update's, shared by every worker and read only. nil for a walk.
@@ -333,6 +340,7 @@ Entry :: struct {
 	links:     u32,
 	id:        File_Id,
 	mount:     bool, // a directory another volume is mounted on
+	shared:    bool, // a file charged only what it does not share (scan.Node_Flag.Shared)
 }
 
 // Where a file's data lives, the same for every name it has. `upper` is the high half
@@ -440,6 +448,9 @@ record_at :: proc(
 	case:
 		n.disk = e.disk
 		charged = e.disk
+		if e.shared {
+			flags |= {.Shared}
+		}
 		if e.links > 1 {
 			first, map_err := mark_charged(w.linked, e.id)
 			if map_err != nil {

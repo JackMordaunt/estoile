@@ -169,7 +169,7 @@ test_the_walk_stays_on_one_filesystem_but_not_one_device :: proc(t: ^testing.T) 
 	)
 	testing.expect_value(t, dir_errno, linux.Errno.NONE)
 	defer linux.close(dir)
-	here := filesystem_of(dir)
+	here, here_btrfs := filesystem_of(dir)
 	testing.expect(t, here != 0, "the root's filesystem is unknown")
 	plain: linux.Statx
 	testing.expect_value(
@@ -177,9 +177,10 @@ test_the_walk_stays_on_one_filesystem_but_not_one_device :: proc(t: ^testing.T) 
 		linux.statx(dir, "plain", {.NO_AUTOMOUNT}, {}, &plain),
 		linux.Errno.NONE,
 	)
-	stop, on := stops_at(dir, raw_data(string("plain")), plain, here)
+	stop, on, on_btrfs := stops_at(dir, raw_data(string("plain")), plain, here, here_btrfs)
 	testing.expect(t, !stop, "a directory on the same filesystem is stopped at")
 	testing.expect(t, on == here, "a directory on the same filesystem names another")
+	testing.expect(t, on_btrfs == here_btrfs, "a directory on the same filesystem is another kind")
 	slash, slash_errno := linux.open("/", {.DIRECTORY, .CLOEXEC})
 	testing.expect_value(t, slash_errno, linux.Errno.NONE)
 	defer linux.close(slash)
@@ -189,7 +190,8 @@ test_the_walk_stays_on_one_filesystem_but_not_one_device :: proc(t: ^testing.T) 
 		linux.statx(slash, "proc", {.NO_AUTOMOUNT}, {}, &procfs),
 		linux.Errno.NONE,
 	)
-	stop, on = stops_at(slash, raw_data(string("proc")), procfs, here)
+	stop, on, on_btrfs = stops_at(slash, raw_data(string("proc")), procfs, here, here_btrfs)
+	testing.expect(t, !on_btrfs, "/proc is called btrfs")
 	testing.expect(t, stop, "/proc is not stopped at")
 	testing.expect(t, on != here, "/proc is named the root's filesystem")
 

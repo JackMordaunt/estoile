@@ -1,7 +1,9 @@
 package btrfs
 
 import "core:encoding/endian"
+import "core:sync"
 import "core:testing"
+import "core:thread"
 
 // A file extent item as the tree search returns it: inline when at is never asked
 // for, so the data follows the header.
@@ -127,4 +129,101 @@ test_holes_prealloc_and_short_items :: proc(t: ^testing.T) {
 		charge(item(EXTENT_REGULAR, 9, 4096, 3 << 20, 4096, 4096), &u, &f),
 		Item_Error.Compression,
 	)
+}
+
+/*
+Charged against a walk's shared Extents, a file pays for an inline extent and for
+each extent no file paid for before it, once however many of its ranges refer to
+it, and nothing for a hole. A reflinked copy pays nothing for what it shares and is
+marked shared; the same file meeting its own extent again is not.
+*/
+@(test)
+test_shared_charge_pays_each_extent_once :: proc(t: ^testing.T) {
+	e: Extents
+	extents_init(&e)
+	defer extents_destroy(&e)
+	a_owner := owner_of(7, 300)
+	b_owner := owner_of(7, 301)
+
+	a_items := [?][]u8 {
+		item(EXTENT_INLINE, 3, 3000, 0, 0, 0, 120),
+		item(EXTENT_REGULAR, 3, 131072, 1 << 20, 4096, 131072),
+		item(EXTENT_REGULAR, 0, 8192, 2 << 20, 8192, 4096),
+		item(EXTENT_REGULAR, 0, 8192, 2 << 20, 8192, 4096),
+		item(EXTENT_REGULAR, 0, 1 << 20, 0, 0, 1 << 20),
+	}
+	a: Charge
+	for x in a_items {
+		testing.expect_value(t, charge_shared(x, &e, a_owner, &a), Item_Error.None)
+	}
+	testing.expect_value(t, a, Charge{120 + 4096 + 8192, false})
+
+	b_items := [?][]u8 {
+		item(EXTENT_REGULAR, 3, 131072, 1 << 20, 4096, 131072),
+		item(EXTENT_REGULAR, 0, 4096, 3 << 20, 4096, 4096),
+	}
+	b: Charge
+	for x in b_items {
+		testing.expect_value(t, charge_shared(x, &e, b_owner, &b), Item_Error.None)
+	}
+	testing.expect_value(t, b, Charge{4096, true})
+
+	short: Charge
+	testing.expect_value(
+		t,
+		charge_shared(item(EXTENT_REGULAR, 0, 0, 0, 0, 0)[:30], &e, a_owner, &short),
+		Item_Error.Short,
+	)
+}
+
+/*
+Workers charging the same extents at once pay for each exactly once between them,
+whichever of them gets there first: what they are charged adds up to the extents'
+disk, as one worker charging them alone would.
+*/
+@(test)
+test_concurrent_charges_add_up_to_the_extents :: proc(t: ^testing.T) {
+	WORKERS    :: 8
+	EXTENTS    :: 20000
+	Concurrent :: struct {
+		e:     Extents,
+		paid:  u64,
+		start: sync.Barrier,
+	}
+	s: Concurrent
+	extents_init(&s.e)
+	defer extents_destroy(&s.e)
+	sync.barrier_init(&s.start, WORKERS)
+
+	run :: proc(s: ^Concurrent, worker: int) {
+		sync.barrier_wait(&s.start)
+		c: Charge
+		// Every worker charges every extent, from a different starting point.
+		for i in 0 ..< EXTENTS {
+			k := (i + worker * 997) % EXTENTS
+			at := u64(k + 1) * 4096
+			b: [ITEM_SIZE]u8
+			b[20] = EXTENT_REGULAR
+			endian.put_u64(b[21:29], .Little, at)
+			endian.put_u64(b[29:37], .Little, u64(k % 7 + 1) * 4096)
+			if charge_shared(b[:], &s.e, owner_of(1, u64(worker)), &c) != .None {
+				return
+			}
+		}
+		sync.atomic_add(&s.paid, c.disk)
+	}
+
+	threads: [WORKERS]^thread.Thread
+	for &th, i in threads {
+		th = thread.create_and_start_with_poly_data2(&s, i, run)
+	}
+	for th in threads {
+		thread.join(th)
+		thread.destroy(th)
+	}
+	want: u64
+	for k in 0 ..< EXTENTS {
+		want += u64(k % 7 + 1) * 4096
+	}
+	testing.expect_value(t, s.paid, want)
 }

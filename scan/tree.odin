@@ -55,6 +55,10 @@ Node_Flag  :: enum u8 {
 	// A directory another volume is mounted on, recorded but not read: what is under
 	// it belongs to that volume, so an update of this tree never reads it either.
 	Mount,
+	// A file some of whose extents another file had already been charged for: a
+	// reflinked copy or a snapshot's, on btrfs, when the walk could read extents. Its
+	// disk is only what it holds alone.
+	Shared,
 }
 Node_Flags :: distinct bit_set[Node_Flag;u8]
 
@@ -98,6 +102,11 @@ Tree :: struct {
 	bytes_done: u64,
 	cancel:     b32,
 	restated:   b32,
+	// Some of the tree's btrfs files are charged their st_blocks, which on btrfs is
+	// the logical size: a compressed file at its uncompressed size, an extent shared
+	// by reflinks or snapshots once for every file. Set by a walk that could not read
+	// the extents themselves, which takes root.
+	logical:    b32,
 	allocator:  mem.Allocator,
 	// A walk that folded totals as directories finished. Nil for every other reader,
 	// and for a walk that was told not to. Freed with the tree.
@@ -364,6 +373,16 @@ restate :: proc(t: ^Tree) {
 // Whether the tree has been restated since this was last asked, clearing it.
 taken_restated :: proc(t: ^Tree) -> bool {
 	return bool(sync.atomic_exchange(&t.restated, false))
+}
+
+// Say that some btrfs sizes in the tree are logical, not what the files occupy.
+mark_logical :: proc(t: ^Tree) {
+	sync.atomic_store(&t.logical, true)
+}
+
+// Whether some btrfs sizes in the tree are logical: read as root, they would be less.
+is_logical :: proc(t: ^Tree) -> bool {
+	return bool(sync.atomic_load(&t.logical))
 }
 
 progress :: proc(t: ^Tree, nodes, bytes: u64) {

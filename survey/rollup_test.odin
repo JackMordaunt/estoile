@@ -142,3 +142,38 @@ only_directories_take_a_total :: proc(t: ^testing.T) {
 	testing.expect_value(t, total(&r, 2), 0) // a file's bytes are its own disk
 	testing.expect_value(t, total(&r, 6), 0) // past what the rollup has seen
 }
+
+/*
+A btrfs file marked Shared already holds only what it alone was charged, so a
+rollup adds it up as any other file: the walk did the sharing, the rollup has
+nothing to undo. A reflink charged nothing adds nothing, and an Extra_Name is
+still skipped beside it.
+
+	0  root/
+	1  root/original    4096 bytes
+	2  root/reflink     0 bytes, Shared
+	3  root/snapshot    1024 bytes, Shared
+	4  root/link        4096 bytes, Extra_Name
+*/
+@(test)
+a_shared_file_adds_what_it_was_charged :: proc(t: ^testing.T) {
+	tree: scan.Tree
+	testing.expect(t, scan.tree_init(&tree) == nil)
+	defer scan.tree_destroy(&tree)
+	testing.expect(t, scan.reserve(&tree, 5) == nil)
+
+	r := Rollup {
+		linked = true,
+	}
+	defer rollup_destroy(&r)
+
+	place(&tree, 0, 0, 0, {.Used, .Settled, .Directory})
+	place(&tree, 1, 0, 4096, {.Used, .Settled})
+	place(&tree, 2, 0, 0, {.Used, .Settled, .Shared})
+	place(&tree, 3, 0, 1024, {.Used, .Settled, .Shared})
+	place(&tree, 4, 0, 4096, {.Used, .Settled, .Extra_Name})
+	rollup_advance(&r, &tree)
+	testing.expect_value(t, total(&r, 0), 4096 + 1024)
+	// Both Shared files are listed; the extra name is not.
+	testing.expect_value(t, len(list_children(&r, 0)), 3)
+}

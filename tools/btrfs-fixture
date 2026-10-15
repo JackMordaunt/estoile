@@ -15,19 +15,25 @@ for every path that reaches it, so a hard-linked inline file costs it once per
 name; this charges it once, as the walk charges a file with several names.
 
 Searching a file's extents needs CAP_SYS_ADMIN, so unprivileged the tests expect
-the walk to fall back to st_blocks, and as root they expect the total. The tests
-are run as this user, and again as root when this script is root already or is
-given --sudo and `sudo -n` works, as on GitHub's Linux runners. Only --sudo lets it
-use sudo at all, so credentials sudo happens to have cached never turn an ordinary
-run into a root one.
+the walk to fall back to st_blocks, and as root they expect the total.
 
-The image is mounted with udisks where a desktop session offers it, and with
-`sudo -n mount` under --sudo otherwise. A machine with neither, or without
-mkfs.btrfs, skips the whole run and says why; `just test` still runs every test
-there, each predicting what it can check.
+How the image is mounted is chosen once, up front:
+
+- run as root: losetup and mount directly, and the tests run as root;
+- --sudo: the same through `sudo -n`, never udisks, and the tests run as this user
+  and again as root, as on GitHub's Linux runners, which have udisksctl but no
+  session for it. A sudo that asks for a password fails the run;
+- otherwise: udisks, when `udisksctl status` answers, and the tests run as this
+  user. Without it, or when udisks refuses the loop device, the run is skipped.
+
+Only --sudo lets it use sudo at all, so credentials sudo happens to have cached
+never turn an ordinary run into a root one. Whatever ran as root, the image is
+detached and build/btrfs-fixture/ is handed back to this user. A machine without
+btrfs-progs skips the run too; `just test` still runs every test there, each
+predicting what it can check.
 
     tools/btrfs-fixture
-    tools/btrfs-fixture --sudo          mount with sudo if need be, and test as root too
+    tools/btrfs-fixture --sudo          mount with sudo, never udisks, and test as root too
     tools/btrfs-fixture --keep          leave the image mounted afterwards
 """
 
@@ -65,91 +71,104 @@ def is_root() -> bool:
     return os.geteuid() == 0
 
 
-# Set by --sudo: whether sudo may be used at all.
-SUDO = False
-
-
 def can_sudo() -> bool:
-    return SUDO and not is_root() and shutil.which("sudo") is not None and quiet(["sudo", "-n", "true"])
+    return shutil.which("sudo") is not None and quiet(["sudo", "-n", "true"])
 
 
 def has_udisks() -> bool:
-    return (
-        not is_root()
-        and shutil.which("udisksctl") is not None
-        and bool(os.environ.get("DBUS_SESSION_BUS_ADDRESS") or os.environ.get("XDG_RUNTIME_DIR"))
-        and quiet(["udisksctl", "status"])
-    )
+    """Whether udisks answers this user at all. It may still refuse to set up a loop
+    device, as on a CI runner with no polkit agent; Mount.attach says so then."""
+    return shutil.which("udisksctl") is not None and quiet(["udisksctl", "status"])
+
+
+class Skip(Exception):
+    """This machine cannot mount the image; the run is skipped, not failed."""
 
 
 class Mount:
-    """The image, attached and mounted one of three ways, and how to undo it."""
+    """The image, attached and mounted one way, chosen up front, and how to undo it.
 
-    def __init__(self) -> None:
+    root: this script is root, so losetup and mount directly.
+    sudo: --sudo, so the same through `sudo -n`, never udisks, so a runner that
+          has udisksctl but no session for it cannot get in the way.
+    udisks: neither, so udisksctl, as a desktop user may without a password.
+    """
+
+    def __init__(self, how: str) -> None:
+        self.how = how
         self.dev = ""
         self.path = Path()
-        self.how = ""
+
+    def privileged(self, argv: list[str], **kw) -> subprocess.CompletedProcess:
+        prefix = ["sudo", "-n"] if self.how == "sudo" else []
+        return run(prefix + argv, **kw)
 
     def attach(self) -> None:
+        """Attach and mount, or leave nothing attached and raise."""
         self.detach_stale()
-        if is_root():
-            self.mount_loop([])
-            return
-        if has_udisks():
-            self.how = "udisks"
-            out = run(
-                ["udisksctl", "loop-setup", "--no-user-interaction", "-f", str(IMAGE)],
-                capture_output=True,
-                text=True,
-            ).stdout
-            found = re.search(r"(/dev/loop\d+)", out)
-            if not found:
-                raise RuntimeError(f"no loop device in: {out.strip()}")
-            self.dev = found[1]
-            for _ in range(50):
-                target = mounted_at(self.dev)
-                if target:
-                    self.path = Path(target)
-                    return
-                time.sleep(0.1)
-            run(["udisksctl", "mount", "--no-user-interaction", "-b", self.dev], stdout=subprocess.DEVNULL)
-            target = mounted_at(self.dev)
-            if not target:
-                raise RuntimeError(f"{self.dev} did not mount")
-            self.path = Path(target)
-            return
-        if can_sudo():
-            self.mount_loop(["sudo", "-n"])
-            return
-        raise RuntimeError("cannot mount: no udisks session, and no --sudo or passwordless sudo")
+        try:
+            if self.how == "udisks":
+                self.attach_udisks()
+            else:
+                self.dev = self.privileged(
+                    ["losetup", "--find", "--show", str(IMAGE)], capture_output=True, text=True
+                ).stdout.strip()
+                self.path = WORK / "mnt"
+                self.path.mkdir(exist_ok=True)
+                self.privileged(["mount", self.dev, str(self.path)])
+        except BaseException:
+            self.detach()
+            raise
 
-    def mount_loop(self, prefix: list[str]) -> None:
-        self.how = "sudo" if prefix else "root"
-        self.path = WORK / "mnt"
-        self.path.mkdir(exist_ok=True)
-        run(prefix + ["mount", "-o", "loop", str(IMAGE), str(self.path)])
+    def attach_udisks(self) -> None:
+        setup = subprocess.run(
+            ["udisksctl", "loop-setup", "--no-user-interaction", "-f", str(IMAGE)],
+            capture_output=True,
+            text=True,
+        )
+        if setup.returncode != 0:
+            raise Skip(f"udisks would not set up a loop device: {setup.stderr.strip()}")
+        found = re.search(r"(/dev/loop\d+)", setup.stdout)
+        if not found:
+            raise RuntimeError(f"no loop device in: {setup.stdout.strip()}")
+        self.dev = found[1]
+        for _ in range(50):
+            target = mounted_at(self.dev)
+            if target:
+                self.path = Path(target)
+                return
+            time.sleep(0.1)
+        run(["udisksctl", "mount", "--no-user-interaction", "-b", self.dev], stdout=subprocess.DEVNULL)
+        target = mounted_at(self.dev)
+        if not target:
+            raise RuntimeError(f"{self.dev} did not mount")
+        self.path = Path(target)
 
     def detach(self) -> None:
-        if self.how in ("root", "sudo"):
-            prefix = [] if is_root() else ["sudo", "-n"]
-            subprocess.run(prefix + ["umount", str(self.path)], stderr=subprocess.DEVNULL)
-        elif self.how == "udisks":
-            subprocess.run(["udisksctl", "unmount", "--no-user-interaction", "-b", self.dev], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            subprocess.run(["udisksctl", "loop-delete", "--no-user-interaction", "-b", self.dev], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        self.how = ""
+        """Unmount and detach whatever attach got as far as; safe to call twice."""
+        if self.dev:
+            self.release(self.dev)
+        self.dev = ""
+
+    def release(self, dev: str) -> None:
+        silent = {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
+        if self.how == "udisks":
+            subprocess.run(["udisksctl", "unmount", "--no-user-interaction", "-b", dev], **silent)
+            subprocess.run(["udisksctl", "loop-delete", "--no-user-interaction", "-b", dev], **silent)
+            return
+        prefix = ["sudo", "-n"] if self.how == "sudo" else []
+        target = mounted_at(dev)
+        if target:
+            subprocess.run(prefix + ["umount", target], **silent)
+        subprocess.run(prefix + ["losetup", "-d", dev], **silent)
 
     def detach_stale(self) -> None:
         """Undo a run that stopped before it cleaned up."""
         listed = subprocess.run(["losetup", "-j", str(IMAGE)], capture_output=True, text=True).stdout
         for line in listed.splitlines():
             dev = line.split(":", 1)[0]
-            target = mounted_at(dev)
-            if shutil.which("udisksctl") and not is_root():
-                subprocess.run(["udisksctl", "unmount", "--no-user-interaction", "-b", dev], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                subprocess.run(["udisksctl", "loop-delete", "--no-user-interaction", "-b", dev], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            if mounted_at(dev) and (is_root() or can_sudo()):
-                prefix = [] if is_root() else ["sudo", "-n"]
-                subprocess.run(prefix + ["umount", target], stderr=subprocess.DEVNULL)
+            if dev.startswith("/dev/loop"):
+                self.release(dev)
 
 
 def mounted_at(dev: str) -> str:
@@ -262,10 +281,8 @@ def main() -> int:
     parser.add_argument("--odin", default=os.environ.get("ODIN", "odin"))
     parser.add_argument("--flags", default="", help="what the justfile builds tests with")
     parser.add_argument("--keep", action="store_true", help="leave the image mounted")
-    parser.add_argument("--sudo", action="store_true", help="use sudo -n to mount and to test as root")
+    parser.add_argument("--sudo", action="store_true", help="mount with sudo -n, never udisks, and test as root too")
     args = parser.parse_args()
-    global SUDO
-    SUDO = args.sudo
 
     if sys.platform != "linux":
         say("skipped: btrfs is Linux's")
@@ -274,8 +291,18 @@ def main() -> int:
         if not shutil.which(tool):
             say(f"skipped: {tool} is not installed")
             return 0
-    if not (is_root() or can_sudo() or has_udisks()):
-        say("skipped: cannot mount an image here, with no udisks session, and no --sudo or passwordless sudo")
+    if is_root():
+        how = "root"
+    elif args.sudo:
+        # Asked for, so a sudo that wants a password is a failure, not a skip.
+        if not can_sudo():
+            say("FAILED: --sudo was given but sudo -n is refused")
+            return 1
+        how = "sudo"
+    elif has_udisks():
+        how = "udisks"
+    else:
+        say("skipped: cannot mount an image here: no udisks for this user, and no --sudo")
         return 0
 
     WORK.mkdir(parents=True, exist_ok=True)
@@ -288,13 +315,13 @@ def main() -> int:
     build(args.odin, flags, "walk", walk_total, WALK_TOTAL)
     build(args.odin, flags, "btrfs", btrfs_all)
 
-    mount = Mount()
-    make_image()
-    mount.attach()
-    ok = True
+    mount = Mount(how)
+    ok = False
     try:
+        make_image()
+        mount.attach()
         top = mount.path
-        say(f"mounted {IMAGE} at {top} ({mount.how})")
+        say(f"mounted {IMAGE} at {top} ({how})")
         fill(top)
         vol_tree, snap_tree, top_tree = tree_id(top / "vol"), tree_id(top / "snap"), tree_id(top)
         vol_disk = oracle([vol_tree])
@@ -306,25 +333,42 @@ def main() -> int:
             (walk_total, {"LEITA_BTRFS_DIR": str(top), "LEITA_BTRFS_DISK": str(all_disk)}),
             (btrfs_all, {"LEITA_BTRFS_SCRATCH": scratch}),
         ]
-        privileges = [is_root()] + ([True] if can_sudo() else [])
-        if not is_root() and not can_sudo():
+        privileges = {"root": [True], "sudo": [False, True], "udisks": [False]}[how]
+        if how == "udisks":
             say("as root: not run; give --sudo where sudo asks no password, or run this as root")
+        ok = True
         for as_root in privileges:
             for binary, env in runs:
                 ok = run_tests(binary, env, as_root) and ok
+    except Skip as why:
+        say(f"skipped: {why}")
+        return 0
     finally:
         if args.keep and ok:
             say(f"kept mounted at {mount.path}")
         else:
             mount.detach()
-        if is_root() and os.environ.get("SUDO_UID"):
-            # Leave build/ to the user who asked for root, not to root.
-            uid, gid = int(os.environ["SUDO_UID"]), int(os.environ.get("SUDO_GID", os.environ["SUDO_UID"]))
-            for p in [WORK, *WORK.rglob("*")]:
-                if not (args.keep and ok and mount.path in p.parents):
-                    os.lchown(p, uid, gid)
+            IMAGE.unlink(missing_ok=True)
+        give_back(how, args.keep and ok)
     say("passed" if ok else "FAILED")
     return 0 if ok else 1
+
+
+def give_back(how: str, kept: bool) -> None:
+    """Leave build/btrfs-fixture/ to the user, whatever ran as root in it. A mount
+    kept is left alone: its files are the image's."""
+    if how == "sudo":
+        uid, gid = os.getuid(), os.getgid()
+        prefix = ["sudo", "-n"]
+    elif how == "root" and os.environ.get("SUDO_UID"):
+        uid, gid = int(os.environ["SUDO_UID"]), int(os.environ.get("SUDO_GID", os.environ["SUDO_UID"]))
+        prefix = []
+    else:
+        return
+    argv = prefix + ["chown", "-R", "--one-file-system", f"{uid}:{gid}", str(WORK)]
+    if kept:
+        argv = prefix + ["find", str(WORK), "-xdev", "-exec", "chown", "-h", f"{uid}:{gid}", "{}", "+"]
+    subprocess.run(argv, stderr=subprocess.DEVNULL)
 
 
 if __name__ == "__main__":

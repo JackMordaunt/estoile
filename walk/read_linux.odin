@@ -40,6 +40,16 @@ read_dir :: proc(d: Dir, w: ^Worker) -> (nodes, bytes: u64, ok: bool) {
 	}
 	defer linux.close(fd)
 
+	// The device this directory lies on: handed down by the parent that asked about
+	// it, or, for the root and a followed link, asked of the open directory here.
+	device := d.device
+	if device == 0 {
+		st: linux.Statx
+		if linux.statx(fd, "", {.EMPTY_PATH}, {}, &st) == .NONE {
+			device = statx_device(st)
+		}
+	}
+
 	// Every name first, then every statx in inode order (see Scratch).
 	s := &w.scratch
 	clear(&s.names)
@@ -109,29 +119,48 @@ read_dir :: proc(d: Dir, w: ^Worker) -> (nodes, bytes: u64, ok: bool) {
 			directory = l.type == .DIR,
 			symlink   = l.type == .LNK,
 		}
-		// Only a regular file can be charged anything, and only an entry whose
-		// type getdents left out (.UNKNOWN) needs asking what it even is. A
-		// directory, a symlink, and the other special types (FIFO, socket,
-		// device, whiteout) are none of them regular files, so record charges
-		// them nothing whether or not they are stat'd; skipping the call for
-		// them changes no result, only the syscall count.
-		if l.type == .REG || l.type == .UNKNOWN {
+		// Only a regular file can be charged anything, only an entry whose type
+		// getdents left out (.UNKNOWN) needs asking what it even is, and only a
+		// directory can be another filesystem's mount point. A symlink and the
+		// other special types (FIFO, socket, device, whiteout) are none of these,
+		// so record charges them nothing whether or not they are stat'd; skipping
+		// the call for them changes no result, only the syscall count.
+		//
+		// NO_AUTOMOUNT, so asking about an automount point does not mount it
+		// (AT_NO_AUTOMOUNT in statx(2)).
+		child_device := device
+		if l.type == .REG || l.type == .UNKNOWN || l.type == .DIR {
 			mask := linux.Statx_Mask{.TYPE, .BLOCKS, .NLINK}
+			if l.type == .DIR {
+				mask = {.TYPE}
+			}
+			flags := linux.FD_Flags{.SYMLINK_NOFOLLOW, .NO_AUTOMOUNT}
 			st: linux.Statx
-			if linux.statx(fd, cstring(&s.names[l.at]), {.SYMLINK_NOFOLLOW}, mask, &st) == .NONE {
+			if linux.statx(fd, cstring(&s.names[l.at]), flags, mask, &st) == .NONE {
 				// Some filesystems leave the type out of a directory entry. Those
 				// are the only ones that have to be told apart here.
 				if l.type == .UNKNOWN {
 					e.directory = linux.S_ISDIR(st.mode)
 					e.symlink = linux.S_ISLNK(st.mode)
 				}
-				if !e.directory && !e.symlink {
+				if e.directory {
+					// A directory on another device than the one it is listed in
+					// is a mount point: recorded, not walked, as the macOS and
+					// Windows readers treat one, so / leaves /proc, /sys, /run
+					// and a tmpfs /tmp alone. Each btrfs subvolume met so far
+					// reported a device of its own, so stopped the walk, mounted
+					// or not: / stopped at /home and /var/log, both mounted, and at
+					// /var/lib/machines, which is not (2026-10-15). A bind mount of the same device keeps the device, so it is
+					// walked as the directory it appears to be.
+					child_device = statx_device(st)
+					e.mount = device != 0 && child_device != device
+				} else if !e.symlink {
 					// Blocks are counted in 512 byte units whatever the
 					// filesystem builds them from.
 					e.disk = st.blocks * 512
 					e.links = st.nlink
 					e.id = {
-						device = u64(st.dev_major) << 32 | u64(st.dev_minor),
+						device = statx_device(st),
 						inode  = u64(l.ino),
 					}
 				}
@@ -149,12 +178,23 @@ read_dir :: proc(d: Dir, w: ^Worker) -> (nodes, bytes: u64, ok: bool) {
 				w.err = .Out_Of_Memory
 				return nodes, bytes, false
 			}
-			append(&w.found, Dir{index = index, path = child})
+			// A followed link may lead anywhere, so its directory learns its own
+			// device when read.
+			append(
+				&w.found,
+				Dir{index = index, path = child, device = e.directory ? child_device : 0},
+			)
 		}
 		nodes += 1
 		bytes += charged
 	}
 	return nodes, bytes, true
+}
+
+// The device a statx answer lies on, as one number.
+@(private)
+statx_device :: proc(st: linux.Statx) -> u64 {
+	return u64(st.dev_major) << 32 | u64(st.dev_minor)
 }
 
 /*

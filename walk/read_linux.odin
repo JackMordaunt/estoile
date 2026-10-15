@@ -40,14 +40,16 @@ read_dir :: proc(d: Dir, w: ^Worker) -> (nodes, bytes: u64, ok: bool) {
 	}
 	defer linux.close(fd)
 
-	// The device this directory lies on: handed down by the parent that asked about
-	// it, or, for the root and a followed link, asked of the open directory here.
-	device := d.device
+	// The device and filesystem this directory lies on: handed down by the parent
+	// that asked about it, or, for the root and a followed link, asked of the open
+	// directory here.
+	device, filesystem := d.device, d.filesystem
 	if device == 0 {
 		st: linux.Statx
 		if linux.statx(fd, "", {.EMPTY_PATH}, {}, &st) == .NONE {
 			device = statx_device(st)
 		}
+		filesystem = filesystem_of(fd)
 	}
 
 	// Every name first, then every statx in inode order (see Scratch).
@@ -128,7 +130,7 @@ read_dir :: proc(d: Dir, w: ^Worker) -> (nodes, bytes: u64, ok: bool) {
 		//
 		// NO_AUTOMOUNT, so asking about an automount point does not mount it
 		// (AT_NO_AUTOMOUNT in statx(2)).
-		child_device := device
+		child_device, child_filesystem := device, filesystem
 		if l.type == .REG || l.type == .UNKNOWN || l.type == .DIR {
 			mask := linux.Statx_Mask{.TYPE, .BLOCKS, .NLINK}
 			if l.type == .DIR {
@@ -144,16 +146,10 @@ read_dir :: proc(d: Dir, w: ^Worker) -> (nodes, bytes: u64, ok: bool) {
 					e.symlink = linux.S_ISLNK(st.mode)
 				}
 				if e.directory {
-					// A directory on another device than the one it is listed in
-					// is a mount point: recorded, not walked, as the macOS and
-					// Windows readers treat one, so / leaves /proc, /sys, /run
-					// and a tmpfs /tmp alone. Each btrfs subvolume met so far
-					// reported a device of its own, so stopped the walk, mounted
-					// or not: / stopped at /home and /var/log, both mounted, and at
-					// /var/lib/machines, which is not (2026-10-15). A bind mount of the same device keeps the device, so it is
-					// walked as the directory it appears to be.
 					child_device = statx_device(st)
-					e.mount = device != 0 && child_device != device
+					if device != 0 && child_device != device {
+						e.mount, child_filesystem = stops_at(fd, &s.names[l.at], st, filesystem)
+					}
 				} else if !e.symlink {
 					// Blocks are counted in 512 byte units whatever the
 					// filesystem builds them from.
@@ -179,11 +175,15 @@ read_dir :: proc(d: Dir, w: ^Worker) -> (nodes, bytes: u64, ok: bool) {
 				return nodes, bytes, false
 			}
 			// A followed link may lead anywhere, so its directory learns its own
-			// device when read.
-			append(
-				&w.found,
-				Dir{index = index, path = child, device = e.directory ? child_device : 0},
-			)
+			// device and filesystem when read.
+			next := Dir {
+				index = index,
+				path  = child,
+			}
+			if e.directory {
+				next.device, next.filesystem = child_device, child_filesystem
+			}
+			append(&w.found, next)
 		}
 		nodes += 1
 		bytes += charged
@@ -196,6 +196,136 @@ read_dir :: proc(d: Dir, w: ^Worker) -> (nodes, bytes: u64, ok: bool) {
 statx_device :: proc(st: linux.Statx) -> u64 {
 	return u64(st.dev_major) << 32 | u64(st.dev_minor)
 }
+
+/*
+Whether a directory on another device than the one listing it is somewhere the walk
+stops, and the filesystem it lies on. A directory is only asked this when its device
+changes, which a scan of this machine's / did 13 times (2026-10-15), so the open and
+the statfs stay off the path almost every directory takes.
+
+The rule is the same filesystem, not the same device. Another filesystem mounted
+here, /proc, /sys, a tmpfs /run or /tmp, another disk, a network or FUSE mount, is
+a mount: recorded, not walked, as the macOS and Windows readers treat one (e.mount
+in read_darwin.odin and read_windows.odin). A btrfs subvolume has a device of its
+own but draws on the same pool, so it is walked:
+/home and /var/log are subvolumes of / on this machine (2026-10-15), and stopping
+at them hid their usage. Its statfs fsid will not do to tell, since btrfs folds the
+subvolume's id into it (/ gave 32afd77a847e028d and /home ...028c); the pool's own
+UUID, from BTRFS_IOC_FS_INFO, is the same for every subvolume.
+
+A read-only btrfs subvolume is stopped at as a mount is: snapper's snapshots under
+/.snapshots are each a whole copy of the system, and walking them would charge the
+disk for every one. A bind mount of the same filesystem is walked as the directory
+it appears to be, so its files count wherever else they are also reached. An
+automount point is a mount without being opened, which would mount it.
+*/
+@(private)
+stops_at :: proc(
+	dir: linux.Fd,
+	name: ^u8,
+	st: linux.Statx,
+	parent: u128,
+) -> (
+	mount: bool,
+	filesystem: u128,
+) {
+	if .AUTOMOUNT in st.attributes {
+		return true, 0
+	}
+	// O_PATH needs no permission on the directory itself (open(2)), so a mount
+	// this user cannot read, such as a /boot of mode 0700, is still told apart.
+	path, path_errno := linux.openat(dir, cstring(name), {.PATH, .DIRECTORY, .NOFOLLOW, .CLOEXEC})
+	if path_errno != .NONE {
+		// Gone since it was listed; recorded as the directory it appeared to be.
+		return false, parent
+	}
+	fs: linux.Stat_FS
+	statfs_errno := linux.fstatfs(path, &fs)
+	linux.close(path)
+	if statfs_errno != .NONE {
+		return false, parent
+	}
+	if fs.type != .BTRFS_SUPER_MAGIC {
+		filesystem = statfs_id(fs)
+		return filesystem != parent, filesystem
+	}
+	// The pool's UUID and the subvolume's flags need a descriptor opened for
+	// reading. A btrfs directory this user cannot open is walked as any unreadable
+	// directory is, which reads nothing beneath it.
+	fd, errno := linux.openat(dir, cstring(name), {.DIRECTORY, .NOFOLLOW, .CLOEXEC})
+	if errno != .NONE {
+		return false, parent
+	}
+	defer linux.close(fd)
+	filesystem = btrfs_pool(fd, fs)
+	if filesystem != parent {
+		return true, filesystem
+	}
+	flags: u64
+	got := linux.ioctl(fd, BTRFS_IOC_SUBVOL_GETFLAGS, uintptr(&flags))
+	return int(got) >= 0 && flags & BTRFS_SUBVOL_RDONLY != 0, filesystem
+}
+
+/*
+What tells one filesystem from another: the pool's UUID on btrfs, whose statfs fsid
+differs from one subvolume to the next, and the statfs fsid and type elsewhere. 0
+when statfs fails.
+*/
+@(private)
+filesystem_of :: proc(fd: linux.Fd) -> u128 {
+	fs: linux.Stat_FS
+	if linux.fstatfs(fd, &fs) != .NONE {
+		return 0
+	}
+	if fs.type == .BTRFS_SUPER_MAGIC {
+		return btrfs_pool(fd, fs)
+	}
+	return statfs_id(fs)
+}
+
+@(private)
+statfs_id :: proc(fs: linux.Stat_FS) -> u128 {
+	return u128(u32(fs.fsid[0])) | u128(u32(fs.fsid[1])) << 32 | u128(u32(fs.type)) << 64
+}
+
+// The UUID of the btrfs pool `fd` lies on, or the statfs identity where the kernel
+// will not say. `fd` must be opened for reading: ioctl is not among the calls
+// open(2) lists as allowed on an O_PATH one.
+@(private)
+btrfs_pool :: proc(fd: linux.Fd, fs: linux.Stat_FS) -> u128 {
+	info: Btrfs_Fs_Info
+	if int(linux.ioctl(fd, BTRFS_IOC_FS_INFO, uintptr(&info))) < 0 {
+		return statfs_id(fs)
+	}
+	return transmute(u128)info.fsid
+}
+
+// From linux/btrfs.h: _IOR(0x94, 25, __u64) and _IOR(0x94, 31, struct
+// btrfs_ioctl_fs_info_args), neither of which needs privilege.
+@(private)
+BTRFS_IOC_SUBVOL_GETFLAGS :: 0x80089419
+@(private)
+BTRFS_IOC_FS_INFO :: 0x8400941f
+@(private)
+BTRFS_SUBVOL_RDONLY :: 1 << 1
+
+// struct btrfs_ioctl_fs_info_args, 1024 bytes; only the UUID is read.
+@(private)
+Btrfs_Fs_Info :: struct {
+	max_id:          u64,
+	num_devices:     u64,
+	fsid:            [16]u8,
+	nodesize:        u32,
+	sectorsize:      u32,
+	clone_alignment: u32,
+	csum_type:       u16,
+	csum_size:       u16,
+	flags:           u64,
+	generation:      u64,
+	metadata_uuid:   [16]u8,
+	reserved:        [944]u8,
+}
+#assert(size_of(Btrfs_Fs_Info) == 1024)
 
 /*
 Scratch is what one worker reuses from one directory to the next: the names a

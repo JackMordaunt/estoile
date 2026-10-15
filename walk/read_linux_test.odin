@@ -142,3 +142,174 @@ test_a_directory_on_another_device_is_a_mount :: proc(t: ^testing.T) {
 		testing.expectf(t, found, "%s/%s is not in the tree", ROOT, name)
 	}
 }
+
+/*
+A directory on the same filesystem is walked and one on another is not. A btrfs
+subvolume has a device of its own but lies in the same pool, so it is walked,
+while a read-only one, as snapper's snapshots are, is stopped at as a mount is.
+btrfs lets the owner of a directory make a subvolume in it and mark it read-only, so
+the test builds both beside the working directory, under build/. Where that is not
+btrfs it checks only that the same filesystem is walked and /proc is not.
+*/
+@(test)
+test_the_walk_stays_on_one_filesystem_but_not_one_device :: proc(t: ^testing.T) {
+	cwd, cwd_err := os.get_working_directory(context.temp_allocator)
+	testing.expect(t, cwd_err == nil, "no working directory")
+	root := fmt.tprintf("%s/build/leita_walk_subvolumes", cwd)
+	defer remove_subvolumes(root)
+	remove_subvolumes(root)
+	testing.expect(t, os.make_directory_all(root) == nil, "could not make the root")
+
+	// On any filesystem: a directory on the same one is walked, and /proc, which
+	// is always its own, is not.
+	testing.expect(t, os.make_directory(fmt.tprintf("%s/plain", root)) == nil)
+	dir, dir_errno := linux.open(
+		strings.clone_to_cstring(root, context.temp_allocator),
+		{.DIRECTORY, .CLOEXEC},
+	)
+	testing.expect_value(t, dir_errno, linux.Errno.NONE)
+	defer linux.close(dir)
+	here := filesystem_of(dir)
+	testing.expect(t, here != 0, "the root's filesystem is unknown")
+	plain: linux.Statx
+	testing.expect_value(
+		t,
+		linux.statx(dir, "plain", {.NO_AUTOMOUNT}, {}, &plain),
+		linux.Errno.NONE,
+	)
+	stop, on := stops_at(dir, raw_data(string("plain")), plain, here)
+	testing.expect(t, !stop, "a directory on the same filesystem is stopped at")
+	testing.expect(t, on == here, "a directory on the same filesystem names another")
+	slash, slash_errno := linux.open("/", {.DIRECTORY, .CLOEXEC})
+	testing.expect_value(t, slash_errno, linux.Errno.NONE)
+	defer linux.close(slash)
+	procfs: linux.Statx
+	testing.expect_value(
+		t,
+		linux.statx(slash, "proc", {.NO_AUTOMOUNT}, {}, &procfs),
+		linux.Errno.NONE,
+	)
+	stop, on = stops_at(slash, raw_data(string("proc")), procfs, here)
+	testing.expect(t, stop, "/proc is not stopped at")
+	testing.expect(t, on != here, "/proc is named the root's filesystem")
+
+	// The subvolumes this makes are btrfs ones.
+	fs: linux.Stat_FS
+	testing.expect_value(t, linux.fstatfs(dir, &fs), linux.Errno.NONE)
+	if fs.type != .BTRFS_SUPER_MAGIC {
+		log.warnf("subvolumes not checked: %s is on %v, not btrfs", root, fs.type)
+		return
+	}
+	testing.expect(t, make_subvolume(root, "sub"), "could not make a subvolume")
+	testing.expect(t, make_subvolume(root, "ro"), "could not make a second subvolume")
+	for name in ([]string{"plain/a", "sub/b", "ro/c"}) {
+		path := fmt.tprintf("%s/%s", root, name)
+		testing.expectf(
+			t,
+			os.write_entire_file(path, []byte{'x'}) == nil,
+			"could not write %s",
+			path,
+		)
+	}
+	testing.expect(
+		t,
+		set_read_only(fmt.tprintf("%s/ro", root), true),
+		"could not mark ro read-only",
+	)
+
+	tree: scan.Tree
+	testing.expect_value(t, scan.tree_init(&tree, 1), scan.Error.None)
+	defer scan.tree_destroy(&tree)
+	testing.expect_value(t, read(root, &tree, Config{}), Error.None)
+
+	children := make([]int, tree.count, context.temp_allocator)
+	for i in 0 ..< tree.count {
+		n := scan.node(&tree, i)
+		if i != tree.root && .Used in n.flags {
+			children[n.parent] += 1
+		}
+	}
+	seen := 0
+	for i in 0 ..< tree.count {
+		n := scan.node(&tree, i)
+		if i == tree.root || .Used not_in n.flags || n.parent != tree.root {
+			continue
+		}
+		switch scan.name_of(&tree, i) {
+		case "plain", "sub":
+			seen += 1
+			testing.expectf(
+				t,
+				.Mount not_in n.flags,
+				"%s is marked a mount",
+				scan.name_of(&tree, i),
+			)
+			testing.expectf(
+				t,
+				children[i] == 1,
+				"%s holds %d entries, not 1",
+				scan.name_of(&tree, i),
+				children[i],
+			)
+		case "ro":
+			seen += 1
+			testing.expect(t, .Mount in n.flags, "the read-only subvolume is not marked a mount")
+			testing.expectf(
+				t,
+				children[i] == 0,
+				"the read-only subvolume was walked: %d entries",
+				children[i],
+			)
+		}
+	}
+	testing.expect_value(t, seen, 3)
+}
+
+// From linux/btrfs.h: _IOW(0x94, 14, struct btrfs_ioctl_vol_args) and
+// _IOW(0x94, 26, __u64).
+@(private = "file")
+BTRFS_IOC_SUBVOL_CREATE :: 0x5000940e
+@(private = "file")
+BTRFS_IOC_SUBVOL_SETFLAGS :: 0x4008941a
+
+// Make a btrfs subvolume called `name` in `dir`; false where dir is not btrfs.
+@(private = "file")
+make_subvolume :: proc(dir: string, name: string) -> bool {
+	fd, errno := linux.open(
+		strings.clone_to_cstring(dir, context.temp_allocator),
+		{.DIRECTORY, .CLOEXEC},
+	)
+	if errno != .NONE {
+		return false
+	}
+	defer linux.close(fd)
+	// struct btrfs_ioctl_vol_args: an fd, then the name in the rest of 4096 bytes.
+	args: struct {
+		fd:   i64,
+		name: [4088]u8,
+	}
+	copy(args.name[:len(args.name) - 1], name)
+	return int(linux.ioctl(fd, BTRFS_IOC_SUBVOL_CREATE, uintptr(&args))) >= 0
+}
+
+@(private = "file")
+set_read_only :: proc(path: string, on: bool) -> bool {
+	fd, errno := linux.open(
+		strings.clone_to_cstring(path, context.temp_allocator),
+		{.DIRECTORY, .CLOEXEC},
+	)
+	if errno != .NONE {
+		return false
+	}
+	defer linux.close(fd)
+	flags: u64 = on ? BTRFS_SUBVOL_RDONLY : 0
+	return int(linux.ioctl(fd, BTRFS_IOC_SUBVOL_SETFLAGS, uintptr(&flags))) >= 0
+}
+
+// A read-only subvolume refuses to have its files removed, so it is made writable
+// first; an empty subvolume is then removed as a directory is.
+@(private = "file")
+remove_subvolumes :: proc(root: string) {
+	set_read_only(fmt.tprintf("%s/ro", root), false)
+	os.remove_all(root)
+}

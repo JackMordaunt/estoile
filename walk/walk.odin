@@ -245,13 +245,15 @@ drop :: proc(d: Dir) {
 // node `base` names in the tree it updates.
 @(private)
 Dir :: struct {
-	index:  u32,
-	path:   string, // owned; freed once walked
-	base:   u32, // the same directory in the tree updated, for a job other than Walk
-	job:    Job,
-	// The device holding it, as the reader that found it learned it; 0 where it did
-	// not, and the directory is asked when read. Only the Linux reader uses it.
-	device: u64,
+	index:      u32,
+	path:       string, // owned; freed once walked
+	base:       u32, // the same directory in the tree updated, for a job other than Walk
+	job:        Job,
+	// The device and filesystem holding it, as the reader that found it learned
+	// them; 0 where it did not, and the directory is asked when read. Only the
+	// Linux reader uses them, to tell where a walk crosses onto another filesystem.
+	device:     u64,
+	filesystem: u128,
 }
 
 // What becomes of a directory waiting to be read.

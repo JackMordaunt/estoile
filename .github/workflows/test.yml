@@ -90,7 +90,8 @@ jobs:
       # report/pdf falls back through a list of system fonts, failing its
       # test outright if it finds none; Ubuntu ships none of them, so
       # fonts-liberation is installed and symlinked where pdf/system.odin
-      # looks, the same fix jm's own test.yml uses. cmake and ninja build
+      # looks, the same fix jm's own test.yml uses. btrfs-progs makes and reads
+      # the image btrfs-test below runs on. cmake and ninja build
       # Blend2D and, on Linux only, SDL3 from source below. libcurl4-openssl-dev
       # is jm:http's link dependency, pulled in by gui/app through
       # jm:http/loopback even though loopback itself never opens a socket.
@@ -98,7 +99,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends cmake ninja-build fonts-liberation libcurl4-openssl-dev
+          sudo apt-get install -y --no-install-recommends cmake ninja-build fonts-liberation libcurl4-openssl-dev btrfs-progs
           sudo mkdir -p /usr/share/fonts/liberation
           sudo ln -sf /usr/share/fonts/truetype/liberation/*.ttf /usr/share/fonts/liberation/
 
@@ -224,6 +225,14 @@ jobs:
         run: |
           if [ "${{ runner.os }}" = Windows ]; then export SAN=; fi
           just test
+      # The btrfs and walk tests again on a btrfs image, mounted with the
+      # runner's passwordless sudo and run both as the runner and as root,
+      # since only root may read a file's extents. tools/btrfs-fixture says
+      # how the expected total is worked out from the image.
+      - name: btrfs-test (linux)
+        if: runner.os == 'Linux'
+        timeout-minutes: 10
+        run: just btrfs-test --sudo
       - name: gui-test
         timeout-minutes: 20
         run: |

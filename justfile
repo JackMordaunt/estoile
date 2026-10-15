@@ -7,6 +7,8 @@
 #   just run [release] [dir]  build the window, then open it on a directory, the
 #                             home directory by default
 #   just test                 run every imported package's tests under ASan -> build/test/
+#   just btrfs-test [--sudo]  the btrfs and walk tests on a throw-away btrfs image,
+#                             as root too with --sudo where sudo asks no password
 #   just install              put the release command line on PATH as leita and le
 #   just check                type-check both modes without producing a binary
 #   just clean                remove build/
@@ -101,6 +103,13 @@ run *args:
 test: sqlite
     mkdir -p build/test
     {{odin}} test . -all-packages -debug {{san}} {{flags}} -out:build/test/{{bin}}{{exe}}
+
+# The btrfs and walk tests on a btrfs image made, mounted and filled for them,
+# against a total worked out from the image; skipped where nothing can mount one.
+# --sudo lets it mount with sudo and test as root too, where sudo asks no password,
+# as CI does. See tools/btrfs-fixture: just btrfs-test [--sudo] [--keep]
+btrfs-test *args: sqlite
+    tools/btrfs-fixture --odin "{{odin}}" --flags "{{san}} {{flags}}" {{args}}
 
 # Type-check both modes without producing a binary.
 check:

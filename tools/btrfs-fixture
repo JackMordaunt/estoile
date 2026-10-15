@@ -1,0 +1,331 @@
+#!/usr/bin/env python3
+"""Run the btrfs and walk tests on a throw-away btrfs image.
+
+The image holds what btrfs makes a walk get wrong: compressed files, reflinked
+copies, a writable snapshot sharing every extent, a sparse file, inline files, and
+hard links to an inline and a regular file. The tests are told where it is
+mounted (LEITA_BTRFS_DIR, read only, and LEITA_BTRFS_SCRATCH, to write in) and
+what a walk of it must total (LEITA_BTRFS_DISK).
+
+That total is worked out from the image itself, not from a run of compsize:
+`btrfs inspect-internal dump-tree` reads the image file without privilege, and
+every regular extent is charged once, wherever it is referred to, and every inline
+extent once per inode of each subvolume. compsize charges an inline extent once
+for every path that reaches it, so a hard-linked inline file costs it once per
+name; this charges it once, as the walk charges a file with several names.
+
+Searching a file's extents needs CAP_SYS_ADMIN, so unprivileged the tests expect
+the walk to fall back to st_blocks, and as root they expect the total. The tests
+are run as this user, and again as root when this script is root already or is
+given --sudo and `sudo -n` works, as on GitHub's Linux runners. Only --sudo lets it
+use sudo at all, so credentials sudo happens to have cached never turn an ordinary
+run into a root one.
+
+The image is mounted with udisks where a desktop session offers it, and with
+`sudo -n mount` under --sudo otherwise. A machine with neither, or without
+mkfs.btrfs, skips the whole run and says why; `just test` still runs every test
+there, each predicting what it can check.
+
+    tools/btrfs-fixture
+    tools/btrfs-fixture --sudo          mount with sudo if need be, and test as root too
+    tools/btrfs-fixture --keep          leave the image mounted afterwards
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parent.parent
+WORK = REPO / "build" / "btrfs-fixture"
+IMAGE = WORK / "btrfs.img"
+SIZE = 256 * 1024 * 1024  # mkfs.btrfs wants 114 MiB at least for a single device
+WALK_TOTAL = "walk.test_walk_charges_btrfs_extents_or_says_why"
+
+
+def say(text: str) -> None:
+    print(f"btrfs-fixture: {text}", flush=True)
+
+
+def run(argv: list[str], **kw) -> subprocess.CompletedProcess:
+    return subprocess.run(argv, check=True, **kw)
+
+
+def quiet(argv: list[str]) -> bool:
+    return subprocess.run(argv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+
+
+def is_root() -> bool:
+    return os.geteuid() == 0
+
+
+# Set by --sudo: whether sudo may be used at all.
+SUDO = False
+
+
+def can_sudo() -> bool:
+    return SUDO and not is_root() and shutil.which("sudo") is not None and quiet(["sudo", "-n", "true"])
+
+
+def has_udisks() -> bool:
+    return (
+        not is_root()
+        and shutil.which("udisksctl") is not None
+        and bool(os.environ.get("DBUS_SESSION_BUS_ADDRESS") or os.environ.get("XDG_RUNTIME_DIR"))
+        and quiet(["udisksctl", "status"])
+    )
+
+
+class Mount:
+    """The image, attached and mounted one of three ways, and how to undo it."""
+
+    def __init__(self) -> None:
+        self.dev = ""
+        self.path = Path()
+        self.how = ""
+
+    def attach(self) -> None:
+        self.detach_stale()
+        if is_root():
+            self.mount_loop([])
+            return
+        if has_udisks():
+            self.how = "udisks"
+            out = run(
+                ["udisksctl", "loop-setup", "--no-user-interaction", "-f", str(IMAGE)],
+                capture_output=True,
+                text=True,
+            ).stdout
+            found = re.search(r"(/dev/loop\d+)", out)
+            if not found:
+                raise RuntimeError(f"no loop device in: {out.strip()}")
+            self.dev = found[1]
+            for _ in range(50):
+                target = mounted_at(self.dev)
+                if target:
+                    self.path = Path(target)
+                    return
+                time.sleep(0.1)
+            run(["udisksctl", "mount", "--no-user-interaction", "-b", self.dev], stdout=subprocess.DEVNULL)
+            target = mounted_at(self.dev)
+            if not target:
+                raise RuntimeError(f"{self.dev} did not mount")
+            self.path = Path(target)
+            return
+        if can_sudo():
+            self.mount_loop(["sudo", "-n"])
+            return
+        raise RuntimeError("cannot mount: no udisks session, and no --sudo or passwordless sudo")
+
+    def mount_loop(self, prefix: list[str]) -> None:
+        self.how = "sudo" if prefix else "root"
+        self.path = WORK / "mnt"
+        self.path.mkdir(exist_ok=True)
+        run(prefix + ["mount", "-o", "loop", str(IMAGE), str(self.path)])
+
+    def detach(self) -> None:
+        if self.how in ("root", "sudo"):
+            prefix = [] if is_root() else ["sudo", "-n"]
+            subprocess.run(prefix + ["umount", str(self.path)], stderr=subprocess.DEVNULL)
+        elif self.how == "udisks":
+            subprocess.run(["udisksctl", "unmount", "--no-user-interaction", "-b", self.dev], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(["udisksctl", "loop-delete", "--no-user-interaction", "-b", self.dev], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.how = ""
+
+    def detach_stale(self) -> None:
+        """Undo a run that stopped before it cleaned up."""
+        listed = subprocess.run(["losetup", "-j", str(IMAGE)], capture_output=True, text=True).stdout
+        for line in listed.splitlines():
+            dev = line.split(":", 1)[0]
+            target = mounted_at(dev)
+            if shutil.which("udisksctl") and not is_root():
+                subprocess.run(["udisksctl", "unmount", "--no-user-interaction", "-b", dev], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                subprocess.run(["udisksctl", "loop-delete", "--no-user-interaction", "-b", dev], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            if mounted_at(dev) and (is_root() or can_sudo()):
+                prefix = [] if is_root() else ["sudo", "-n"]
+                subprocess.run(prefix + ["umount", target], stderr=subprocess.DEVNULL)
+
+
+def mounted_at(dev: str) -> str:
+    out = subprocess.run(["findmnt", "-no", "TARGET", dev], capture_output=True, text=True).stdout.strip()
+    return out.splitlines()[0] if out else ""
+
+
+def make_image() -> None:
+    """An empty image whose top directory belongs to this user, so whoever mounts it,
+    this user can fill it: mkfs.btrfs copies the owner of --rootdir."""
+    seed = WORK / "seed"
+    seed.mkdir(parents=True, exist_ok=True)
+    with open(IMAGE, "wb") as f:
+        f.truncate(SIZE)
+    run(["mkfs.btrfs", "-q", "-f", "-L", "leita-btrfs-test", "-r", str(seed), str(IMAGE)])
+
+
+def fill(top: Path) -> None:
+    """The shape of the volume compsize was first checked on, plus hard links."""
+    run(["btrfs", "-q", "subvolume", "create", str(top / "vol")], stdout=subprocess.DEVNULL)
+    vol = top / "vol"
+    (vol / "comp").mkdir()
+    (vol / "plain").mkdir()
+    (top / "scratch").mkdir()
+    # Inherited by every file made in it afterwards.
+    run(["btrfs", "property", "set", str(vol / "comp"), "compression", "zstd"])
+    # The plain directory is kept uncompressed whatever the mount says.
+    run(["chattr", "+m", str(vol / "plain")])
+    text = b"".join(b"line %d of a file that compresses well\n" % i for i in range(60000))
+    noise = os.urandom(1024 * 1024)
+    for d in ("comp", "plain"):
+        (vol / d / "text").write_bytes(text)
+        (vol / d / "random").write_bytes(noise if d == "plain" else os.urandom(512 * 1024))
+    run(["cp", "--reflink=always", str(vol / "plain/random"), str(vol / "plain/random.reflink")])
+    run(["cp", "--reflink=always", str(vol / "comp/text"), str(vol / "plain/text.reflink")])
+    with open(vol / "plain/sparse", "wb") as f:
+        f.truncate(1024 * 1024)
+        f.seek(512 * 1024)
+        f.write(os.urandom(8192))
+    (vol / "plain/tiny").write_bytes(b"small enough to sit inline in its metadata\n")
+    os.link(vol / "plain/tiny", vol / "plain/tiny.link")
+    os.link(vol / "plain/random", vol / "comp/random.link")
+    run(["sync", "-f", str(top)])
+    run(["btrfs", "-q", "subvolume", "snapshot", str(vol), str(top / "snap")], stdout=subprocess.DEVNULL)
+    # A file only the snapshot has, so its tree is not the volume's.
+    (top / "snap/plain/own").write_bytes(os.urandom(64 * 1024))
+    run(["sync", "-f", str(top)])
+
+
+def tree_id(path: Path) -> int:
+    out = run(["btrfs", "inspect-internal", "rootid", str(path)], capture_output=True, text=True).stdout
+    return int(out.strip())
+
+
+def extents(tree: int) -> tuple[dict[int, int], dict[int, int]]:
+    """One subvolume's regular extents by disk address, and its inline bytes by inode,
+    from dump-tree over the image file."""
+    out = run(
+        ["btrfs", "inspect-internal", "dump-tree", "-t", str(tree), str(IMAGE)],
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    regular: dict[int, int] = {}
+    inline: dict[int, int] = {}
+    for i, line in enumerate(out):
+        key = re.search(r"item \d+ key \((\d+) EXTENT_DATA \d+\)", line)
+        if not key:
+            continue
+        ino = int(key[1])
+        if "(inline)" in out[i + 1]:
+            size = re.search(r"inline extent data size (\d+)", out[i + 2])
+            inline[ino] = inline.get(ino, 0) + int(size[1])
+            continue
+        where = re.search(r"disk byte (\d+) nr (\d+)", out[i + 2])
+        if where and int(where[1]) != 0:
+            regular[int(where[1])] = int(where[2])
+    return regular, inline
+
+
+def oracle(trees: list[int]) -> int:
+    """What a walk over these subvolumes must charge."""
+    seen: dict[int, int] = {}
+    total = 0
+    for tree in trees:
+        regular, inline = extents(tree)
+        seen.update(regular)
+        total += sum(inline.values())
+    return total + sum(seen.values())
+
+
+def build(odin: str, flags: list[str], package: str, out: Path, define: str = "") -> None:
+    argv = [odin, "build", package, "-build-mode:test", *flags, f"-out:{out}"]
+    if define:
+        argv.append(f"-define:ODIN_TEST_NAMES={define}")
+    run(argv, cwd=REPO)
+
+
+def run_tests(binary: Path, env: dict[str, str], as_root: bool) -> bool:
+    argv = [str(binary)]
+    if as_root and not is_root():
+        argv = ["sudo", "-n", "env", *(f"{k}={v}" for k, v in env.items()), str(binary)]
+    who = "root" if as_root else "unprivileged"
+    say(f"{binary.name} as {who}, {' '.join(f'{k}={v}' for k, v in env.items())}")
+    done = subprocess.run(argv, env={**os.environ, **env}, cwd=REPO)
+    return done.returncode == 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--odin", default=os.environ.get("ODIN", "odin"))
+    parser.add_argument("--flags", default="", help="what the justfile builds tests with")
+    parser.add_argument("--keep", action="store_true", help="leave the image mounted")
+    parser.add_argument("--sudo", action="store_true", help="use sudo -n to mount and to test as root")
+    args = parser.parse_args()
+    global SUDO
+    SUDO = args.sudo
+
+    if sys.platform != "linux":
+        say("skipped: btrfs is Linux's")
+        return 0
+    for tool in ("mkfs.btrfs", "btrfs", "losetup", "findmnt"):
+        if not shutil.which(tool):
+            say(f"skipped: {tool} is not installed")
+            return 0
+    if not (is_root() or can_sudo() or has_udisks()):
+        say("skipped: cannot mount an image here, with no udisks session, and no --sudo or passwordless sudo")
+        return 0
+
+    WORK.mkdir(parents=True, exist_ok=True)
+    flags = args.flags.split() or subprocess.run(
+        ["just", "--evaluate", "flags"], capture_output=True, text=True, cwd=REPO, check=True
+    ).stdout.split()
+    flags = ["-debug", *flags]
+    walk_all, walk_total, btrfs_all = WORK / "walk-test", WORK / "walk-total-test", WORK / "btrfs-test"
+    build(args.odin, flags, "walk", walk_all)
+    build(args.odin, flags, "walk", walk_total, WALK_TOTAL)
+    build(args.odin, flags, "btrfs", btrfs_all)
+
+    mount = Mount()
+    make_image()
+    mount.attach()
+    ok = True
+    try:
+        top = mount.path
+        say(f"mounted {IMAGE} at {top} ({mount.how})")
+        fill(top)
+        vol_tree, snap_tree, top_tree = tree_id(top / "vol"), tree_id(top / "snap"), tree_id(top)
+        vol_disk = oracle([vol_tree])
+        all_disk = oracle([top_tree, vol_tree, snap_tree])
+        say(f"oracle: vol {vol_disk} bytes, whole mount {all_disk} bytes")
+        scratch = str(top / "scratch")
+        runs = [
+            (walk_all, {"LEITA_BTRFS_DIR": str(top / "vol"), "LEITA_BTRFS_DISK": str(vol_disk), "LEITA_BTRFS_SCRATCH": scratch}),
+            (walk_total, {"LEITA_BTRFS_DIR": str(top), "LEITA_BTRFS_DISK": str(all_disk)}),
+            (btrfs_all, {"LEITA_BTRFS_SCRATCH": scratch}),
+        ]
+        privileges = [is_root()] + ([True] if can_sudo() else [])
+        if not is_root() and not can_sudo():
+            say("as root: not run; give --sudo where sudo asks no password, or run this as root")
+        for as_root in privileges:
+            for binary, env in runs:
+                ok = run_tests(binary, env, as_root) and ok
+    finally:
+        if args.keep and ok:
+            say(f"kept mounted at {mount.path}")
+        else:
+            mount.detach()
+        if is_root() and os.environ.get("SUDO_UID"):
+            # Leave build/ to the user who asked for root, not to root.
+            uid, gid = int(os.environ["SUDO_UID"]), int(os.environ.get("SUDO_GID", os.environ["SUDO_UID"]))
+            for p in [WORK, *WORK.rglob("*")]:
+                if not (args.keep and ok and mount.path in p.parents):
+                    os.lchown(p, uid, gid)
+    say("passed" if ok else "FAILED")
+    return 0 if ok else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

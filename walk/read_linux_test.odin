@@ -148,14 +148,20 @@ A directory on the same filesystem is walked and one on another is not. A btrfs
 subvolume has a device of its own but lies in the same pool, so it is walked,
 while a read-only one, as snapper's snapshots are, is stopped at as a mount is.
 btrfs lets the owner of a directory make a subvolume in it and mark it read-only, so
-the test builds both beside the working directory, under build/. Where that is not
-btrfs it checks only that the same filesystem is walked and /proc is not.
+the test builds both in LEITA_BTRFS_SCRATCH, a btrfs directory it may write in,
+which tools/btrfs-fixture names; it fails if that is not btrfs. Unset, it builds
+them beside the working directory, under build/, and where that is not btrfs it
+checks only that the same filesystem is walked and /proc is not.
 */
 @(test)
 test_the_walk_stays_on_one_filesystem_but_not_one_device :: proc(t: ^testing.T) {
-	cwd, cwd_err := os.get_working_directory(context.temp_allocator)
-	testing.expect(t, cwd_err == nil, "no working directory")
-	root := fmt.tprintf("%s/build/leita_walk_subvolumes", cwd)
+	scratch := os.get_env("LEITA_BTRFS_SCRATCH", context.temp_allocator)
+	if scratch == "" {
+		cwd, cwd_err := os.get_working_directory(context.temp_allocator)
+		testing.expect(t, cwd_err == nil, "no working directory")
+		scratch = fmt.tprintf("%s/build", cwd)
+	}
+	root := fmt.tprintf("%s/leita_walk_subvolumes", scratch)
 	defer remove_subvolumes(root)
 	remove_subvolumes(root)
 	testing.expect(t, os.make_directory_all(root) == nil, "could not make the root")
@@ -199,6 +205,12 @@ test_the_walk_stays_on_one_filesystem_but_not_one_device :: proc(t: ^testing.T) 
 	fs: linux.Stat_FS
 	testing.expect_value(t, linux.fstatfs(dir, &fs), linux.Errno.NONE)
 	if fs.type != .BTRFS_SUPER_MAGIC {
+		testing.expectf(
+			t,
+			os.get_env("LEITA_BTRFS_SCRATCH", context.temp_allocator) == "",
+			"LEITA_BTRFS_SCRATCH is on %v, not btrfs",
+			fs.type,
+		)
 		log.warnf("subvolumes not checked: %s is on %v, not btrfs", root, fs.type)
 		return
 	}

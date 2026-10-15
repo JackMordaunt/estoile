@@ -12,11 +12,12 @@ measure says what the walk needs to know: off btrfs the kernel does not know the
 ioctl, on btrfs without root it refuses it, and as root on btrfs a written and synced
 file is charged what it wrote. Which of the three a run sees depends on where the
 file lies and who runs it, so the test works that out and expects that one.
-LEITA_BTRFS_DIR names a btrfs directory to write in, the temp directory otherwise.
+LEITA_BTRFS_SCRATCH names a btrfs directory to write in, as tools/btrfs-fixture
+sets it, and the test then fails if it is not btrfs; the temp directory otherwise.
 */
 @(test)
 test_measure_reads_or_says_why :: proc(t: ^testing.T) {
-	dir := os.get_env("LEITA_BTRFS_DIR", context.temp_allocator)
+	dir := os.get_env("LEITA_BTRFS_SCRATCH", context.temp_allocator)
 	if dir == "" {
 		temp, temp_err := os.temp_directory(context.temp_allocator)
 		testing.expect(t, temp_err == nil, "no temp directory")
@@ -41,6 +42,12 @@ test_measure_reads_or_says_why :: proc(t: ^testing.T) {
 	testing.expect_value(t, linux.statfs(cdir, &fs), linux.Errno.NONE)
 	want := Error.None
 	if fs.type != .BTRFS_SUPER_MAGIC {
+		testing.expectf(
+			t,
+			os.get_env("LEITA_BTRFS_SCRATCH", context.temp_allocator) == "",
+			"LEITA_BTRFS_SCRATCH is on %v, not btrfs",
+			fs.type,
+		)
 		want = .Not_Btrfs
 	} else if linux.geteuid() != 0 {
 		want = .Not_Permitted

@@ -26,9 +26,13 @@ for the same directory, and the tree does not call its sizes logical.
 
 LEITA_BTRFS_DIR names a directory to walk, which is read and not changed; a small
 one made in the temp directory otherwise. LEITA_BTRFS_DISK, when set, is the total
-the walk must reach as root, compsize's disk usage for that directory. measure
-follows into every subvolume, where the walk stops at a read-only one, so the
-directory named should hold none.
+the walk must reach as root, which tools/btrfs-fixture works out from the image
+itself; otherwise the walk must reach what measure charges. measure, as compsize
+does (parse_file_extent_item in compsize.c at d79eacf adds an inline extent without
+consulting its seen-set), charges an inline extent once for every name that reaches
+it, where the walk charges a hard-linked file once, and it follows into every
+subvolume, where the walk stops at a read-only one: without LEITA_BTRFS_DISK the
+directory named should hold neither.
 */
 @(test)
 test_walk_charges_btrfs_extents_or_says_why :: proc(t: ^testing.T) {
@@ -106,19 +110,22 @@ test_walk_charges_btrfs_extents_or_says_why :: proc(t: ^testing.T) {
 		on_btrfs,
 		searched,
 	)
+	testing.expect(t, files > 0, "the walk found no files")
 	testing.expect_value(t, scan.is_logical(&tree), on_btrfs && !searched)
 
 	// What the walk must total: st_blocks where it could not search, and otherwise
-	// what measure charges, and compsize when it is given.
+	// the total given, or what measure charges.
 	want := blocks
 	if searched {
-		u: btrfs.Usage
-		defer btrfs.usage_destroy(&u)
-		testing.expect_value(t, btrfs.measure(dir, &u), btrfs.Error.None)
-		want = btrfs.total(u).disk
 		disk := os.get_env("LEITA_BTRFS_DISK", context.temp_allocator)
-		if compsize, ok := strconv.parse_u64(disk); ok {
-			testing.expect_value(t, want, compsize)
+		given, ok := strconv.parse_u64(disk)
+		if ok {
+			want = given
+		} else {
+			u: btrfs.Usage
+			defer btrfs.usage_destroy(&u)
+			testing.expect_value(t, btrfs.measure(dir, &u), btrfs.Error.None)
+			want = btrfs.total(u).disk
 		}
 	} else {
 		testing.expect_value(t, shared, 0)

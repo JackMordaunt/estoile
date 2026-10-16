@@ -21,7 +21,7 @@ The steps sit in a window onto them that shows the deepest, letting the top
 fade off its left edge, and that scrolls sideways under the wheel or a trackpad
 with no bar.
 
-A click on the bar's empty end, or Ctrl+L, turns it into a field holding the path:
+A click on the bar's empty end, or Cmd/Ctrl+L, turns it into a field holding the path:
 Enter scans what it holds, Escape or a click away puts the steps back. With no
 scan yet, or one that failed, it is the field.
 */

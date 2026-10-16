@@ -90,10 +90,9 @@ settings_menu :: proc(gtx: ^ui.Ctx, m: ^Model, prog: ^query.Progress_Result) {
 		if primer.action_menu_item(&menu, tr(.Stop), leading = .Square_Fill, variant = .Danger) {
 			ui.command(gtx, command.Command(command.Stop{}))
 		}
-	case prog != nil && prog.target != "":
-		// Scanning the same place again picks up what changed on disk since.
-		if primer.action_menu_item(&menu, tr(.Rescan), leading = .Sync) {
-			ui.command(gtx, command.Command(command.Scan{path = command.text_make(prog.target)}))
+	case can_rescan(prog):
+		if primer.action_menu_item(&menu, tr(.Rescan), leading = .Sync, hint = "Mod+R") {
+			rescan(gtx, prog)
 		}
 	}
 	if primer.action_menu_item(&menu, tr(.Monitoring), leading = .Pulse) {

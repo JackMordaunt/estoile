@@ -333,7 +333,7 @@ view :: proc(gtx: ^ui.Ctx, user: rawptr) {
 		clear(&m.reclaim_pick)
 		forget_history(m)
 	}
-	walk_history(gtx, m)
+	walk_history(gtx, m, prog)
 	// Last frame's hovered row is this frame's to show; a change needs the frame
 	// that shows it.
 	if m.row_hover != m.row_hover_next {

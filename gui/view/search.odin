@@ -17,7 +17,7 @@ import "../query"
 /*
 Searching the scan.
 
-The magnifier beside the location bar, or Ctrl+F, turns the bar into a search
+The magnifier beside the location bar, or Cmd/Ctrl+F, turns the bar into a search
 field. Whatever is typed there is searched for across everything the scan has
 found, as fzf finds things (query.Search), and while there is a term the charts
 and the side column give way to what it found: a list, or a grid, of the entries

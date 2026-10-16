@@ -129,8 +129,8 @@ the_magnifier_turns_the_location_into_a_search_and_escape_back :: proc(t: ^testi
 	testing.expect(t, !s.m.searching, "Escape puts the location back")
 	testing.expect_value(t, ui.text_string(&s.m.search), "")
 
-	// Ctrl+F opens it again, empty.
-	ui.probe_key(p, .F, {.Ctrl})
+	// Cmd/Ctrl+F opens it again, empty.
+	ui.probe_key(p, .F, {ui.SHORTCUT})
 	settle(p)
 	testing.expect(t, s.m.searching)
 	testing.expect_value(t, ui.text_string(&s.m.search), "")
@@ -329,7 +329,7 @@ the_bar_holds_still_as_the_search_opens_and_closes :: proc(t: ^testing.T) {
 			testing.expectf(t, at == was, "%s, frame %d: Settings at %v, not %v", switching, i, at, was)
 		}
 	}
-	ui.probe_key(p, .F, {.Ctrl})
+	ui.probe_key(p, .F, {ui.SHORTCUT})
 	still(t, p, was, "opening")
 	testing.expect(t, s.m.searching)
 	// The field takes the place of the bar and the magnifier both.
@@ -340,7 +340,7 @@ the_bar_holds_still_as_the_search_opens_and_closes :: proc(t: ^testing.T) {
 	still(t, p, was, "closing")
 	testing.expect(t, !s.m.searching)
 
-	ui.probe_key(p, .F, {.Ctrl})
+	ui.probe_key(p, .F, {ui.SHORTCUT})
 	ui.probe_frame(p)
 	at := ui.probe_bounds(p, "Search")
 	testing.expectf(t, at == field, "opened again, first frame: field at %v, not %v", at, field)

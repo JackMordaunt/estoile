@@ -83,16 +83,19 @@ forget_history :: proc(m: ^Model) {
 }
 
 // walk_history walks the history on the mouse's back and forward buttons, or Alt with
-// an arrow, wherever the pointer is: keys the frame asks for window-wide.
+// an arrow, wherever the pointer is: keys the frame asks for window-wide. The
+// platform's command key, Cmd on macOS and Ctrl elsewhere, with L edits the
+// location, with F searches, and with R scans the place again.
 @(private)
-walk_history :: proc(gtx: ^ui.Ctx, m: ^Model) {
+walk_history :: proc(gtx: ^ui.Ctx, m: ^Model, prog: ^query.Progress_Result) {
 	nav := ui.claim_id(gtx)
 	ui.key_interest(gtx, nav, .Browser_Back)
 	ui.key_interest(gtx, nav, .Browser_Forward)
 	ui.key_interest(gtx, nav, .Left, {.Alt})
 	ui.key_interest(gtx, nav, .Right, {.Alt})
-	ui.key_interest(gtx, nav, .L, {.Ctrl})
-	ui.key_interest(gtx, nav, .F, {.Ctrl})
+	ui.key_interest(gtx, nav, .L, {ui.SHORTCUT})
+	ui.key_interest(gtx, nav, .F, {ui.SHORTCUT})
+	ui.key_interest(gtx, nav, .R, {ui.SHORTCUT})
 	for e in ui.events(gtx, nav) {
 		if e.kind != .Key {
 			continue
@@ -109,8 +112,27 @@ walk_history :: proc(gtx: ^ui.Ctx, m: ^Model) {
 			}
 		case .F:
 			open_search(m)
+		case .R:
+			rescan(gtx, prog)
 		}
 	}
+}
+
+// can_rescan is whether there is a finished scan to run again: a place, and no
+// scan running there.
+@(private)
+can_rescan :: proc(prog: ^query.Progress_Result) -> bool {
+	return prog != nil && prog.target != "" && prog.state != .Scanning
+}
+
+// rescan scans the place again, which picks up what changed on disk since;
+// nothing while a scan runs or before one.
+@(private)
+rescan :: proc(gtx: ^ui.Ctx, prog: ^query.Progress_Result) {
+	if !can_rescan(prog) {
+		return
+	}
+	ui.command(gtx, command.Command(command.Scan{path = command.text_make(prog.target)}))
 }
 
 // aim makes the menu and dialogs about t.

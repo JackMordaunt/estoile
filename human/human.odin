@@ -1,7 +1,12 @@
 /*
-Package human writes numbers for a person to read: sizes in binary units and counts
-with their thousands marked. The command line and the window say sizes the same way
-because both say them through here.
+Package human writes numbers for a person to read: sizes in decimal units and
+counts with their thousands marked. The command line and the window say sizes the
+same way because both say them through here.
+
+Sizes are decimal, as SI defines the prefixes and as disks are sold: 1 kB is
+1,000 bytes and 1 GB is 1,000,000,000, on every platform, so a report reads the
+same on every machine. Input takes the binary units too, GiB and its kin, since
+a person may have a figure in those.
 */
 package human
 
@@ -9,37 +14,42 @@ import "core:fmt"
 import "core:strconv"
 import "core:strings"
 
-// bytes is n bytes in binary units, to one decimal place past a KiB.
+// bytes is n bytes in decimal units, to one decimal place past a kB.
 bytes :: proc(n: u64, allocator := context.temp_allocator) -> string {
 	sb := strings.builder_make(allocator)
 	write_bytes(&sb, n)
 	return strings.to_string(sb)
 }
 
-// write_bytes writes n bytes to sb as bytes says them, for a caller saying a
-// great many sizes at once rather than making a string of each.
+/*
+write_bytes writes n bytes to sb as bytes says them, for a caller saying a
+great many sizes at once rather than making a string of each. Under 1,000
+bytes it writes the whole number. Past that it steps up a unit as soon as the
+one decimal place would round to 1000.0, so 999,949 bytes is 999.9 kB and
+999,950 is 1.0 MB.
+*/
 write_bytes :: proc(sb: ^strings.Builder, n: u64) {
-	units := [?]string{"B", "KiB", "MiB", "GiB", "TiB", "PiB"}
-	v := f64(n)
-	i := 0
-	for v >= 1024 && i < len(units) - 1 {
-		v /= 1024
-		i += 1
-	}
-	if i == 0 {
+	units := [?]string{"B", "kB", "MB", "GB", "TB", "PB"}
+	if n < 1000 {
 		fmt.sbprintf(sb, "%d B", n)
 		return
+	}
+	v := f64(n) / 1000
+	i := 1
+	for v >= 999.95 && i < len(units) - 1 {
+		v /= 1000
+		i += 1
 	}
 	fmt.sbprintf(sb, "%.1f %s", v, units[i])
 }
 
 /*
-parse_bytes reads s as bytes writes them, for a flag such as --min-free that
-takes a size rather than printing one: a number, optionally fractional, then an
-optional unit (B, K, KB, KiB, M, MB, MiB, G, GB, GiB, T, TB, TiB, P, PB, PiB;
-case-insensitive; none means bytes). K/M/G/T/P and their "B" and "iB" spellings
-all mean the binary unit, matching bytes above; leita has no use for the
-decimal one. ok is false for anything else, including a negative number or an
+parse_bytes reads a size a flag such as --min-free was given: a number,
+optionally fractional, then an optional unit, with or without a space between.
+Units are case-insensitive. None, or B, means bytes. K, KB, M, MB, G, GB, T, TB,
+P and PB are the decimal units bytes writes, 1,000 apart: 20GB is 20,000,000,000.
+KiB, MiB, GiB, TiB and PiB are the binary ones, 1,024 apart: 20GiB is
+21,474,836,480. ok is false for anything else, including a negative number or an
 empty string.
 */
 parse_bytes :: proc(s: string) -> (n: u64, ok: bool) {
@@ -58,30 +68,40 @@ parse_bytes :: proc(s: string) -> (n: u64, ok: bool) {
 	if !value_ok || value < 0 {
 		return 0, false
 	}
-	KiB :: 1024.0
-	MiB :: 1024.0 * KiB
-	GiB :: 1024.0 * MiB
-	TiB :: 1024.0 * GiB
-	PiB :: 1024.0 * TiB
 	unit := strings.trim_space(trimmed[i:])
-	factor: f64
-	switch strings.to_upper(unit, context.temp_allocator) {
+	factor := unit_factor(strings.to_upper(unit, context.temp_allocator)) or_return
+	return u64(value * factor), true
+}
+
+// unit_factor is the bytes in one of unit, already upper-cased, or false for a
+// unit it does not know.
+unit_factor :: proc(unit: string) -> (factor: f64, ok: bool) {
+	switch unit {
 	case "", "B":
-		factor = 1
-	case "K", "KB", "KIB":
-		factor = KiB
-	case "M", "MB", "MIB":
-		factor = MiB
-	case "G", "GB", "GIB":
-		factor = GiB
-	case "T", "TB", "TIB":
-		factor = TiB
-	case "P", "PB", "PIB":
-		factor = PiB
+		return 1, true
+	case "K", "KB":
+		return 1e3, true
+	case "M", "MB":
+		return 1e6, true
+	case "G", "GB":
+		return 1e9, true
+	case "T", "TB":
+		return 1e12, true
+	case "P", "PB":
+		return 1e15, true
+	case "KIB":
+		return 1024, true
+	case "MIB":
+		return 1024 * 1024, true
+	case "GIB":
+		return 1024 * 1024 * 1024, true
+	case "TIB":
+		return 1024 * 1024 * 1024 * 1024, true
+	case "PIB":
+		return 1024 * 1024 * 1024 * 1024 * 1024, true
 	case:
 		return 0, false
 	}
-	return u64(value * factor), true
 }
 
 // count is n with its thousands separated by commas.

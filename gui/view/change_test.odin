@@ -33,8 +33,8 @@ a_change_is_classed_by_how_far_it_went :: proc(t: ^testing.T) {
 @(test)
 a_change_reads_as_a_signed_size :: proc(t: ^testing.T) {
 	MiB :: u64(1 << 20)
-	testing.expect_value(t, delta_text(3 * MiB, i64(MiB), true), "+2.0 MiB")
-	testing.expect_value(t, delta_text(MiB, i64(3 * MiB), true), "−2.0 MiB")
+	testing.expect_value(t, delta_text(3 * MiB, i64(MiB), true), "+2.1 MB")
+	testing.expect_value(t, delta_text(MiB, i64(3 * MiB), true), "−2.1 MB")
 	testing.expect_value(t, delta_text(MiB, i64(MiB), true), "")
 	testing.expect_value(t, delta_text(2 * MiB, -1, true), "new")
 	testing.expect_value(t, delta_text(1024, -1, true), "")

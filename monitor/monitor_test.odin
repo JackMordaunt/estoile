@@ -209,7 +209,7 @@ a_run_scans_what_is_due_and_keeps_it_in_history :: proc(t: ^testing.T) {
 	_, _ = run_monitor(&b, "on")
 	code, out = run_monitor(&b, "run")
 	testing.expect_value(t, code, 0)
-	testing.expect(t, strings.contains(out, "2.0 MiB"), out)
+	testing.expect(t, strings.contains(out, "2.1 MB"), out)
 	testing.expect_value(t, snapshot_count(t, &b), 1)
 
 	// Not due again within the day, unless every place is asked for.
@@ -231,7 +231,7 @@ a_run_scans_what_is_due_and_keeps_it_in_history :: proc(t: ^testing.T) {
 	testing.expect(t, runs[0].bytes >= 2 << 20)
 	testing.expect_value(t, runs[0].problem, "")
 	_, out = run_monitor(&b, "list")
-	testing.expect(t, strings.contains(out, "2.0 MiB"), out)
+	testing.expect(t, strings.contains(out, "2.1 MB"), out)
 	// The last run updated from the first's tree, and says how much it read again,
 	// and since when, as the command line does.
 	testing.expectf(t, runs[0].updated, "the last run read whole: %s", runs[0].why)
@@ -378,7 +378,7 @@ limits_are_checked_as_they_are_given :: proc(t: ^testing.T) {
 		"--fail-used",
 		"95",
 		"--min-free",
-		"20GiB",
+		"20GB",
 		"--full-within",
 		"14",
 		"--growth",
@@ -389,7 +389,7 @@ limits_are_checked_as_they_are_given :: proc(t: ^testing.T) {
 		t,
 		strings.contains(
 			out,
-			"alerts on 80% used, 95% used (fail), under 20.0 GiB free, full within 14 days, unusual growth",
+			"alerts on 80% used, 95% used (fail), under 20.0 GB free, full within 14 days, unusual growth",
 		),
 		out,
 	)

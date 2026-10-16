@@ -30,6 +30,10 @@ and you can start exploring while the rest arrives.
 - **Click to dig in:** open any folder to see what fills it.
 - **Any drive or folder:** your laptop, a server, an external disk or a disk image.
 
+Sizes are the space a file takes on disk, in the decimal units Finder and the
+disk's label use: 1 GB is 1,000,000,000 bytes. A compressed system app can
+look smaller in leita than in Finder's Get Info, which shows its length.
+
 ## Reports that make the case
 
 Turn any scan into a report from **Export** in the settings menu: **PDF** for the person who signs
@@ -104,7 +108,7 @@ has been. An alert shows once, as a desktop notification and in Monitoring,
 the scan it first appears, and again only after it has cleared:
 
 ```sh
-leita monitor add D: --warn-used 80 --fail-used 95 --min-free 20GiB --full-within 14 --growth
+leita monitor add D: --warn-used 80 --fail-used 95 --min-free 20GB --full-within 14 --growth
 ```
 
 Scheduled scans and their alerts come with a licence, with the same 30-day
@@ -152,7 +156,7 @@ licence required. `--warn-used` and `--fail-used` check the percent used,
 script or RMM tool (NinjaOne, Datto, ConnectWise, ...) can act on:
 
 ```sh
-leita D: --warn-used 80 --fail-used 95 --min-free 20GiB
+leita D: --warn-used 80 --fail-used 95 --min-free 20GB
 ```
 
 | Exit code | Meaning |

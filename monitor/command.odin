@@ -34,7 +34,9 @@ Watch
                             watched; each limit is off unless given:
       --warn-used N         alert once the disk is N percent used
       --fail-used N         alert harder once it is N percent used
-      --min-free SIZE       alert once less than SIZE is free, e.g. 20GiB
+      --min-free SIZE       alert once less than SIZE is free, e.g. 20GB
+                            sizes are decimal: 1 GB = 1,000,000,000 bytes; GiB is
+                            accepted on input
       --full-within N       alert once the disk is forecast full within N days
       --growth              alert when PATH grows far faster than it has been
   leita monitor remove PATH stop watching PATH
@@ -106,7 +108,7 @@ dispatch :: proc(c: Context, args: []string, w: io.Writer) -> int {
 			every:       string `usage:"How often to scan it: hourly, daily or weekly."`,
 			warn_used:   int `usage:"Alert once its disk is this percent used, e.g. 80."`,
 			fail_used:   int `usage:"Alert harder once its disk is this percent used, e.g. 95."`,
-			min_free:    string `usage:"Alert once its disk has less than this free, e.g. 20GiB."`,
+			min_free:    string `usage:"Alert once its disk has less than this free, e.g. 20GB (decimal; GiB is accepted)."`,
 			full_within: int `usage:"Alert once its disk is forecast to be full within this many days."`,
 			growth:      bool `usage:"Alert when it grows far faster than it has been."`,
 		}
@@ -149,7 +151,7 @@ dispatch :: proc(c: Context, args: []string, w: io.Writer) -> int {
 		}
 		if f.min_free != "" {
 			if limits.min_free, ok = human.parse_bytes(f.min_free); !ok {
-				errorf(c, w, "cannot read --min-free %q: a size such as 20GiB", f.min_free)
+				errorf(c, w, "cannot read --min-free %q: a size such as 20GB or 20GiB", f.min_free)
 				return EXIT_FAILED
 			}
 		}

@@ -284,7 +284,7 @@ a_scan_streams_into_the_window_and_a_directory_opens :: proc(t: ^testing.T) {
 
 	// Opening the directory is a new need; the desk answers it at once.
 	open_row(&r, "photos")
-	testing.expect(t, settle(&r, "264.0 KiB in 2 items"), "the directory's contents are listed")
+	testing.expect(t, settle(&r, "270.3 kB in 2 items"), "the directory's contents are listed")
 	testing.expect(t, settle(&r, "arc big.raw"), "the sunburst followed")
 }
 
@@ -298,7 +298,7 @@ a_rescan_starts_over_at_the_top :: proc(t: ^testing.T) {
 
 	testing.expect(t, settle(&r, "photos"))
 	open_row(&r, "photos")
-	testing.expect(t, settle(&r, "264.0 KiB in 2 items"), "photos is open")
+	testing.expect(t, settle(&r, "270.3 kB in 2 items"), "photos is open")
 	first := r.m.generation
 
 	// Scanning again renumbers the tree, so the view goes back to the top. The
@@ -307,7 +307,7 @@ a_rescan_starts_over_at_the_top :: proc(t: ^testing.T) {
 	testing.expect(t, settle(&r, "Done"), "the scan finished")
 	testing.expect(t, choose(&r, "Rescan"))
 	hand_on(&r)
-	testing.expect(t, settle(&r, "268.0 KiB in 2 items"), "the top is listed again")
+	testing.expect(t, settle(&r, "274.4 kB in 2 items"), "the top is listed again")
 	testing.expect(t, r.m.generation > first, "a new generation")
 }
 
@@ -349,7 +349,7 @@ a_click_on_an_arc_opens_it_and_the_hub_goes_back_up :: proc(t: ^testing.T) {
 	hand_on(&r)
 	testing.expect(t, settle(&r, "arc big.raw"), "photos opened")
 	// The listing is its own need, answered apart from the rings: wait for it too.
-	testing.expect(t, settle(&r, "264.0 KiB in 2 items"), "the listing followed")
+	testing.expect(t, settle(&r, "270.3 kB in 2 items"), "the listing followed")
 
 	// The hub goes back up to the top.
 	testing.expect(t, ui.probe_click(&r.p, "hub"))
@@ -526,7 +526,7 @@ a_right_click_moves_an_entry_to_the_trash_and_out_of_the_totals :: proc(t: ^test
 	said := fmt.tprintf("Moved %s to the Trash", name)
 	testing.expect(t, settle(&r, said), "the notice says so")
 	testing.expect(t, settle(&r, fmt.tprintf("arc %s", name), present = false), "its arc is gone")
-	testing.expect(t, settle(&r, "264.0 KiB in 1 item"), "the totals dropped")
+	testing.expect(t, settle(&r, "270.3 kB in 1 item"), "the totals dropped")
 	testing.expect(t, !os.exists(fmt.tprintf("%s/%s", root, name)), "gone from the folder")
 	when ODIN_OS == .Windows {
 		// recycled finds only a record that names root's notes.txt.
@@ -558,7 +558,7 @@ a_right_click_on_a_contents_row_trashes_it :: proc(t: ^testing.T) {
 	rig_open(&r, root)
 	defer rig_close(&r)
 	testing.expect(t, settle(&r, "Done"))
-	testing.expect(t, settle(&r, "268.0 KiB in 2 items"))
+	testing.expect(t, settle(&r, "274.4 kB in 2 items"))
 
 	open_row(&r, name, .Right)
 	press_and_hand_on(&r)
@@ -567,7 +567,7 @@ a_right_click_on_a_contents_row_trashes_it :: proc(t: ^testing.T) {
 	press_and_hand_on(&r)
 	testing.expect(t, ui.probe_click(&r.p, "Trash"), "the dialog asks first")
 	press_and_hand_on(&r)
-	testing.expect(t, settle(&r, "264.0 KiB in 1 item"), "the row is gone from the totals")
+	testing.expect(t, settle(&r, "270.3 kB in 1 item"), "the row is gone from the totals")
 	when ODIN_OS == .Windows {
 		record, file := recycled(root, name)
 		testing.expect(t, os.exists(file), "in the Recycle Bin")
@@ -612,7 +612,7 @@ a_largest_files_name_opens_its_folder :: proc(t: ^testing.T) {
 	testing.expect(t, settle(&r, "Done"))
 	testing.expect(t, settle(&r, "big.raw"))
 	open_row(&r, "big.raw")
-	testing.expect(t, settle(&r, "264.0 KiB in 2 items"), "photos opened")
+	testing.expect(t, settle(&r, "270.3 kB in 2 items"), "photos opened")
 }
 
 @(test)
@@ -758,7 +758,7 @@ the_sunburst_sits_in_the_middle_of_its_room :: proc(t: ^testing.T) {
 		disc := ui.probe_bounds(&r.p, "Sunburst chart")
 		grip := ui.probe_bounds(&r.p, "Resize panels")
 		title := primer.text_style(.Medium, .Semibold).line_height + view.INFO_GAP
-		block := ui.probe_bounds(&r.p, "268.0 KiB").y - title + view.info_height()
+		block := ui.probe_bounds(&r.p, "274.4 kB").y - title + view.info_height()
 		left, right := disc.x - view.PAD, grip.x - (disc.x + disc.w)
 		above, below := disc.y - (block + 8), size.y - view.PAD - (disc.y + disc.h)
 		testing.expectf(
@@ -825,10 +825,10 @@ the_location_bar_walks_the_path_and_scans_above_it :: proc(t: ^testing.T) {
 	ui.probe_click_at(&r.p, ring_point(&r, 0.5))
 	press_and_hand_on(&r)
 	testing.expect(t, settle(&r, "photos"), "photos is a step now")
-	testing.expect(t, settle(&r, "264.0 KiB in 2 items"))
+	testing.expect(t, settle(&r, "270.3 kB in 2 items"))
 	testing.expect(t, ui.probe_click(&r.p, "leita_gui_bar"))
 	press_and_hand_on(&r)
-	testing.expect(t, settle(&r, "268.0 KiB in 2 items"), "the top's step opened the top")
+	testing.expect(t, settle(&r, "274.4 kB in 2 items"), "the top's step opened the top")
 
 	// A step above the scan asks for a scan from there.
 	testing.expect(t, ui.probe_click(&r.p, filepath.base(above)))
@@ -881,7 +881,7 @@ the_location_bar_edits_into_a_field_and_back :: proc(t: ^testing.T) {
 	ui.probe_type(&r.p, fmt.tprintf("%s/photos", root))
 	ui.probe_key(&r.p, .Enter)
 	press_and_hand_on(&r)
-	testing.expect(t, settle(&r, "264.0 KiB in 2 items"), "photos was scanned")
+	testing.expect(t, settle(&r, "270.3 kB in 2 items"), "photos was scanned")
 	testing.expect(t, r.m.generation > first, "as a new scan")
 }
 
@@ -985,7 +985,7 @@ the_treemap_draws_the_same_directory_as_boxes :: proc(t: ^testing.T) {
 	press_and_hand_on(&r)
 	ui.probe_click_at(&r.p, {photos.x + photos.w / 2, photos.y + photos.h / 2})
 	press_and_hand_on(&r)
-	testing.expect(t, settle(&r, "264.0 KiB in 2 items"), "photos opened")
+	testing.expect(t, settle(&r, "270.3 kB in 2 items"), "photos opened")
 	testing.expect(t, settle(&r, "box big.raw"), "and shows its files as boxes")
 }
 
@@ -999,10 +999,10 @@ hovering_a_contents_row_lights_its_arc_and_its_box :: proc(t: ^testing.T) {
 	testing.expect(t, settle(&r, "Done"))
 	testing.expect(t, settle(&r, "arc notes.txt"))
 	// The listing is answered apart from the rings; its rows must be there to hover.
-	testing.expect(t, settle(&r, "268.0 KiB in 2 items"))
+	testing.expect(t, settle(&r, "274.4 kB in 2 items"))
 
 	// The info block says what the chart has lit, the same as pointing at it.
-	said := "4.0 KiB · 1.5% of leita_gui_link"
+	said := "4.1 kB · 1.5% of leita_gui_link"
 	testing.expect(t, !ui.probe_tagged(&r.p, said), "nothing is lit yet")
 	row := ui.probe_bounds(&r.p, "notes.txt")
 	ui.probe_move(&r.p, row.x + 24, row.y + row.h / 2)
@@ -1035,7 +1035,7 @@ the_icicle_opens_a_bar_and_its_top_goes_up :: proc(t: ^testing.T) {
 	rig_open(&r, root)
 	defer rig_close(&r)
 	testing.expect(t, settle(&r, "Done"))
-	testing.expect(t, settle(&r, "268.0 KiB in 2 items"))
+	testing.expect(t, settle(&r, "274.4 kB in 2 items"))
 	// The bars come from the rings' answer, which lands apart from the listing.
 	testing.expect(t, settle(&r, "arc photos"))
 
@@ -1050,13 +1050,13 @@ the_icicle_opens_a_bar_and_its_top_goes_up :: proc(t: ^testing.T) {
 
 	ui.probe_click_at(&r.p, {photos.x + photos.w / 2, photos.y + photos.h / 2})
 	press_and_hand_on(&r)
-	testing.expect(t, settle(&r, "264.0 KiB in 2 items"), "photos opened")
+	testing.expect(t, settle(&r, "270.3 kB in 2 items"), "photos opened")
 	testing.expect(t, settle(&r, "bar big.raw"), "its files are the first row")
 
 	top := ui.probe_bounds(&r.p, "top bar")
 	ui.probe_click_at(&r.p, {top.x + top.w / 2, top.y + top.h / 2})
 	press_and_hand_on(&r)
-	testing.expect(t, settle(&r, "268.0 KiB in 2 items"), "the top bar went up")
+	testing.expect(t, settle(&r, "274.4 kB in 2 items"), "the top bar went up")
 }
 
 @(test)
@@ -1067,7 +1067,7 @@ colouring_by_type_names_the_kind :: proc(t: ^testing.T) {
 	rig_open(&r, root)
 	defer rig_close(&r)
 	testing.expect(t, settle(&r, "Done"))
-	testing.expect(t, settle(&r, "268.0 KiB in 2 items"))
+	testing.expect(t, settle(&r, "274.4 kB in 2 items"))
 	testing.expect(t, !ui.probe_tagged(&r.p, "Archive"), "no legend by folder")
 
 	// The kind is read off the rings' answer, which lands apart from the listing.
@@ -1078,7 +1078,7 @@ colouring_by_type_names_the_kind :: proc(t: ^testing.T) {
 	row := ui.probe_bounds(&r.p, "notes.txt")
 	ui.probe_move(&r.p, row.x + 24, row.y + row.h / 2)
 	ui.probe_advance(&r.p, 3, 1.0 / 60)
-	said := "4.0 KiB · 1.5% of leita_gui_kinds · Text"
+	said := "4.1 kB · 1.5% of leita_gui_kinds · Text"
 	testing.expect(t, ui.probe_tagged(&r.p, said), "the info block names the kind")
 }
 
@@ -1091,13 +1091,13 @@ hovering_a_largest_file_lights_its_arc :: proc(t: ^testing.T) {
 	defer rig_close(&r)
 	testing.expect(t, settle(&r, "Done"))
 	testing.expect(t, settle(&r, "arc photos"))
-	testing.expect(t, settle(&r, "268.0 KiB in 2 items"))
+	testing.expect(t, settle(&r, "274.4 kB in 2 items"))
 
 	// The largest files are an answer of their own, too.
 	testing.expect(t, settle(&r, under(root, "photos", "big.raw")))
 
 	// big.raw is in the largest files, and in the second ring, under photos.
-	said := "256.0 KiB · 95.5% of leita_gui_lfh"
+	said := "262.1 kB · 95.5% of leita_gui_lfh"
 	testing.expect(t, !ui.probe_tagged(&r.p, said))
 	row := ui.probe_bounds(&r.p, "big.raw")
 	ui.probe_move(&r.p, row.x + 24, row.y + row.h / 2)
@@ -1114,7 +1114,7 @@ every_window_size_lays_out_without_a_clash :: proc(t: ^testing.T) {
 	defer rig_close(&r)
 	testing.expect(t, settle(&r, "Done"))
 	testing.expect(t, settle(&r, "arc photos"))
-	testing.expect(t, settle(&r, "268.0 KiB in 2 items"))
+	testing.expect(t, settle(&r, "274.4 kB in 2 items"))
 
 	overlaps :: proc(a, b: ops.Rect) -> bool {
 		return(
@@ -1280,7 +1280,7 @@ opening_a_directory_never_blanks_the_panels :: proc(t: ^testing.T) {
 	defer rig_close(&r)
 	testing.expect(t, settle(&r, "Done"))
 	testing.expect(t, settle(&r, "arc photos"))
-	testing.expect(t, settle(&r, "268.0 KiB in 2 items"))
+	testing.expect(t, settle(&r, "274.4 kB in 2 items"))
 
 	// Open photos, then draw frames with no answer delivered: until the new ones
 	// land, the panels show what they had, never nothing.
@@ -1292,17 +1292,17 @@ opening_a_directory_never_blanks_the_panels :: proc(t: ^testing.T) {
 		// The pointer rests where it clicked, on photos, which the block describes.
 		testing.expect(
 			t,
-			ui.probe_tagged(&r.p, "264.0 KiB · 98.5% of leita_gui_steady_open · click to open"),
+			ui.probe_tagged(&r.p, "270.3 kB · 98.5% of leita_gui_steady_open · click to open"),
 			"the info block keeps its text",
 		)
 		testing.expect(
 			t,
-			ui.probe_tagged(&r.p, "268.0 KiB in 2 items"),
+			ui.probe_tagged(&r.p, "274.4 kB in 2 items"),
 			"the contents keep their rows",
 		)
 	}
 	// Then the answers land, and they show photos.
-	testing.expect(t, settle(&r, "264.0 KiB in 2 items"), "photos is listed")
+	testing.expect(t, settle(&r, "270.3 kB in 2 items"), "photos is listed")
 	testing.expect(t, settle(&r, "arc big.raw"), "and drawn")
 }
 
@@ -1382,10 +1382,10 @@ reclaim_offers_only_what_rebuilds_and_deletes_what_is_chosen :: proc(t: ^testing
 	testing.expect(t, !ui.probe_tagged(&r.p, "plain/build"), "a build folder of no project")
 	testing.expect(t, !ui.probe_tagged(&r.p, "Sunburst chart"), "the chart is put away")
 	// target was touched today, so only node_modules starts chosen.
-	testing.expect(t, settle(&r, "64.0 KiB in 1 folder chosen"), "the recent one starts unchosen")
+	testing.expect(t, settle(&r, "65.5 kB in 1 folder chosen"), "the recent one starts unchosen")
 
 	confirm(t, &r, "Clean up", "Delete")
-	testing.expect(t, settle(&r, "Deleted 1 folder and freed 64.0 KiB"), "the notice says so")
+	testing.expect(t, settle(&r, "Deleted 1 folder and freed 65.5 kB"), "the notice says so")
 	testing.expect(t, settle(&r, "web/node_modules", present = false), "it leaves the list")
 	testing.expect(t, !os.exists(fmt.tprintf("%s/web/node_modules", root)), "and the disk")
 	testing.expect(t, os.exists(fmt.tprintf("%s/web/package.json", root)), "its project stays")
@@ -1396,9 +1396,9 @@ reclaim_offers_only_what_rebuilds_and_deletes_what_is_chosen :: proc(t: ^testing
 	testing.expect(t, settle(&r, "0 B in 0 folders chosen"))
 	testing.expect(t, ui.probe_click(&r.p, "rust/target"))
 	press_and_hand_on(&r)
-	testing.expect(t, settle(&r, "128.0 KiB in 1 folder chosen"))
+	testing.expect(t, settle(&r, "131.1 kB in 1 folder chosen"))
 	confirm(t, &r, "Clean up", "Delete")
-	testing.expect(t, settle(&r, "Deleted 1 folder and freed 128.0 KiB"))
+	testing.expect(t, settle(&r, "Deleted 1 folder and freed 131.1 kB"))
 	testing.expect(t, !os.exists(fmt.tprintf("%s/rust/target", root)))
 	testing.expect(t, settle(&r, "Nothing here is safe to reclaim."))
 
@@ -1468,7 +1468,7 @@ reclaim_empties_the_trash_it_found :: proc(t: ^testing.T) {
 	testing.expect(t, !ui.probe_tagged(&r.p, "All Trash"), "as a button, not a row")
 
 	confirm(t, &r, "Empty Trash", "Empty")
-	testing.expect(t, settle(&r, "Emptied the Trash and freed 20.0 KiB"), "the notice says so")
+	testing.expect(t, settle(&r, "Emptied the Trash and freed 20.5 kB"), "the notice says so")
 	testing.expect(t, !os.exists(fmt.tprintf("%s/%s", root, FILE)))
 	testing.expect(t, !os.exists(fmt.tprintf("%s/%s", root, RECORD)))
 	testing.expect(t, os.exists(fmt.tprintf("%s/%s", root, TRASH)), "the Trash stays")
@@ -1525,7 +1525,7 @@ a_rescan_is_compared_with_the_scan_before :: proc(t: ^testing.T) {
 	r: Rig
 	rig_open(&r, root, kept)
 	defer rig_close(&r)
-	testing.expect(t, settle(&r, "5.0 MiB in 3 items"))
+	testing.expect(t, settle(&r, "5.2 MB in 3 items"))
 	testing.expect(t, ui.probe_click(&r.p, "Change"))
 	press_and_hand_on(&r)
 	testing.expect(
@@ -1550,12 +1550,12 @@ a_rescan_is_compared_with_the_scan_before :: proc(t: ^testing.T) {
 	hand_on(&r)
 	testing.expect(
 		t,
-		settle(&r, "5.5 MiB in 3 items · +512.0 KiB since then"),
+		settle(&r, "5.8 MB in 3 items · +524.3 kB since then"),
 		"the total says what it grew by",
 	)
 	testing.expect(t, r.m.generation > first, "from a new scan")
-	testing.expect(t, settle(&r, "+2.0 MiB"), "a grew")
-	testing.expect(t, settle(&r, "−3.0 MiB"), "b shrank")
+	testing.expect(t, settle(&r, "+2.1 MB"), "a grew")
+	testing.expect(t, settle(&r, "−3.1 MB"), "b shrank")
 	testing.expect(t, settle(&r, "new"), "c is new")
 	since := tagged_from(&r, "Since ")
 	testing.expect(t, since != "", "the legend names the scan compared with")
@@ -1566,8 +1566,8 @@ a_rescan_is_compared_with_the_scan_before :: proc(t: ^testing.T) {
 	press_and_hand_on(&r)
 	testing.expect(t, ui.probe_click(&r.p, "None"), "the menu offers none")
 	press_and_hand_on(&r)
-	testing.expect(t, settle(&r, "5.5 MiB in 3 items"))
-	testing.expect(t, settle(&r, "+2.0 MiB", present = false))
+	testing.expect(t, settle(&r, "5.8 MB in 3 items"))
+	testing.expect(t, settle(&r, "+2.1 MB", present = false))
 	testing.expect(t, settle(&r, "Compare with…"))
 }
 
@@ -1639,7 +1639,7 @@ a_big_chart_says_only_its_top_layer :: proc(t: ^testing.T) {
 		t,
 		said_after(
 			said,
-			`tree "Sunburst of leita_gui_big_chart, 2.7 MiB, 10 items" at`,
+			`tree "Sunburst of leita_gui_big_chart, 2.9 MB, 10 items" at`,
 			`  tree item "a`,
 		),
 		"the chart counts its top layer:\n%s",
@@ -1687,8 +1687,8 @@ each_chart_is_a_tree_a_screen_reader_walks :: proc(t: ^testing.T) {
 
 	// Each chart is a tree named for what it shows, its top layer the directory's
 	// own entries: photos, closed, so big.raw within it is not said, then notes.txt.
-	photos := `  tree item "photos, 264.0 KiB, 98.5% of leita_gui_said" level 1 expandable at`
-	notes := `  tree item "notes.txt, 4.0 KiB, 1.5% of leita_gui_said" level 1 at`
+	photos := `  tree item "photos, 270.3 kB, 98.5% of leita_gui_said" level 1 expandable at`
+	notes := `  tree item "notes.txt, 4.1 kB, 1.5% of leita_gui_said" level 1 at`
 	for chart in ([?]string{"Sunburst", "Treemap", "Icicle"}) {
 		if chart != "Sunburst" {
 			testing.expect(t, ui.probe_click(&r.p, chart))
@@ -1696,7 +1696,7 @@ each_chart_is_a_tree_a_screen_reader_walks :: proc(t: ^testing.T) {
 			ui.probe_advance(&r.p, 60, 1.0 / 60)
 		}
 		said := ui.probe_semantics(&r.p, context.temp_allocator)
-		tree := fmt.tprintf(`tree "%s of leita_gui_said, 268.0 KiB, 2 items" at`, chart)
+		tree := fmt.tprintf(`tree "%s of leita_gui_said, 274.4 kB, 2 items" at`, chart)
 		testing.expectf(
 			t,
 			said_after(said, tree, photos, notes),
@@ -1710,7 +1710,7 @@ each_chart_is_a_tree_a_screen_reader_walks :: proc(t: ^testing.T) {
 	testing.expect(t, ui.probe_click(&r.p, "Type"))
 	press_and_hand_on(&r)
 	ui.probe_advance(&r.p, 3, 1.0 / 60)
-	kind := `  tree item "notes.txt, 4.0 KiB, 1.5% of leita_gui_said, Text" level 1 at`
+	kind := `  tree item "notes.txt, 4.1 kB, 1.5% of leita_gui_said, Text" level 1 at`
 	said := ui.probe_semantics(&r.p, context.temp_allocator)
 	testing.expectf(t, said_after(said, kind), "notes.txt says its kind:\n%s", said)
 
@@ -1718,7 +1718,7 @@ each_chart_is_a_tree_a_screen_reader_walks :: proc(t: ^testing.T) {
 	row := ui.probe_bounds(&r.p, "notes.txt")
 	ui.probe_move(&r.p, row.x + 24, row.y + row.h / 2)
 	ui.probe_advance(&r.p, 3, 1.0 / 60)
-	lit := `  tree item "notes.txt, 4.0 KiB, 1.5% of leita_gui_said, Text" level 1 selected at`
+	lit := `  tree item "notes.txt, 4.1 kB, 1.5% of leita_gui_said, Text" level 1 selected at`
 	said = ui.probe_semantics(&r.p, context.temp_allocator)
 	testing.expectf(t, said_after(said, lit), "the lit entry is selected:\n%s", said)
 
@@ -1728,7 +1728,7 @@ each_chart_is_a_tree_a_screen_reader_walks :: proc(t: ^testing.T) {
 	row = ui.probe_bounds(&r.p, "big.raw")
 	ui.probe_move(&r.p, row.x + 24, row.y + row.h / 2)
 	ui.probe_advance(&r.p, 3, 1.0 / 60)
-	hidden := `  tree item "photos, 264.0 KiB, 98.5% of leita_gui_said, Folder" level 1 selected expandable at`
+	hidden := `  tree item "photos, 270.3 kB, 98.5% of leita_gui_said, Folder" level 1 selected expandable at`
 	said = ui.probe_semantics(&r.p, context.temp_allocator)
 	testing.expectf(t, said_after(said, hidden), "the folder it is in is selected:\n%s", said)
 }
@@ -1775,7 +1775,7 @@ a_reader_opens_and_closes_a_folder_of_the_chart :: proc(t: ^testing.T) {
 	)
 	testing.expectf(
 		t,
-		strings.contains(said, `    tree item "big.raw, 256.0 KiB`),
+		strings.contains(said, `    tree item "big.raw, 262.1 kB`),
 		"and its files under it:\n%s",
 		said,
 	)

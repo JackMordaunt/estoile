@@ -48,7 +48,7 @@ counts_pick_the_form_and_group_their_digits :: proc(t: ^testing.T) {
 	testing.expect_value(t, trf(s, .Count_Items, 1), "1 item")
 	testing.expect_value(t, trf(s, .Count_Items, 0), "0 items")
 	testing.expect_value(t, trf(s, .Count_Items, 813073), "813,073 items")
-	testing.expect_value(t, trf(s, .Listing_Summary, 2, "268.0 KiB"), "268.0 KiB in 2 items")
+	testing.expect_value(t, trf(s, .Listing_Summary, 2, "274.4 kB"), "274.4 kB in 2 items")
 	testing.expect_value(
 		t,
 		trf(s, .Cleaned_Partly, 0, "0 B", 1),

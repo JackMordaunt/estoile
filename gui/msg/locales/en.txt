@@ -141,7 +141,7 @@ change_grew = Grew
 change_grew_much = Grew a lot
 change_new = new
 change_unchanged = unchanged
-# {0} a signed size, as +1.2 GiB
+# {0} a signed size, as +1.2 GB
 change_since = {0} since then
 not_kept = Scans are not being kept, so there is nothing to compare with
 no_earlier = No earlier scan of this folder yet: the next scan will be compared with this one
@@ -394,7 +394,7 @@ fail_used_label = Alert at percent used
 min_free_label = Alert when free space falls under
 full_within_label = Alert when the disk will be full within, in days
 growth_label = Alert when it grows far faster than usual
-limits_invalid = Percents run from 1 to 100, sizes read like 20 GiB, and days are whole numbers.
+limits_invalid = Percents run from 1 to 100, sizes read like 20 GB, and days are whole numbers.
 save = Save
 recent_alerts = Recent alerts
 alerts_none = No alerts yet.

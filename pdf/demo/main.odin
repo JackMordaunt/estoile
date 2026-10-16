@@ -99,7 +99,7 @@ main :: proc() {
 			&doc,
 			size_col,
 			y,
-			fmt.tprintf("%.1f GiB", f64(row.size) / (1 << 30)),
+			fmt.tprintf("%.1f GB", f64(row.size) / 1e9),
 			sans,
 			10,
 			ink,

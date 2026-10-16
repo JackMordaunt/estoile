@@ -112,14 +112,14 @@ a_chart_says_its_largest_entries_a_layer_at_a_time_and_sums_the_rest :: proc(t: 
 
 	// The top layer: the fifty largest of its 61 entries, big closed, and one item
 	// for the eleven left.
-	big := `  tree item "big, 70.0 KiB, 53.8% of top" level 1 expandable at`
-	f00 := `  tree item "f00, 1.0 KiB, 0.8% of top" level 1 at`
-	f48 := `  tree item "f48, 1.0 KiB, 0.8% of top" level 1 at`
-	top_rest := `  tree item "and 11 smaller items, 11.0 KiB between them" level 1 at`
+	big := `  tree item "big, 71.7 kB, 53.8% of top" level 1 expandable at`
+	f00 := `  tree item "f00, 1.0 kB, 0.8% of top" level 1 at`
+	f48 := `  tree item "f48, 1.0 kB, 0.8% of top" level 1 at`
+	top_rest := `  tree item "and 11 smaller items, 11.3 kB between them" level 1 at`
 	said := ui.probe_semantics(&p, context.temp_allocator)
 	testing.expectf(
 		t,
-		said_after(said, `tree "Sunburst of top, 130.0 KiB, 61 items" at`, big, f00),
+		said_after(said, `tree "Sunburst of top, 133.1 kB, 61 items" at`, big, f00),
 		"the chart counts its entries and says the largest first:\n%s",
 		said,
 	)
@@ -131,10 +131,10 @@ a_chart_says_its_largest_entries_a_layer_at_a_time_and_sums_the_rest :: proc(t: 
 	toggle_said_open(&c.m, 2)
 	ui.probe_frame(&p)
 	said = ui.probe_semantics(&p, context.temp_allocator)
-	open := `  tree item "big, 70.0 KiB, 53.8% of top" level 1 expandable expanded at`
-	g00 := `    tree item "g00, 1.0 KiB, 0.8% of top" level 2 at`
-	g49 := `    tree item "g49, 1.0 KiB, 0.8% of top" level 2 at`
-	big_rest := `    tree item "and 20 smaller items, 20.0 KiB between them" level 2 at`
+	open := `  tree item "big, 71.7 kB, 53.8% of top" level 1 expandable expanded at`
+	g00 := `    tree item "g00, 1.0 kB, 0.8% of top" level 2 at`
+	g49 := `    tree item "g49, 1.0 kB, 0.8% of top" level 2 at`
+	big_rest := `    tree item "and 20 smaller items, 20.5 kB between them" level 2 at`
 	testing.expectf(t, said_after(said, open, g00), "big's entries nest under it:\n%s", said)
 	testing.expectf(t, said_after(said, g49, big_rest, f00), "and are summed:\n%s", said)
 	items = strings.count(said, `tree item "`)
@@ -149,7 +149,7 @@ a_chart_says_its_largest_entries_a_layer_at_a_time_and_sums_the_rest :: proc(t: 
 		said_after(
 			said,
 			g49,
-			`    tree item "and 20 smaller items, 20.0 KiB between them" level 2 selected at`,
+			`    tree item "and 20 smaller items, 20.5 kB between them" level 2 selected at`,
 		),
 		"g60's summary is selected:\n%s",
 		said,
@@ -163,7 +163,7 @@ a_chart_says_its_largest_entries_a_layer_at_a_time_and_sums_the_rest :: proc(t: 
 		t,
 		said_after(
 			said,
-			`  tree item "big, 70.0 KiB, 53.8% of top" level 1 selected expandable at`,
+			`  tree item "big, 71.7 kB, 53.8% of top" level 1 selected expandable at`,
 			f00,
 		),
 		"closed, big is selected for g60 and holds no layer:\n%s",

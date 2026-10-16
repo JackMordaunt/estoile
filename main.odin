@@ -67,7 +67,9 @@ Report
 Alert
   --warn-used N             exit code 2 once the volume is at least N percent used, e.g. 80
   --fail-used N             exit code 3 once the volume is at least N percent used, e.g. 95
-  --min-free SIZE           exit code 3 once the volume has less free than SIZE, e.g. 20GiB
+  --min-free SIZE           exit code 3 once the volume has less free than SIZE, e.g. 20GB
+                            sizes are decimal: 1 GB = 1,000,000,000 bytes; GiB is accepted
+                            on input
 Read
   --gentle                  leave the disk and cores to other work by reading with
                             fewer threads
@@ -292,7 +294,7 @@ scan_and_say :: proc(opt: Options, kept := "", licensee := "", locked := false) 
 	if opt.min_free != "" {
 		ok: bool
 		if min_free, ok = human.parse_bytes(opt.min_free); !ok {
-			say_error("cannot read --min-free %q: a size such as 20GiB", opt.min_free)
+			say_error("cannot read --min-free %q: a size such as 20GB or 20GiB", opt.min_free)
 			return EXIT_ERROR
 		}
 	}

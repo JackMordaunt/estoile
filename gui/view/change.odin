@@ -106,7 +106,7 @@ change_colour :: proc(c: Change) -> ops.Color {
 }
 
 // delta_text is how an entry holding bytes changed from was, as a signed size:
-// "+1.2 GiB", "−300 MiB", "new", or "" when it is unchanged or cannot be said.
+// "+1.2 GB", "−300.0 MB", "new", or "" when it is unchanged or cannot be said.
 delta_text :: proc(
 	bytes: u64,
 	was: i64,

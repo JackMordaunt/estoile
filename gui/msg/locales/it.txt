@@ -48,6 +48,11 @@ read_updated.one = Aggiornato: {0} cartella riletta dal {1}
 read_updated.many = Aggiornato: {0} di cartelle rilette dal {1}
 read_updated = Aggiornato: {0} cartelle rilette dal {1}
 read_whole = Letto per intero: {0}
+read_updated_short = riletto dove è cambiato
+read_whole_short = letto per intero
+more_messages.one = +{0} altro
+more_messages.many = +{0} altri
+more_messages = +{0} altri
 
 # The location bar
 location = Posizione

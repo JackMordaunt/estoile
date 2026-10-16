@@ -43,6 +43,9 @@ count_seconds = {0} 秒
 count_pending = {0} 項目が親フォルダーを待機中
 read_updated = 更新: {1} 以降 {0} 個のフォルダーを再読み込み
 read_whole = 全体を読み取り: {0}
+read_updated_short = 変更箇所のみ再読み込み
+read_whole_short = 全体を読み取り
+more_messages = 他 {0} 件
 
 # The location bar
 location = 場所

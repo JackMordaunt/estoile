@@ -42,6 +42,9 @@ count_seconds = {0} 秒
 count_pending = {0} 个正在等待上级文件夹
 read_updated = 已更新：自 {1} 以来重新读取了 {0} 个文件夹
 read_whole = 已完整读取：{0}
+read_updated_short = 仅重新读取有变化之处
+read_whole_short = 已完整读取
+more_messages = 另有 {0} 条
 
 # The location bar
 location = 位置

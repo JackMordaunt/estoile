@@ -51,6 +51,11 @@ read_updated.one = Atualizado: {0} pasta lida de novo desde {1}
 read_updated.many = Atualizado: {0} de pastas lidas de novo desde {1}
 read_updated = Atualizado: {0} pastas lidas de novo desde {1}
 read_whole = Lido por inteiro: {0}
+read_updated_short = relido onde mudou
+read_whole_short = lido por inteiro
+more_messages.one = +{0} mais
+more_messages.many = +{0} mais
+more_messages = +{0} mais
 
 # The location bar
 location = Local

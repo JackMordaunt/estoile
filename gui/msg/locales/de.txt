@@ -45,6 +45,10 @@ count_pending = {0} warten auf übergeordneten Ordner
 read_updated.one = Aktualisiert: {0} Ordner neu gelesen seit {1}
 read_updated = Aktualisiert: {0} Ordner neu gelesen seit {1}
 read_whole = Ganz gelesen: {0}
+read_updated_short = neu gelesen, wo sich etwas geändert hat
+read_whole_short = ganz gelesen
+more_messages.one = +{0} weitere
+more_messages = +{0} weitere
 
 # The location bar
 location = Ort

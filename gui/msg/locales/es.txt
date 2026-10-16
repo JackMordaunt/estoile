@@ -51,6 +51,11 @@ read_updated.one = Actualizado: {0} carpeta leída de nuevo desde {1}
 read_updated.many = Actualizado: {0} de carpetas leídas de nuevo desde {1}
 read_updated = Actualizado: {0} carpetas leídas de nuevo desde {1}
 read_whole = Leído entero: {0}
+read_updated_short = releído donde cambió
+read_whole_short = leído entero
+more_messages.one = +{0} más
+more_messages.many = +{0} más
+more_messages = +{0} más
 
 # The location bar
 location = Ubicación

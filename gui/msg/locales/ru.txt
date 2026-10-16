@@ -52,6 +52,12 @@ read_updated.few = Обновлено: {0} папки прочитаны зан�
 read_updated.many = Обновлено: {0} папок прочитаны заново с {1}
 read_updated = Обновлено: {0} папки прочитаны заново с {1}
 read_whole = Прочитано целиком: {0}
+read_updated_short = прочитано заново, где были изменения
+read_whole_short = прочитано целиком
+more_messages.one = ещё {0}
+more_messages.few = ещё {0}
+more_messages.many = ещё {0}
+more_messages = ещё {0}
 
 # The location bar
 location = Расположение

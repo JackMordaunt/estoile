@@ -51,6 +51,11 @@ read_updated.one = Mis à jour : {0} dossier relu depuis {1}
 read_updated.many = Mis à jour : {0} de dossiers relus depuis {1}
 read_updated = Mis à jour : {0} dossiers relus depuis {1}
 read_whole = Lu en entier : {0}
+read_updated_short = relu là où ça a changé
+read_whole_short = lu en entier
+more_messages.one = +{0} de plus
+more_messages.many = +{0} de plus
+more_messages = +{0} de plus
 
 # The location bar
 location = Emplacement

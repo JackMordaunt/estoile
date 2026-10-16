@@ -356,22 +356,21 @@ view :: proc(gtx: ^ui.Ctx, user: rawptr) {
 	if prog == nil || prog.generation == 0 {
 		return
 	}
-	ui.flexible(gtx, 1)
-	if term := search_term(m); term != "" {
-		search_results(gtx, m, term)
-		dialogs(gtx, m)
-		monitor_dialog(gtx, m)
-		return
-	}
-	if ui.row(gtx, align = .Fill) {
-		ui.flexible(gtx, 1)
-		rings_panel(gtx, m)
-		side_grip(gtx, m)
-		if width, shown := side_shown(gtx, m); shown {
-			if ui.sized(gtx, {min = {width, 0}, max = {width, ui.INF}}) {
-				side(gtx, m)
-			}
+	if prog.state == .Failed && prog.problem != "" {
+		// In the chart's place, not above it: a banner in the status column would
+		// move the chart, and a failed scan has none to show.
+		if ui.inset(gtx, {right = PAD}) {
+			primer.banner(gtx, tr(.Scan_Failed), prog.problem, .Critical)
 		}
+	} else {
+		ui.flexible(gtx, 1)
+		if term := search_term(m); term != "" {
+			search_results(gtx, m, term)
+			dialogs(gtx, m)
+			monitor_dialog(gtx, m)
+			return
+		}
+		chart_row(gtx, m)
 	}
 	dialogs(gtx, m)
 	reclaim_dialogs(gtx, m)
@@ -380,6 +379,20 @@ view :: proc(gtx: ^ui.Ctx, user: rawptr) {
 	about_dialog(gtx, m)
 	notices_dialog(gtx, m)
 	monitor_dialog(gtx, m)
+}
+
+// chart_row is the chart beside its side panel, the grip between them.
+@(private)
+chart_row :: proc(gtx: ^ui.Ctx, m: ^Model) {
+	ui.row(gtx, align = .Fill)
+	ui.flexible(gtx, 1)
+	rings_panel(gtx, m)
+	side_grip(gtx, m)
+	if width, shown := side_shown(gtx, m); shown {
+		if ui.sized(gtx, {min = {width, 0}, max = {width, ui.INF}}) {
+			side(gtx, m)
+		}
+	}
 }
 
 // --- the side column ----------------------------------------------------------
@@ -519,70 +532,170 @@ location_bar :: proc(gtx: ^ui.Ctx, m: ^Model, prog: ^query.Progress_Result) {
 
 // --- how the scan is going -----------------------------------------------------
 
+/*
+status is two lines tall, always, so the chart under it keeps its place: a
+primer.slot two lines of body text high holds, on the first, how the scan is
+going and what it has found, and on the second the one message that matters
+most, if any. Messages do not stack: the second line shows the first of them
+and says how many more there are, which its tooltip lists. The banner a failed
+scan shows stands in the chart's place (view), and the trial banner, which the
+licence answer brings at startup, keeps its place in flow under the slot.
+*/
 @(private)
 status :: proc(gtx: ^ui.Ctx, m: ^Model, prog: ^query.Progress_Result) {
 	if prog == nil || prog.generation == 0 {
-		primer.text(gtx, tr(.Status_Empty), color = primer.color(.Fg_Color_Muted))
+		if primer.slot(gtx, lines = 2) {
+			primer.text(gtx, tr(.Status_Empty), color = primer.color(.Fg_Color_Muted))
+		}
 		return
 	}
-	if ui.row(gtx, gap = 8, align = .Center) {
-		switch prog.state {
-		case .Scanning:
-			primer.spinner(gtx, .Small, label = tr(.Scanning))
-		case .Done:
-			primer.label(gtx, tr(.Done), .Success)
-		case .Stopped:
-			primer.label(gtx, tr(.Stopped), .Attention)
-		case .Failed:
-			primer.label(gtx, tr(.Failed), .Danger)
-		case .Idle:
+	if primer.slot(gtx, lines = 2) {
+		if ui.column(gtx, align = .Fill) {
+			state_line(gtx, prog)
+			message_line(gtx, prog)
 		}
-		primer.text(gtx, counters(gtx, prog), color = primer.color(.Fg_Color_Muted))
-	}
-	if read := how_read(gtx, prog); read != "" {
-		primer.text(gtx, read, .Small, color = primer.color(.Fg_Color_Muted))
 	}
 	notice(gtx, m, prog.notice)
 	trial_banner(gtx, m)
-	if prog.state == .Failed && prog.problem != "" {
-		primer.banner(gtx, tr(.Scan_Failed), prog.problem, .Critical)
+}
+
+// state_line is the status' first line: the scan's state, its counters, and
+// how it read its place as a muted fragment whose tooltip says the whole.
+@(private)
+state_line :: proc(gtx: ^ui.Ctx, prog: ^query.Progress_Result) {
+	ui.row(gtx, gap = 8, align = .Center)
+	switch prog.state {
+	case .Scanning:
+		primer.spinner(gtx, .Small, label = tr(.Scanning))
+	case .Done:
+		primer.label(gtx, tr(.Done), .Success)
+	case .Stopped:
+		primer.label(gtx, tr(.Stopped), .Attention)
+	case .Failed:
+		primer.label(gtx, tr(.Failed), .Danger)
+	case .Idle:
+	}
+	primer.text(gtx, counters(gtx, prog), color = primer.color(.Fg_Color_Muted))
+	short, whole := how_read(gtx, prog)
+	if short == "" {
+		return
+	}
+	ui.stack(gtx)
+	primer.text(
+		gtx,
+		strings.concatenate({"· ", short}, gtx.allocator),
+		white_space = .Nowrap,
+		color = primer.color(.Fg_Color_Muted),
+	)
+	primer.tooltip(gtx, whole, ui.last_widget(gtx))
+}
+
+// Status_Message is one thing the status' second line can say: a warning, in
+// the attention colour behind an alert, or a plain muted note. detail is what
+// its tooltip adds, "" for nothing.
+@(private)
+Status_Message :: struct {
+	text:    string,
+	detail:  string,
+	warning: bool,
+}
+
+// status_messages is what the second line could say, the most pressing first:
+// folders the scan could not open, and on macOS, where a refusal is commonly
+// a folder the system guards under the home directory, how to let the window
+// in; that a raw read would be far faster; then why the scan read its place
+// whole. A failed scan's problem is the banner's (view), not the line's.
+@(private)
+status_messages :: proc(gtx: ^ui.Ctx, prog: ^query.Progress_Result) -> []Status_Message {
+	msgs := make([dynamic]Status_Message, gtx.allocator)
+	if prog.unread > 0 {
+		detail := ""
+		if ODIN_OS == .Darwin && prog.denied {
+			detail = trf(gtx, .Unread_Hint, version.NAME)
+		}
+		append(&msgs, Status_Message{trf(gtx, .Unread_Folders, int(prog.unread)), detail, true})
 	}
 	if prog.slow {
-		primer.inline_message(gtx, tr(.Slow_Hint), .Warning, .Small)
+		append(&msgs, Status_Message{tr(.Slow_Hint), "", true})
 	}
-	if prog.unread > 0 {
-		primer.inline_message(gtx, unread(gtx, prog), .Warning, .Small)
+	if prog.kept && !prog.updated && prog.why != "" {
+		append(&msgs, Status_Message{trf(gtx, .Read_Whole, prog.why), "", false})
 	}
+	return msgs[:]
 }
 
-// unread says how many folders the scan could not open, and on macOS, where a
-// refusal is commonly a folder the system guards under the home directory, how to
-// let the window in.
+// message_line is the status' second line: the first of status_messages on one
+// line, cut with an ellipsis rather than wrapped so the slot never grows, then
+// "+N more" when others apply, listed in its tooltip. Nothing when there is
+// nothing to say; the slot keeps the line's height.
 @(private)
-unread :: proc(gtx: ^ui.Ctx, prog: ^query.Progress_Result) -> string {
-	text := trf(gtx, .Unread_Folders, int(prog.unread))
-	if ODIN_OS == .Darwin && prog.denied {
-		return strings.concatenate(
-			{text, " ", trf(gtx, .Unread_Hint, version.NAME)},
-			gtx.allocator,
-		)
+message_line :: proc(gtx: ^ui.Ctx, prog: ^query.Progress_Result) {
+	msgs := status_messages(gtx, prog)
+	if len(msgs) == 0 {
+		return
 	}
-	return text
+	ui.row(gtx, gap = 8, align = .Center)
+	top := msgs[0]
+	role: tok.Role = .Fg_Color_Muted
+	if top.warning {
+		role = .Fg_Color_Attention
+	}
+	fg := primer.color(role)
+	if top.warning {
+		alert(gtx, fg)
+	}
+	ui.flexible(gtx, 1)
+	if ui.stack(gtx) {
+		primer.truncate(gtx, top.text, title = top.detail, max_width = ui.INF, inline = true, color = fg)
+		primer.tooltip(gtx, top.detail, ui.last_widget(gtx))
+	}
+	if len(msgs) == 1 {
+		return
+	}
+	rest := make([dynamic]string, gtx.allocator)
+	for it in msgs[1:] {
+		append(&rest, it.text)
+	}
+	ui.stack(gtx)
+	primer.text(
+		gtx,
+		trf(gtx, .More_Messages, len(rest)),
+		white_space = .Nowrap,
+		color = primer.color(.Fg_Color_Muted),
+	)
+	primer.tooltip(gtx, strings.join(rest[:], "\n", gtx.allocator), ui.last_widget(gtx))
 }
 
-// how_read is how a finished scan with history on read its place, as the command
-// line's summary says it (survey.how_read), in the window's language; "" otherwise.
+// alert is the second line's warning mark: a filled alert 12px high, as
+// primer.inline_message draws it at small, centred on a line of body text.
 @(private)
-how_read :: proc(gtx: ^ui.Ctx, prog: ^query.Progress_Result) -> string {
-	switch {
-	case !prog.kept:
-		return ""
-	case prog.updated:
-		return trf(gtx, .Read_Updated, int(prog.reread), taken_text(prog.since, gtx.allocator))
-	case prog.why != "":
-		return trf(gtx, .Read_Whole, prog.why)
+alert :: proc(gtx: ^ui.Ctx, fg: ops.Color, loc := #caller_location) {
+	p := ui.widget_open(gtx, loc = loc)
+	side := f32(12)
+	line := primer.text_style(.Medium).line_height
+	primer.icon(gtx, .Alert_Fill, {0, (line - side) / 2}, side, fg)
+	ui.widget_close(gtx, &p, {size = {side, line}})
+}
+
+// how_read is how a scan with history on read its place, as the command line's
+// summary says it (survey.how_read), in the window's language: short is the
+// fragment the counters line carries, whole the sentence its tooltip says, with
+// the count and date of an update or the reason for a whole read. Both "" with
+// history off.
+@(private)
+how_read :: proc(gtx: ^ui.Ctx, prog: ^query.Progress_Result) -> (short, whole: string) {
+	if !prog.kept {
+		return
 	}
-	return ""
+	if prog.updated {
+		since := taken_text(prog.since, gtx.allocator)
+		return tr(.Read_Updated_Short), trf(gtx, .Read_Updated, int(prog.reread), since)
+	}
+	short = tr(.Read_Whole_Short)
+	if prog.why != "" {
+		whole = trf(gtx, .Read_Whole, prog.why)
+	}
+	return
 }
 
 // counters is what the scan has found, in one line.

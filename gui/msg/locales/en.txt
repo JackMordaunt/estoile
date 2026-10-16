@@ -56,6 +56,10 @@ count_pending = {0} waiting on a parent
 read_updated.one = Updated: {0} folder read again since {1}
 read_updated = Updated: {0} folders read again since {1}
 read_whole = Read whole: {0}
+read_updated_short = read again where changed
+read_whole_short = read whole
+more_messages.one = +{0} more
+more_messages = +{0} more
 
 # The location bar
 location = Location

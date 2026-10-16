@@ -40,6 +40,9 @@ count_seconds = {0}초
 count_pending = {0}개 항목이 상위 항목 대기 중
 read_updated = 업데이트됨: {1} 이후 폴더 {0}개를 다시 읽음
 read_whole = 전체를 읽음: {0}
+read_updated_short = 변경된 곳만 다시 읽음
+read_whole_short = 전체를 읽음
+more_messages = 외 {0}개
 
 # The location bar
 location = 위치

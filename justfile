@@ -50,10 +50,18 @@ flags := check_flags + minos
 minos := if os() == "macos" { " -minimum-os-version:11.0" } else { "" }
 san   := env("SAN", "-sanitize:address")
 # What just hot builds the host and the view with, instead of -debug {{san}}:
-# no ASan. A frame in the view costs 5.5x release with it, 2.3x without
-# (measured 2026-10-16), and the loop is for editing the view; just gui, just
-# test and just gui-test keep it.
-hot_opt := "-debug"
+# the loop is for editing the view, and every edit waits on a child build, so
+# the profile buys frame time only where it costs no compile time. No ASan: a
+# frame in the view costs 5.5x release with it, 2.3x without (measured
+# 2026-10-16, scanning ~/Source); just gui, just test and just gui-test keep
+# it. -o:minimal: the frame median goes from 28 ms to 17 ms and the child
+# build from 0.97 s to 1.02 s; -o:speed reaches 8 ms but builds in 15 s. No
+# allocation backtraces: the debug allocator captures a call chain at every
+# allocation, and the scan's workers allocate enough that the scan keeps in
+# 1.6 s instead of 2.6 s without them. A leak or issue report still names
+# the allocating file, line and proc; it loses the call chain under them,
+# so a leak hunt is a job for just gui.
+hot_opt := "-debug -o:minimal -define:DEBUG_ALLOC_BACKTRACES=false"
 exe   := if os() == "windows" { ".exe" } else { "" }
 bin   := "leita"
 # The short name install puts beside leita, the same command in two letters, as

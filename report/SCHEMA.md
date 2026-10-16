@@ -110,7 +110,7 @@ A Reclaim group, with categories in the order below and empty ones left out:
 
 ```
 category  "dependencies" "build_output" "python" "package_cache" "app_cache"
-          "trash"
+          "device_support" "trash"
 name      as a person reads it
 reason    why deleting it loses nothing
 bytes     the group's total

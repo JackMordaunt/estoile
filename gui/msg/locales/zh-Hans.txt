@@ -172,12 +172,14 @@ reclaim_build_output = 构建输出
 reclaim_python = Python 缓存和环境
 reclaim_package_cache = 软件包下载
 reclaim_app_cache = 应用程序缓存
+reclaim_device_support = Xcode 设备支持文件
 reclaim_trash = 回收站
 why_dependencies = 由包管理器根据项目清单重新安装。
 why_build_output = 项目下次构建时会重新生成。
 why_python = 由 Python 及其工具重新生成；虚拟环境可根据项目的依赖要求重新创建。
 why_package_cache = 下次需要该软件包时会重新下载。
 why_app_cache = 应用程序只会在缓存中保存可以重新生成的内容。
+why_device_support = 下次 Xcode 连接设备时会重新复制。
 why_trash = 这些内容已被删除；清空回收站可永久释放空间。
 
 # Exporting a report

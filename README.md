@@ -117,8 +117,11 @@ trial.
 ## Free up space, safely
 
 Reclaim finds the space you can get back without losing anything: build
-output, downloaded packages, application caches and the Trash. Each item
-shows how much it frees and why it is safe to delete. leita only lists
+output, downloaded packages, application caches and the Trash. On a Mac that
+includes Library/Caches, Xcode's DerivedData and device support files, the
+simulator's cache and the Trash of each external drive; it never includes
+Time Machine or iPhone backups, archives, simulators or Docker's disk. Each
+item shows how much it frees and why it is safe to delete. leita only lists
 something when it can prove what it is, and never touches system folders.
 
 Every deletion is logged with what was removed, how big it was and when.

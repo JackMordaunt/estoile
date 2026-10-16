@@ -203,12 +203,14 @@ reclaim_build_output = Saída de build
 reclaim_python = Caches e ambientes Python
 reclaim_package_cache = Downloads de pacotes
 reclaim_app_cache = Caches de aplicativos
+reclaim_device_support = Suporte a dispositivos do Xcode
 reclaim_trash = Lixeira
 why_dependencies = Reinstaladas a partir do manifesto do projeto pelo gerenciador de pacotes.
 why_build_output = Gerada de novo no próximo build do projeto.
 why_python = Gerados de novo pelo Python e suas ferramentas; um ambiente virtual é recriado a partir dos requisitos do projeto.
 why_package_cache = Baixados de novo quando um pacote for necessário.
 why_app_cache = Os aplicativos só guardam no cache o que podem gerar de novo.
+why_device_support = Copiado de novo do dispositivo na próxima vez que o Xcode se conectar a ele.
 why_trash = Já excluído; esvaziá-la libera o espaço para sempre.
 
 # Exporting a report

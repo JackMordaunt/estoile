@@ -49,22 +49,24 @@ set_language :: proc(d: ^Desk, c: command.Language) {
 // and says why each is safe to delete.
 @(rodata)
 CATEGORY_NAMES := [reclaim.Category]msg.Msg {
-	.Dependencies  = .Reclaim_Dependencies,
-	.Build_Output  = .Reclaim_Build_Output,
-	.Python        = .Reclaim_Python,
-	.Package_Cache = .Reclaim_Package_Cache,
-	.App_Cache     = .Reclaim_App_Cache,
-	.Trash         = .Reclaim_Trash,
+	.Dependencies   = .Reclaim_Dependencies,
+	.Build_Output   = .Reclaim_Build_Output,
+	.Python         = .Reclaim_Python,
+	.Package_Cache  = .Reclaim_Package_Cache,
+	.App_Cache      = .Reclaim_App_Cache,
+	.Device_Support = .Reclaim_Device_Support,
+	.Trash          = .Reclaim_Trash,
 }
 
 @(rodata)
 CATEGORY_WHY := [reclaim.Category]msg.Msg {
-	.Dependencies  = .Why_Dependencies,
-	.Build_Output  = .Why_Build_Output,
-	.Python        = .Why_Python,
-	.Package_Cache = .Why_Package_Cache,
-	.App_Cache     = .Why_App_Cache,
-	.Trash         = .Why_Trash,
+	.Dependencies   = .Why_Dependencies,
+	.Build_Output   = .Why_Build_Output,
+	.Python         = .Why_Python,
+	.Package_Cache  = .Why_Package_Cache,
+	.App_Cache      = .Why_App_Cache,
+	.Device_Support = .Why_Device_Support,
+	.Trash          = .Why_Trash,
 }
 
 // FILE_ERRORS say why a change to a file failed, as a clause.

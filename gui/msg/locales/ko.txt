@@ -170,12 +170,14 @@ reclaim_build_output = 빌드 결과물
 reclaim_python = Python 캐시 및 환경
 reclaim_package_cache = 패키지 다운로드
 reclaim_app_cache = 응용 프로그램 캐시
+reclaim_device_support = Xcode 기기 지원 파일
 reclaim_trash = 휴지통
 why_dependencies = 패키지 관리자가 프로젝트의 매니페스트에서 다시 설치합니다.
 why_build_output = 프로젝트를 다음에 빌드할 때 다시 생성됩니다.
 why_python = Python과 관련 도구가 다시 생성합니다. 가상 환경은 프로젝트의 요구 사항 파일에서 다시 만들 수 있습니다.
 why_package_cache = 다음에 패키지가 필요할 때 다시 다운로드됩니다.
 why_app_cache = 응용 프로그램은 다시 생성할 수 있는 것만 캐시에 보관합니다.
+why_device_support = 다음에 Xcode가 기기에 연결되면 다시 복사됩니다.
 why_trash = 이미 삭제된 항목입니다. 휴지통을 비우면 공간이 영구적으로 확보됩니다.
 
 # Exporting a report

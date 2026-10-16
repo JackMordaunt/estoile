@@ -144,12 +144,13 @@ KIND_KEYS := [kinds.Kind]string {
 
 @(private)
 CATEGORY_KEYS := [reclaim.Category]string {
-	.Dependencies  = "dependencies",
-	.Build_Output  = "build_output",
-	.Python        = "python",
-	.Package_Cache = "package_cache",
-	.App_Cache     = "app_cache",
-	.Trash         = "trash",
+	.Dependencies   = "dependencies",
+	.Build_Output   = "build_output",
+	.Python         = "python",
+	.Package_Cache  = "package_cache",
+	.App_Cache      = "app_cache",
+	.Device_Support = "device_support",
+	.Trash          = "trash",
 }
 
 // iso is t as ISO 8601 in UTC to the second, or "" for a time never set.

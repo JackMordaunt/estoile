@@ -8,8 +8,12 @@ also be someone's work (target, build, .venv), when the directory holding it als
 holds the file that shows which tool made it: node_modules beside package.json,
 target beside Cargo.toml. Names nothing else uses (__pycache__) need no proof.
 Bare build, dist and out are never candidates. Under the user's home, the
-per-application directories of the XDG cache, a few package managers' download
-caches, and the Trash are candidates by where they are.
+per-application directories of the XDG cache and of macOS's Library/Caches, a
+few package managers' download caches, Xcode's build output and device symbols,
+the simulator's cache, and the Trash are candidates by where they are, as is the
+user's Trash on an external volume. The places are matched by path alone, on
+every platform: a Library under a Linux home is as safe to match as nothing
+there is named that way.
 
 A match is not looked inside: what it holds goes with it. Nothing inside a .git
 directory, and nothing under a system directory, is ever a candidate.
@@ -31,26 +35,29 @@ Category :: enum u8 {
 	Python, // byte code, virtual environments, tool caches
 	Package_Cache, // packages a manager downloaded
 	App_Cache, // an application's XDG cache
+	Device_Support, // symbols Xcode copied from a device
 	Trash,
 }
 
 CATEGORY_NAMES := [Category]string {
-	.Dependencies  = "Installed dependencies",
-	.Build_Output  = "Build output",
-	.Python        = "Python caches and environments",
-	.Package_Cache = "Package downloads",
-	.App_Cache     = "Application caches",
-	.Trash         = "Trash",
+	.Dependencies   = "Installed dependencies",
+	.Build_Output   = "Build output",
+	.Python         = "Python caches and environments",
+	.Package_Cache  = "Package downloads",
+	.App_Cache      = "Application caches",
+	.Device_Support = "Xcode device support",
+	.Trash          = "Trash",
 }
 
 // CATEGORY_REASONS say why a category is safe to delete, to the person deciding.
 CATEGORY_REASONS := [Category]string {
-	.Dependencies  = "Installed again from the project's manifest by its package manager.",
-	.Build_Output  = "Made again by the project's next build.",
-	.Python        = "Made again by Python and its tools; a virtual environment is created again from the project's requirements.",
-	.Package_Cache = "Downloaded again when a package is next needed.",
-	.App_Cache     = "Applications keep only what they can make again in their cache.",
-	.Trash         = "Already deleted; emptying it frees the space for good.",
+	.Dependencies   = "Installed again from the project's manifest by its package manager.",
+	.Build_Output   = "Made again by the project's next build.",
+	.Python         = "Made again by Python and its tools; a virtual environment is created again from the project's requirements.",
+	.Package_Cache  = "Downloaded again when a package is next needed.",
+	.App_Cache      = "Applications keep only what they can make again in their cache.",
+	.Device_Support = "Copied again from the device the next time Xcode connects to it.",
+	.Trash          = "Already deleted; emptying it frees the space for good.",
 }
 
 // Rule is a directory name that is a candidate, beside one of markers in the
@@ -98,6 +105,9 @@ RULES := [?]Rule {
 	{"build", CMAKE_MARK[:], .Build_Output},
 	{"zig-cache", ZIG_MARK[:], .Build_Output},
 	{".zig-cache", ZIG_MARK[:], .Build_Output},
+	{".build", {"Package.swift"}, .Build_Output},
+	// The name Odin's compiler gives its own cache directory, as of dev-2026-10.
+	{".odin-cache", nil, .Build_Output},
 	{"__pycache__", nil, .Python},
 	{".pytest_cache", nil, .Python},
 	{".mypy_cache", nil, .Python},
@@ -128,8 +138,20 @@ HOME_PLACES := [?]struct {
 	{"go/pkg/mod", .Package_Cache},
 	{".gradle/caches", .Package_Cache},
 	{".m2/repository", .Package_Cache},
+	{"Library/Caches/*", .App_Cache},
+	{"Library/Developer/Xcode/DerivedData", .Build_Output},
+	{"Library/Developer/Xcode/iOS DeviceSupport", .Device_Support},
+	{"Library/Developer/Xcode/watchOS DeviceSupport", .Device_Support},
+	{"Library/Developer/Xcode/tvOS DeviceSupport", .Device_Support},
+	{"Library/Developer/Xcode/visionOS DeviceSupport", .Device_Support},
+	{"Library/Developer/CoreSimulator/Caches", .App_Cache},
 	{TRASH, .Trash},
 }
+
+// VOLUMES is where macOS mounts other volumes. The Trash matched on one is the
+// path <volume>/.Trashes/<uid>, the user's by id, which is the layout assumed of
+// the Finder; no external volume was at hand to observe it, so a test holds it.
+VOLUMES :: "/Volumes/"
 
 // SYSTEM are directories nothing under is ever a candidate.
 SYSTEM := [?]string {
@@ -228,6 +250,9 @@ visit :: proc(f: ^Finder, dir: u32) {
 		if !matched {
 			category, matched = place_of(f, path)
 		}
+		if !matched && volume_trash(f, path) {
+			category, matched = .Trash, true
+		}
 		if !matched {
 			category, matched = rule_for(f, name, kids[:])
 		}
@@ -304,6 +329,23 @@ place_each :: proc(f: ^Finder, path: string) -> (Category, bool) {
 		}
 	}
 	return {}, false
+}
+
+// volume_trash is whether path is the user's Trash on another volume:
+// /Volumes/<volume>/.Trashes/<uid>.
+@(private)
+volume_trash :: proc(f: ^Finder, path: string) -> bool {
+	if f.uid == "" || !strings.has_prefix(path, VOLUMES) {
+		return false
+	}
+	rest := path[len(VOLUMES):]
+	slash := strings.index_byte(rest, '/')
+	if slash <= 0 {
+		return false
+	}
+	TRASHES :: ".Trashes/"
+	rest = rest[slash + 1:]
+	return strings.has_prefix(rest, TRASHES) && rest[len(TRASHES):] == f.uid
 }
 
 // under_home is path relative to home, if it lies under it.

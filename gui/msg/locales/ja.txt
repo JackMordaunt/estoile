@@ -173,12 +173,14 @@ reclaim_build_output = ビルド出力
 reclaim_python = Python のキャッシュと環境
 reclaim_package_cache = パッケージのダウンロード
 reclaim_app_cache = アプリケーションのキャッシュ
+reclaim_device_support = Xcode のデバイスサポート
 reclaim_trash = ゴミ箱
 why_dependencies = パッケージマネージャーがプロジェクトのマニフェストから再インストールします。
 why_build_output = プロジェクトの次回のビルドで再作成されます。
 why_python = Python とそのツールが再作成します。仮想環境はプロジェクトの requirements から再作成されます。
 why_package_cache = 次にパッケージが必要になったときに再ダウンロードされます。
 why_app_cache = アプリケーションは、再作成できるものだけをキャッシュに保存します。
+why_device_support = 次に Xcode がデバイスに接続したときに再度コピーされます。
 why_trash = 削除済みの項目です。空にすると容量が完全に解放されます。
 
 # Exporting a report

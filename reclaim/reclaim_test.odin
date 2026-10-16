@@ -47,6 +47,25 @@ fake_path :: proc(t: ^Fake, from: u32, path: string) -> u32 {
 	return at
 }
 
+// fake_has is whether every directory along path exists under from.
+@(private)
+fake_has :: proc(t: ^Fake, from: u32, path: string) -> bool {
+	at := from
+	for name in strings.split(path, "/", context.temp_allocator) {
+		found := false
+		for p, ii in t.parent {
+			if p == at && u32(ii) != at && t.name[ii] == name {
+				at, found = u32(ii), true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}
+
 @(private)
 fake_source :: proc(t: ^Fake) -> Source {
 	return {
@@ -129,6 +148,32 @@ home_tree :: proc(t: ^Fake) -> (root: u32) {
 	fake_path(t, home, "go/pkg/mod/github.com")
 	fake_path(t, home, TRASH + "/files")
 
+	// The macOS places, matched by path on every platform.
+	fake_path(t, home, "Library/Caches/com.apple.Safari")
+	fake_path(t, home, "Library/Caches/Homebrew/downloads")
+	fake_add(t, fake_path(t, home, "Library/Caches"), "a-file-in-caches", false, 5)
+	fake_path(t, home, "Library/Developer/Xcode/DerivedData/App-abc/Build")
+	fake_path(t, home, "Library/Developer/Xcode/iOS DeviceSupport/17.0")
+	fake_path(t, home, "Library/Developer/Xcode/watchOS DeviceSupport/10.0")
+	fake_path(t, home, "Library/Developer/CoreSimulator/Caches/dyld")
+	swift := fake_path(t, home, "src/swift")
+	fake_add(t, swift, "Package.swift", false, 1)
+	fake_path(t, swift, ".build/debug")
+	fake_path(t, home, "src/odin/.odin-cache/abc")
+
+	// What Reclaim must leave alone under a macOS home, whatever its size: iOS
+	// backups, Xcode archives, the simulators' disks, applications' sandboxed data
+	// and Docker's or OrbStack's virtual disks.
+	fake_path(t, home, "Library/Application Support/MobileSync/Backup/dev1")
+	fake_path(t, home, "Library/Developer/Xcode/Archives/2025")
+	fake_path(t, home, "Library/Developer/CoreSimulator/Devices/ABC/data")
+	fake_path(t, home, "Library/Containers/com.apple.mail/Data/Library/Caches")
+	docker := fake_path(t, home, "Library/Containers/com.docker.docker/Data/vms/0/data")
+	fake_add(t, docker, "Docker.raw", false, 1 << 30)
+	fake_path(t, home, "Library/Group Containers/group.com.apple.notes/Caches")
+	fake_path(t, home, ".orbstack/data")
+	// A .build without its manifest is someone's work.
+	fake_path(t, home, "src/notes/.build")
 	return
 }
 
@@ -144,8 +189,16 @@ only_what_proves_itself_regenerable_is_found :: proc(t: ^testing.T) {
 		"/home/ann/.cache/chromium",
 		"/home/ann/.cache/pip",
 		"/home/ann/" + TRASH,
+		"/home/ann/Library/Caches/Homebrew",
+		"/home/ann/Library/Caches/com.apple.Safari",
+		"/home/ann/Library/Developer/CoreSimulator/Caches",
+		"/home/ann/Library/Developer/Xcode/DerivedData",
+		"/home/ann/Library/Developer/Xcode/iOS DeviceSupport",
+		"/home/ann/Library/Developer/Xcode/watchOS DeviceSupport",
 		"/home/ann/go/pkg/mod",
+		"/home/ann/src/odin/.odin-cache",
 		"/home/ann/src/py/pkg/__pycache__",
+		"/home/ann/src/swift/.build",
 		"/home/ann/src/tool/target",
 		"/home/ann/src/web/node_modules",
 	}
@@ -161,18 +214,23 @@ each_candidate_says_what_it_is :: proc(t: ^testing.T) {
 	root := home_tree(&tree)
 	found := find(fake_source(&tree), root, "/", ANN)
 	defer candidates_destroy(found)
-	testing.expect_value(t, len(found), 7)
+	testing.expect_value(t, len(found), 15)
 	for c in found {
 		want: Category
 		switch {
 		case strings.has_suffix(c.path, "node_modules"):
 			want = .Dependencies
-		case strings.has_suffix(c.path, "target"):
+		case strings.has_suffix(c.path, "target"),
+		     strings.has_suffix(c.path, ".build"),
+		     strings.has_suffix(c.path, ".odin-cache"),
+		     strings.has_suffix(c.path, "DerivedData"):
 			want = .Build_Output
 		case strings.has_suffix(c.path, "__pycache__"):
 			want = .Python
-		case strings.contains(c.path, ".cache/"):
+		case strings.contains(c.path, ".cache/"), strings.contains(c.path, "Caches"):
 			want = .App_Cache
+		case strings.has_suffix(c.path, "DeviceSupport"):
+			want = .Device_Support
 		case strings.has_suffix(c.path, "go/pkg/mod"):
 			want = .Package_Cache
 		case strings.has_suffix(c.path, "Trash"):
@@ -210,4 +268,63 @@ nothing_under_a_system_directory_even_from_its_top :: proc(t: ^testing.T) {
 	testing.expect(t, under_system("/usr/lib"))
 	testing.expect(t, !under_system("/usrdata"))
 	testing.expect(t, !under_system("/home/ann"))
+}
+
+// What macOS keeps under home that is not made again is never offered, whatever
+// it holds: a sandboxed application's own Caches is not the user's.
+@(test)
+nothing_macos_keeps_for_good_is_offered :: proc(t: ^testing.T) {
+	tree: Fake
+	defer fake_destroy(&tree)
+	root := home_tree(&tree)
+	found := find(fake_source(&tree), root, "/", ANN)
+	defer candidates_destroy(found)
+	testing.expect_value(t, len(found), 15)
+	kept := []string {
+		"Library/Application Support",
+		"Library/Developer/Xcode/Archives",
+		"Library/Developer/CoreSimulator/Devices",
+		"Library/Containers",
+		"Library/Group Containers",
+		".orbstack",
+		"src/notes/.build",
+	}
+	home := fake_path(&tree, root, "home/ann")
+	for k in kept {
+		testing.expectf(t, fake_has(&tree, home, k), "%s is in the tree to be kept", k)
+		full := strings.concatenate({"/home/ann/", k}, context.temp_allocator)
+		for c in found {
+			testing.expectf(t, !strings.has_prefix(c.path, full), "%s offered under %s", c.path, k)
+		}
+	}
+}
+
+// The user's Trash on another volume is theirs by id; the other users' and the
+// volume's own files are not, and a scan of the volume itself reaches it.
+@(test)
+the_users_trash_on_another_volume_is_found :: proc(t: ^testing.T) {
+	tree: Fake
+	defer fake_destroy(&tree)
+	root := fake_add(&tree, 0, "/", true)
+	fake_path(&tree, root, "Volumes/Backup/.Trashes/1000/old")
+	fake_path(&tree, root, "Volumes/Backup/.Trashes/501/theirs")
+	fake_path(&tree, root, "Volumes/Backup/Photos/1000")
+	fake_path(&tree, root, "Volumes/.Trashes/1000")
+	found := find(fake_source(&tree), root, "/", ANN)
+	defer candidates_destroy(found)
+	want := []string{"/Volumes/Backup/.Trashes/1000"}
+	got := found_paths(found)
+	testing.expectf(t, slice.equal(got, want), "found\n%v\nwant\n%v", got, want)
+	if len(found) == 1 {
+		testing.expect_value(t, found[0].category, Category.Trash)
+	}
+
+	volume := fake_path(&tree, root, "Volumes/Backup")
+	below := find(fake_source(&tree), volume, "/Volumes/Backup", ANN)
+	defer candidates_destroy(below)
+	testing.expect(t, slice.equal(found_paths(below), want))
+
+	none := find(fake_source(&tree), root, "/", home.User{"/home/ann", ""})
+	defer candidates_destroy(none)
+	testing.expect_value(t, len(none), 0)
 }

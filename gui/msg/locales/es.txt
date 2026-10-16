@@ -376,3 +376,4 @@ save = Guardar
 recent_alerts = Alertas recientes
 alerts_none = Aún no hay alertas.
 alerting = Alerta
+monitoring_through_off = Lo ejecutaría cada hora el {0}.

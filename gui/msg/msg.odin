@@ -326,6 +326,7 @@ Msg :: enum u16 {
 	Recent_Alerts,
 	Alerts_None,
 	Alerting,
+	Monitoring_Through_Off,
 }
 
 // OFFERED are the languages the window offers, in the order its menu lists

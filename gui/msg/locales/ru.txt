@@ -392,3 +392,4 @@ save = Сохранить
 recent_alerts = Последние оповещения
 alerts_none = Оповещений пока нет.
 alerting = Оповещение
+monitoring_through_off = Запускалось бы каждый час: {0}.

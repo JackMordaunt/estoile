@@ -355,3 +355,4 @@ save = Speichern
 recent_alerts = Letzte Warnungen
 alerts_none = Noch keine Warnungen.
 alerting = Warnung
+monitoring_through_off = Würde stündlich ausgeführt vom {0}.

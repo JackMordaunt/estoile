@@ -338,3 +338,4 @@ save = 保存
 recent_alerts = 最近のアラート
 alerts_none = まだアラートはありません。
 alerting = アラート
+monitoring_through_off = {0} が 1 時間ごとに実行することになります。

@@ -221,3 +221,64 @@ monitoring_note_holds_still_as_scans_turn_on :: proc(t: ^testing.T) {
 	testing.expect_value(t, ui.probe_bounds(p, note), before)
 	testing.expect_value(t, ui.probe_bounds(p, "Scheduled scans"), switch_before)
 }
+
+// What sits under the switch comes and goes, where scans run, the refusal of a
+// change, a recorder that stopped, each in a slot that holds its height: the
+// places and the dialog's buttons stay where they were through every state.
+@(test)
+places_and_buttons_hold_still_through_every_state_of_the_switch :: proc(t: ^testing.T) {
+	s: Monitor_Rig
+	monitor_open(&s)
+	defer monitor_close(&s)
+	p := &s.h.p
+
+	monitor_answer(&s, {on = false, scheduler = "systemd", recorder_shown = true})
+	ui.probe_advance(p, 30, 1.0 / 60)
+	testing.expect(t, ui.probe_tagged(p, "Would run every hour by the systemd."), "off says where")
+	// The footer's Close shares its tag with the title's, so the dialog's own
+	// rect stands for the footer: it is as tall as the content above the buttons.
+	places := ui.probe_bounds(p, "Watched places")
+	alerts := ui.probe_bounds(p, "Recent alerts")
+	dialog := ui.probe_bounds(p, "Monitoring")
+	testing.expect(t, places.h > 0 && alerts.y > places.y, "the dialog is measured")
+	still :: proc(t: ^testing.T, p: ^ui.Probe, places, alerts, dialog: ops.Rect, loc := #caller_location) {
+		testing.expect_value(t, ui.probe_bounds(p, "Watched places"), places, loc = loc)
+		testing.expect_value(t, ui.probe_bounds(p, "Recent alerts"), alerts, loc = loc)
+		testing.expect_value(t, ui.probe_bounds(p, "Monitoring"), dialog, loc = loc)
+	}
+
+	// On: the line changes its words, not its height.
+	testing.expect(t, ui.probe_click_top(p, "Scheduled scans"))
+	monitor_answer(&s, {on = true, scheduler = "systemd", changed = 1, recorder_shown = true})
+	ui.probe_advance(p, 30, 1.0 / 60)
+	testing.expect(t, ui.probe_tagged(p, "Run every hour by the systemd."), "on says where")
+	still(t, p, places, alerts, dialog)
+
+	// Refused: the problem shows in its slot.
+	testing.expect(t, ui.probe_click_top(p, "Scheduled scans"))
+	monitor_answer(
+		&s,
+		{on = true, scheduler = "systemd", changed = 2, problem = "no", recorder_shown = true},
+	)
+	ui.probe_advance(p, 30, 1.0 / 60)
+	testing.expect(t, ui.probe_tagged(p, "no"), "the refusal is shown")
+	still(t, p, places, alerts, dialog)
+
+	// A recorder installed but not running: its warning shows in its slot.
+	monitor_answer(
+		&s,
+		{
+			on = true,
+			scheduler = "systemd",
+			changed = 2,
+			recorder_shown = true,
+			recorder_on = true,
+		},
+	)
+	ui.probe_advance(p, 30, 1.0 / 60)
+	stopped :=
+		"The recorder is installed but not running: " +
+		"systemctl status leita-journal.service says why."
+	testing.expect(t, ui.probe_tagged(p, stopped), "the stopped recorder is said")
+	still(t, p, places, alerts, dialog)
+}

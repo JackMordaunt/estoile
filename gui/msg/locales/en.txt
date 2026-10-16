@@ -401,3 +401,6 @@ save = Save
 recent_alerts = Recent alerts
 alerts_none = No alerts yet.
 alerting = Alert
+
+# Monitoring, with scheduled scans off: {0} is where the system keeps the schedule, as monitoring_through.
+monitoring_through_off = Would run every hour by the {0}.

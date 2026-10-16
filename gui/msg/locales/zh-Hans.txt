@@ -337,3 +337,4 @@ save = 保存
 recent_alerts = 最近的警报
 alerts_none = 暂无警报。
 alerting = 警报
+monitoring_through_off = 将由 {0} 每小时运行一次。

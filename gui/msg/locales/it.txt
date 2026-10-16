@@ -373,3 +373,4 @@ save = Salva
 recent_alerts = Avvisi recenti
 alerts_none = Ancora nessun avviso.
 alerting = Avviso
+monitoring_through_off = Sarebbe eseguito ogni ora dal {0}.

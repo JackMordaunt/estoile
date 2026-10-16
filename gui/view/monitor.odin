@@ -84,10 +84,12 @@ monitor_dialog :: proc(gtx: ^ui.Ctx, m: ^Model) {
 		if locked {
 			primer.inline_message(gtx, tr(.Monitoring_Locked), .Warning)
 		}
-		// The note is how scans will run here, which the host says from its
-		// first answer and keeps saying, so it sits above the switch: the line
-		// of where they run, which comes and goes with the switch, is beneath
-		// it and cannot move it.
+		// The dialog is drawn from the host's first answer, so what that answer
+		// settles, the licence warning, the note of how scans will run here and
+		// whether the recorder is offered, is there from the dialog's first
+		// frame. Everything that changes after, with the switch or an answer,
+		// sits in a slot that holds its height either way, so the places
+		// below never move.
 		if r.note != "" {
 			primer.inline_message(gtx, r.note, .Warning)
 		}
@@ -120,19 +122,25 @@ monitor_dialog :: proc(gtx: ^ui.Ctx, m: ^Model) {
 				send_monitor(gtx, m, r, command.Monitoring{on = on})
 			}
 		}
-		if r.on {
-			primer.text(
-				gtx,
-				trf(gtx, .Monitoring_Through, r.scheduler),
-				.Small,
-				color = primer.color(.Fg_Color_Muted),
-			)
+		// Where scans run, said in both states so the line is as tall off as on.
+		if primer.slot(gtx, lines = 1, size = .Small) {
+			if r.scheduler != "" {
+				through := msg.Msg.Monitoring_Through if r.on else msg.Msg.Monitoring_Through_Off
+				primer.text(
+					gtx,
+					trf(gtx, through, r.scheduler),
+					.Small,
+					color = primer.color(.Fg_Color_Muted),
+				)
+			}
 		}
 		if r.recorder_shown {
 			recorder_row(gtx, m, r, waiting)
 		}
-		if m.monitor_answered && r.problem != "" {
-			primer.inline_message(gtx, r.problem, .Critical)
+		if primer.slot(gtx, lines = 1) {
+			if m.monitor_answered && r.problem != "" {
+				primer.inline_message(gtx, r.problem, .Critical)
+			}
 		}
 		primer.heading(gtx, tr(.Watched_Places), level = 2, variant = .Small)
 		if len(r.watched) == 0 {
@@ -183,8 +191,10 @@ recorder_row :: proc(gtx: ^ui.Ctx, m: ^Model, r: ^query.Monitor_Result, waiting:
 			send_monitor(gtx, m, r, command.Recording{on = on})
 		}
 	}
-	if r.recorder_on && !r.recorder_running && m.recorder_want == nil {
-		primer.inline_message(gtx, tr(.Record_Changes_Stopped), .Warning)
+	if primer.slot(gtx, lines = 1) {
+		if r.recorder_on && !r.recorder_running && m.recorder_want == nil {
+			primer.inline_message(gtx, tr(.Record_Changes_Stopped), .Warning)
+		}
 	}
 }
 

@@ -1,10 +1,10 @@
-package main
+package leita_cli
 
 import "core:sync"
 import "core:time"
 
-import "scan"
-import "survey"
+import "../scan"
+import "../survey"
 
 /*
 Owns everything derived from the tree.

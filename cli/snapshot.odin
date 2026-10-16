@@ -1,4 +1,4 @@
-package main
+package leita_cli
 
 import "core:sync"
 

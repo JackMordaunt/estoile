@@ -1,4 +1,4 @@
-package main
+package leita_cli
 
 import "core:encoding/json"
 import "core:fmt"
@@ -12,11 +12,11 @@ import "core:time"
 
 import "jm:sqlite3"
 
-import "changes"
-import "history"
-import "scan"
-import "term"
-import "version"
+import "../changes"
+import "../history"
+import "../scan"
+import "../term"
+import "../version"
 
 // --version names the build and where it runs.
 @(test)

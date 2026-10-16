@@ -1,10 +1,10 @@
-package main
+package leita_cli
 
 import "core:fmt"
 import "core:strings"
 
-import "scan"
-import "term"
+import "../scan"
+import "../term"
 
 /*
 How the command line says things. Everything it prints goes through here, so

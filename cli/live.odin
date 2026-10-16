@@ -1,13 +1,13 @@
-package main
+package leita_cli
 
 import "core:fmt"
 import "core:sync"
 import "core:thread"
 import "core:time"
 
-import "human"
-import "scan"
-import "survey"
+import "../human"
+import "../scan"
+import "../survey"
 
 /*
 Stand in for a UI.

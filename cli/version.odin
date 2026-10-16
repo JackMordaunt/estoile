@@ -1,10 +1,10 @@
-package main
+package leita_cli
 
 import "core:fmt"
 import "core:time"
 
 import "jm:timefmt"
-import "version"
+import "../version"
 
 // version_line is which leita this is, where it runs and when it was built:
 // leita v0.1.0 (linux/amd64, built 2026-10-09). In the temp allocator.

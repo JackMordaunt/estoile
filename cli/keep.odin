@@ -1,15 +1,15 @@
-package main
+package leita_cli
 
 import "core:fmt"
 import "core:time"
 
 import "jm:timefmt"
 
-import "history"
-import "human"
-import "report"
-import "scan"
-import "survey"
+import "../history"
+import "../human"
+import "../report"
+import "../scan"
+import "../survey"
 
 /*
 The scans the command line keeps, in the store the window keeps its own in, so

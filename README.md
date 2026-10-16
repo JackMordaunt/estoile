@@ -149,7 +149,12 @@ too, under a licence or during the trial. `le` is the same command, shorter:
 leita D: --report usage.pdf
 ```
 
-`leita -h` lists every option.
+`leita -h` lists every option. Leita, the app, takes the same arguments, so
+a Mac with only the app can write a report from the terminal:
+
+```sh
+Leita.app/Contents/MacOS/Leita ~ --report usage.pdf
+```
 
 ## Scripts and monitoring
 

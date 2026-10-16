@@ -75,6 +75,8 @@ Also
   --color auto|always|never decorate the summary; auto does for a person at a terminal,
                             never in a pipe (LEITA_COLOR sets it too)
   --version                 print which leita this is and stop
+  Leita, the window, takes the same arguments; with any flag it runs as leita;
+  alone or with a path it opens the window
 
 Exit codes: 0 no limit crossed; 1 a bad flag, or a target that could not be scanned;
 2 a --warn-used limit crossed; 3 a --fail-used or --min-free limit crossed.
@@ -132,13 +134,15 @@ EXIT_FAIL  :: 3 // the scan finished; a --fail-used or --min-free limit was cros
 run :: proc(args: []string) -> int {
 	defer free_all(context.temp_allocator)
 
-	// leita monitor ... is monitoring's own command line (package monitor).
-	if len(args) > 0 && args[0] == "monitor" {
-		return monitor.run_command_line(args[1:])
-	}
-	// leita journal ... is the change recorder's (package journal).
-	if len(args) > 0 && args[0] == "journal" {
-		return journal.run_command_line(args[1:])
+	// leita monitor ... is monitoring's own command line (package monitor), and
+	// leita journal ... the change recorder's (package journal).
+	if is_subcommand(args) {
+		switch args[0] {
+		case "monitor":
+			return monitor.run_command_line(args[1:])
+		case "journal":
+			return journal.run_command_line(args[1:])
+		}
 	}
 
 	// Plain unless a person is watching, decided before the flags are read,
@@ -177,6 +181,13 @@ run :: proc(args: []string) -> int {
 	licensee := licence.licensee_kept(licence.path_beside(data, context.temp_allocator))
 	first := licence.first_use(licence.path_beside(data, context.temp_allocator, "first-use"))
 	return scan_and_say(opt, data, licensee, !licence.unlocked(licensee != "", first))
+}
+
+// is_subcommand says whether args open with a command of its own, monitor or
+// journal, whose command line is the rest; Leita, the window, asks before it
+// takes one argument as a path.
+is_subcommand :: proc(args: []string) -> bool {
+	return len(args) > 0 && (args[0] == "monitor" || args[0] == "journal")
 }
 
 // find_color finds --color among args the way the parser would, as --color=WORD

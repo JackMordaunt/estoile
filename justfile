@@ -201,7 +201,8 @@ hot *args: deps
     while [ ! -f build/hot/view.watch ]; do sleep 0.2; done
     build/debug/app/{{gui}}-host{{exe}} build/hot/view.watch {{args}}
 
-# The view in a probe over the host on a real directory, the view's own suite,
+# Leita's own suite (which arguments open the window and which run leita), the
+# view in a probe over the host on a real directory, the view's own suite,
 # the messages' (every language has every message), the platform package's, and
 # those of the packages only the window imports, search among them. Not -all-packages, which would run every jm:ui
 # suite the window imports too.
@@ -209,6 +210,7 @@ hot *args: deps
 # Run the window's suites under ASan
 gui-test: deps
     mkdir -p build/test/app
+    {{odin}} test gui -debug {{san}} {{flags}} {{sdl3_link}} -out:build/test/app/{{gui}}-main{{exe}}
     {{odin}} test gui/app -debug {{san}} {{flags}} {{sdl3_link}} -out:build/test/app/{{gui}}{{exe}}
     {{odin}} test gui/files -debug {{san}} {{flags}} -out:build/test/app/{{gui}}-files{{exe}}
     {{odin}} test gui/view -debug {{san}} {{flags}} -out:build/test/app/{{gui}}-view{{exe}}

@@ -1,11 +1,19 @@
 /*
 Leita: see what is using the disk, as the scan finds it.
 
-	Leita                  scan the home directory
-	Leita PATH             scan a directory, drive or image
+	Leita                  scan the home directory in the window
+	Leita PATH             scan a directory, drive or image in the window
+	Leita -h               leita's command line, help and reports included
 	Leita monitor ...      monitoring's command line, as leita monitor
 	Leita journal ...      the change recorder's, as leita journal: the window runs
 	                       it under pkexec to turn the recorder on or off
+
+Leita takes the same arguments as leita, and launch decides which it is from
+them: alone or with one path it opens the window; with any argument that starts
+with "-", or with monitor or journal, it is leita, whose exit code it exits with.
+So a flag the window has no use for, --report say, still does what leita does,
+and -h is help rather than a folder named -h. A Mac with only the app can
+therefore run reports from the terminal: Leita ~ --report usage.pdf.
 
 The window is jm:ui in Primer. Its pieces are gui's packages:
 
@@ -20,17 +28,40 @@ package main
 
 import "core:debug/trace"
 import "core:os"
+import "core:strings"
 
 @(require) import "jm:debug"
 import "jm:ui/shell"
 
+import "../cli"
 import "../history"
-import "../journal"
-import "../monitor"
 import "app"
 @(require) import "leaks"
 import "msg"
 import "view"
+
+// Launch is what Leita runs as, decided by launch from its arguments.
+Launch :: enum {
+	Window, // the window, on the home directory or the one path given
+	Terminal, // leita's command line, as the leita binary is
+}
+
+/*
+launch decides what Leita is from the arguments after its name: nothing, or one
+argument that does not start with "-", opens the window; anything else is
+leita's command line, which says what is wrong with two paths as leita does.
+*/
+launch :: proc(args: []string) -> Launch {
+	switch {
+	case len(args) == 0:
+		return .Window
+	case cli.is_subcommand(args):
+		return .Terminal
+	case len(args) == 1 && !strings.has_prefix(args[0], "-"):
+		return .Window
+	}
+	return .Terminal
+}
 
 main :: proc() {
 	when ODIN_DEBUG {
@@ -42,21 +73,14 @@ main :: proc() {
 	}
 	context.assertion_failure_proc = trace.assertion_failure_proc
 
-	// Leita monitor ... is monitoring's command line, as leita monitor is, so the
-	// scheduler can run whichever binary turned monitoring on.
-	if len(os.args) > 1 && os.args[1] == "monitor" {
-		code := monitor.run_command_line(os.args[2:])
-		free_all(context.temp_allocator)
-		os.exit(code)
-	}
-	if len(os.args) > 1 && os.args[1] == "journal" {
-		code := journal.run_command_line(os.args[2:])
+	args := os.args[1:]
+	if launch(args) == .Terminal {
+		code := cli.run(args)
 		free_all(context.temp_allocator)
 		os.exit(code)
 	}
 
-	path :=
-		os.args[1] if len(os.args) > 1 else (os.user_home_dir(context.temp_allocator) or_else "/")
+	path := args[0] if len(args) > 0 else (os.user_home_dir(context.temp_allocator) or_else "/")
 
 	h := new(app.Host)
 	defer free(h)

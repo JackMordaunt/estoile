@@ -12,6 +12,7 @@ package leita_view
 
 import "core:fmt"
 import "core:os"
+import "core:path/filepath"
 import "core:strings"
 
 import "jm:i18n"
@@ -112,6 +113,7 @@ Model :: struct {
 	location_follow:  bool,
 	trail:            [dynamic]query.Crumb, // the way to the directory shown, names owned
 	trail_generation: u32,
+	titled:           string, // the place the window is named after, owned
 	// Searching (search.odin): whether the location bar is the search field,
 	// what it holds, whether it is still to take focus, whether what was found
 	// is laid out as a grid, how far it is scrolled, and the last term answered
@@ -277,6 +279,7 @@ model_init :: proc(m: ^Model, path: string, locale := i18n.Locale.English) {
 }
 
 model_destroy :: proc(m: ^Model) {
+	delete(m.titled)
 	ui.text_destroy(&m.path)
 	ui.text_destroy(&m.rename)
 	ui.text_destroy(&m.licence_text)
@@ -334,6 +337,7 @@ view :: proc(gtx: ^ui.Ctx, user: rawptr) {
 		forget_history(m)
 	}
 	walk_history(gtx, m, prog)
+	name_window(gtx, m, prog)
 	// Last frame's hovered row is this frame's to show; a change needs the frame
 	// that shows it.
 	if m.row_hover != m.row_hover_next {
@@ -775,6 +779,30 @@ TITLE :: tok.Type_Style {
 	weight      = tok.BASE_TEXT_WEIGHT_SEMIBOLD,
 	size        = 24,
 	line_height = 32,
+}
+
+// window_title is the window's name for a scan of path: on macOS the folder's
+// own name alone, as a Finder window carries its folder's and a TextEdit window
+// its file's; elsewhere the name and then the product, as Notepad and Explorer
+// title theirs. The title bar alone shows it; the toolbar keeps the product.
+window_title :: proc(path: string, allocator := context.temp_allocator) -> string {
+	name := filepath.base(path)
+	when ODIN_OS == .Darwin {
+		return strings.clone(name, allocator)
+	} else {
+		return strings.concatenate({name, " — ", version.NAME}, allocator)
+	}
+}
+
+// name_window names the window after the place scanned, as each scan starts.
+@(private)
+name_window :: proc(gtx: ^ui.Ctx, m: ^Model, prog: ^query.Progress_Result) {
+	if prog == nil || prog.target == "" || prog.target == m.titled {
+		return
+	}
+	delete(m.titled)
+	m.titled = strings.clone(prog.target)
+	ui.set_window_title(gtx, window_title(prog.target))
 }
 
 // title is s set in TITLE, read as the window's one first-level heading.

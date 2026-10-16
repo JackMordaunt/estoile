@@ -27,7 +27,6 @@ import "jm:ui/shell"
 import "../history"
 import "../journal"
 import "../monitor"
-import "../version"
 import "app"
 @(require) import "leaks"
 import "msg"
@@ -77,7 +76,7 @@ main :: proc() {
 
 	shell.run(
 		{
-			title = version.NAME + " " + version.VERSION,
+			title = view.window_title(path),
 			width = 1280,
 			height = 820,
 			min_width = 640,

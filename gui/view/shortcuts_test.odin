@@ -56,3 +56,26 @@ the_command_key_with_r_scans_the_place_again :: proc(t: ^testing.T) {
 	ui.probe_key(p, .R, {ui.SHORTCUT})
 	testing.expect(t, sent(p, command.Scan) == nil, "nothing while a scan runs")
 }
+
+// The window is named after the place scanned, by the folder's own name, and
+// renamed as a scan of another place starts.
+@(test)
+the_window_is_named_after_the_place :: proc(t: ^testing.T) {
+	r: Shortcut_Rig
+	shortcuts_open(&r, {generation = 1, state = .Scanning, target = "/top"})
+	defer shortcuts_close(&r)
+	p := &r.h.p
+
+	when ODIN_OS == .Darwin {
+		testing.expect_value(t, window_title("/top"), "top")
+	} else {
+		testing.expect_value(t, window_title("/top"), "top — leita")
+	}
+	testing.expect_value(t, ui.probe_title(p), window_title("/top"))
+
+	ui.probe_deliver(p, query.Progress{}, query.Progress_Result{generation = 2, state = .Scanning, target = "/"})
+	ui.probe_frame(p)
+	testing.expect_value(t, ui.probe_title(p), window_title("/"))
+	ui.probe_frame(p)
+	testing.expect(t, ui.probe_title(p) == window_title("/"), "named once, kept across frames")
+}

@@ -37,7 +37,11 @@ compressed-away clusters.
 @(private)
 read_dir :: proc(d: Dir, w: ^Worker) -> (nodes, bytes: u64, ok: bool) {
 	s := &w.scratch
-	base := extended(d.path, s) or_return
+	base, extended_ok := extended(d.path, s)
+	if !extended_ok {
+		mark_unread(w, d.index, false)
+		return 0, 0, false
+	}
 	wide, wide_ok := widen(base, &s.wide)
 	if !wide_ok {
 		w.err = .Out_Of_Memory
@@ -56,6 +60,7 @@ read_dir :: proc(d: Dir, w: ^Worker) -> (nodes, bytes: u64, ok: bool) {
 		nil,
 	)
 	if dir == win.INVALID_HANDLE_VALUE {
+		mark_unread(w, d.index, win.GetLastError() == win.ERROR_ACCESS_DENIED)
 		return 0, 0, false
 	}
 	defer win.CloseHandle(dir)
@@ -88,6 +93,7 @@ read_dir :: proc(d: Dir, w: ^Worker) -> (nodes, bytes: u64, ok: bool) {
 				class = Restart_Class[.Full]
 				continue
 			}
+			mark_unread(w, d.index, err == win.ERROR_ACCESS_DENIED)
 			return nodes, bytes, false
 		}
 		class = Next_Class[s.volumes[vol].listing]

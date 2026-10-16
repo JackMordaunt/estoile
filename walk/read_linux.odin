@@ -30,6 +30,7 @@ read_dir :: proc(d: Dir, w: ^Worker) -> (nodes, bytes: u64, ok: bool) {
 	path: Path
 	cpath, path_ok := terminate(d.path, &path)
 	if !path_ok {
+		mark_unread(w, d.index, false)
 		return 0, 0, false
 	}
 	// Not NOFOLLOW: the queue holds directories, and symlinks only when the caller
@@ -37,6 +38,7 @@ read_dir :: proc(d: Dir, w: ^Worker) -> (nodes, bytes: u64, ok: bool) {
 	// the ones it was told to walk. DIRECTORY still rejects a link onto a file.
 	fd, open_errno := linux.open(cpath, {.DIRECTORY, .CLOEXEC})
 	if open_errno != .NONE {
+		mark_unread(w, d.index, denied_errno(open_errno))
 		return 0, 0, false
 	}
 	defer linux.close(fd)
@@ -70,6 +72,7 @@ read_dir :: proc(d: Dir, w: ^Worker) -> (nodes, bytes: u64, ok: bool) {
 	for {
 		n, errno := linux.getdents(fd, buf[:])
 		if errno != .NONE {
+			mark_unread(w, d.index, denied_errno(errno))
 			return 0, 0, false
 		}
 		if n == 0 {
@@ -236,6 +239,12 @@ charge_extents :: proc(w: ^Worker, dir: linux.Fd, pool: ^^Btrfs_Pool, e: ^Entry)
 		scan.mark_logical(w.writer.tree)
 	}
 	return true
+}
+
+// Whether an errno says permission was what a directory lacked.
+@(private)
+denied_errno :: proc(errno: linux.Errno) -> bool {
+	return errno == .EACCES || errno == .EPERM
 }
 
 // The device a statx answer lies on, as one number.

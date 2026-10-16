@@ -61,8 +61,9 @@ Read `root` into `t` as `u.base` says it was, reading again only what changed.
 List is read from disk; one it marks Deep is walked; any other is copied from it,
 entries, sizes and all, and its subdirectories are dealt with by their own marks. A
 directory that a read finds and the base does not have is walked; one the base has
-under the same name keeps its own mark. The result is the tree a walk would have
-read, as far as the marks were right.
+under the same name keeps its own mark. A directory the base could not read is
+walked whatever its mark, since the base holds nothing of it. The result is the
+tree a walk would have read, as far as the marks were right.
 
 A name the base has keeps the base's choice of which name of a hard-linked file to
 charge. A file linked anew since the base, to a name the update copies, is charged
@@ -96,9 +97,14 @@ update :: proc(root: string, u: ^Update, t: ^scan.Tree, cfg := Config{}) -> Erro
 	)
 }
 
-// The job a directory of the base is given by its mark.
+// The job a directory of the base is given by its mark. One the base could not
+// read (scan.Node_Flag.Unread) has nothing to copy, so it is walked whatever its
+// mark: the next scan may have the permission the last one lacked.
 @(private)
 job_of :: proc(u: ^Update, base: u32) -> Job {
+	if .Unread in scan.node_flags(scan.node(u.base, base)) {
+		return .Walk
+	}
 	switch u.marks[base] {
 	case .Keep:
 		return .Copy

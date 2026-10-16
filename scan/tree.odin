@@ -59,6 +59,9 @@ Node_Flag  :: enum u8 {
 	// reflinked copy or a snapshot's, on btrfs, when the walk could read extents. Its
 	// disk is only what it holds alone.
 	Shared,
+	// A directory the reader could not open or list, so whatever is under it is not
+	// in the tree. An update of this tree reads it again rather than copying it.
+	Unread,
 }
 Node_Flags :: distinct bit_set[Node_Flag;u8]
 
@@ -107,6 +110,11 @@ Tree :: struct {
 	// by reflinks or snapshots once for every file. Set by a walk that could not read
 	// the extents themselves, which takes root.
 	logical:    b32,
+	// Directories a reader could not open or list (Node_Flag.Unread), and whether
+	// any of them refused for want of permission rather than for another reason.
+	// Added by a walk once it has finished.
+	unread:     u64,
+	denied:     b32,
 	allocator:  mem.Allocator,
 	// A walk that folded totals as directories finished. Nil for every other reader,
 	// and for a walk that was told not to. Freed with the tree.
@@ -210,6 +218,12 @@ a node for a size that had not been stored yet.
 */
 node_publish :: proc(n: ^Node, flags: Node_Flags) {
 	sync.atomic_store((^u8)(&n.flags), transmute(u8)flags)
+}
+
+// Add `flags` to a node already published, atomically, so a watcher reading the
+// flags at the same time sees the old set or the new, never a torn one.
+node_mark :: proc(n: ^Node, flags: Node_Flags) {
+	sync.atomic_or((^u8)(&n.flags), transmute(u8)flags)
 }
 
 // A node's flags, read as a watcher must. Pairs with `node_publish`: an untouched slot
@@ -378,6 +392,24 @@ taken_restated :: proc(t: ^Tree) -> bool {
 // Say that some btrfs sizes in the tree are logical, not what the files occupy.
 mark_logical :: proc(t: ^Tree) {
 	sync.atomic_store(&t.logical, true)
+}
+
+// Count `count` more directories the reader could not open or list, `denied` if
+// any of them refused for want of permission.
+add_unread :: proc(t: ^Tree, count: u64, denied: bool) {
+	if count == 0 {
+		return
+	}
+	sync.atomic_add(&t.unread, count)
+	if denied {
+		sync.atomic_store(&t.denied, true)
+	}
+}
+
+// How many directories the reader could not open or list, and whether permission
+// was what any of them lacked.
+unread :: proc(t: ^Tree) -> (count: u64, denied: bool) {
+	return sync.atomic_load(&t.unread), bool(sync.atomic_load(&t.denied))
 }
 
 // Whether some btrfs sizes in the tree are logical: read as root, they would be less.

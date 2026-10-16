@@ -24,12 +24,14 @@ read_dir :: proc(d: Dir, w: ^Worker) -> (nodes, bytes: u64, ok: bool) {
 	path: Path
 	cpath, path_ok := terminate(d.path, &path)
 	if !path_ok {
+		mark_unread(w, d.index, false)
 		return 0, 0, false
 	}
 	// Not NOFOLLOW, for the reason the Linux reader gives: the queue holds symlinks
 	// only when the caller asked for them to be followed.
 	fd := posix.open(cpath, {.DIRECTORY, .CLOEXEC})
 	if fd < 0 {
+		mark_unread(w, d.index, denied_errno(posix.errno()))
 		return 0, 0, false
 	}
 	defer posix.close(fd)
@@ -47,6 +49,7 @@ read_dir :: proc(d: Dir, w: ^Worker) -> (nodes, bytes: u64, ok: bool) {
 	for {
 		count := getattrlistbulk(c.int(fd), &request, raw_data(buf[:]), len(buf), 0)
 		if count < 0 {
+			mark_unread(w, d.index, denied_errno(posix.errno()))
 			return nodes, bytes, false
 		}
 		if count == 0 {
@@ -184,6 +187,12 @@ take_name :: proc(r: ^Entry_Reader) -> (name: string, ok: bool) {
 		return "", false
 	}
 	return string(r.buf[start:][:length - 1]), true
+}
+
+// Whether an errno says permission was what a directory lacked.
+@(private)
+denied_errno :: proc(errno: posix.Errno) -> bool {
+	return errno == .EACCES || errno == .EPERM
 }
 
 // Scratch is what a worker reuses between directories: nothing, since the buffer

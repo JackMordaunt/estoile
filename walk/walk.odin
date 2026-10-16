@@ -210,6 +210,14 @@ run :: proc(seed: Dir, t: ^scan.Tree, cfg: Config, u: ^Update) -> Error {
 		fold_publish(fold, t, states)
 	}
 
+	unread: u64
+	denied: bool
+	for &s in states {
+		unread += s.unread
+		denied ||= s.denied
+	}
+	scan.add_unread(t, unread, denied)
+
 	for &s in states {
 		if s.err != nil {
 			return s.err
@@ -230,9 +238,9 @@ hand_over :: proc(d: Dir, ok: bool, w: ^Worker, queue: ^[dynamic]Dir) -> bool {
 		append(queue, found)
 	}
 	clear(&w.found)
-	// A directory that would not open is worth nothing and is not worth retrying,
-	// but it is no reason to abandon the rest of the volume. Running out of room
-	// for the tree is, since everything after it would be missing silently.
+	// A directory that would not open is counted and marked (mark_unread), and is
+	// no reason to abandon the rest of the volume. Running out of room for the
+	// tree is, since everything after it would be missing silently.
 	return w.err == nil && !scan.cancelled(w.writer.tree)
 }
 
@@ -290,7 +298,28 @@ Worker :: struct {
 	// by name, so a name it still has keeps the decision made about it there.
 	siblings:  map[string]u32,
 	listing:   bool,
+	// Directories this worker could not open or list, and whether any of them
+	// refused for want of permission. Summed into the tree once the walk is done.
+	unread:    u64,
+	denied:    bool,
 	allocator: mem.Allocator,
+}
+
+/*
+Record that the directory at `index` could not be opened or listed, `denied` when
+permission was what it lacked (EACCES, EPERM, ERROR_ACCESS_DENIED).
+
+The node stays in the tree with whatever entries were recorded before the failure,
+flagged Unread so an update reads it again instead of copying it as whole, and the
+walk's total of such directories says at the end that the tree is short. Without
+either, a directory the user cannot open counts as empty, and a baseline kept from
+that scan passes it off as empty to every update after, with the permission or not.
+*/
+@(private)
+mark_unread :: proc(w: ^Worker, index: u32, denied: bool) {
+	scan.node_mark(scan.node(w.writer.tree, index), {.Unread})
+	w.unread += 1
+	w.denied ||= denied
 }
 
 @(private)

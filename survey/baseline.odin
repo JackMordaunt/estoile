@@ -26,7 +26,9 @@ written for this machine, little-endian:
 	nodes        u32 count, u32 root
 	each node    u32 parent, u8 flags, u64 disk, u16 name length, name bytes
 
-Nodes are numbered afresh, used ones only, so a parent names the new number.
+Nodes are numbered afresh, used ones only, so a parent names the new number. The
+flags kept are the ones an update needs: what a node is, and Unread for a directory
+the scan could not open, which the update walks rather than copies (walk.update).
 Roughly 15 bytes and the name a node: a home directory of 2.6 million is 70 to 80 MB.
 */
 
@@ -96,7 +98,11 @@ baseline_save :: proc(path, place: string, t: ^scan.Tree, cursor: changes.Cursor
 		}
 		name := scan.name_of(t, i)
 		put_u32(&w, parent)
-		put_u8(&w, transmute(u8)(scan.node_flags(n) & {.Directory, .Reparse, .Extra_Name, .Mount}))
+		put_u8(
+			&w,
+			transmute(u8)(scan.node_flags(n) &
+				{.Directory, .Reparse, .Extra_Name, .Mount, .Unread}),
+		)
 		put_u64(&w, n.disk)
 		put_u16(&w, u16(len(name)))
 		put(&w, transmute([]u8)name)

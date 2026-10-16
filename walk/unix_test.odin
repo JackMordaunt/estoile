@@ -2,8 +2,10 @@
 package walk
 
 import "core:fmt"
+import "core:log"
 import "core:os"
 import "core:slice"
+import "core:sys/posix"
 import "core:testing"
 
 import "../scan"
@@ -146,4 +148,134 @@ test_a_hard_linked_file_is_charged_once :: proc(t: ^testing.T) {
 		lone_disk,
 	)
 	testing.expect_value(t, tree.bytes_done, shared_disk + DIRS * lone_disk)
+}
+
+/*
+A place with a directory this user may not open:
+
+	<root>/a.txt               100 bytes
+	<root>/locked/big.bin      1 MiB, behind a mode 000 directory
+
+Root opens anything, so the fixture cannot be built there and the caller skips.
+*/
+@(private = "file")
+locked_place :: proc(t: ^testing.T, name: string) -> (root: string, ok: bool) {
+	if posix.geteuid() == 0 {
+		log.info("skipped: root can open any directory")
+		return "", false
+	}
+	dir, dir_err := os.temp_directory(context.temp_allocator)
+	testing.expect(t, dir_err == nil, "no temp directory")
+	root = fmt.tprintf("%s/leita_walk_%s", dir, name)
+	unlock(root)
+	os.remove_all(root)
+	testing.expect(t, os.make_directory(root) == nil, "could not make the root")
+	locked := fmt.tprintf("%s/locked", root)
+	testing.expect(t, os.make_directory(locked) == nil, "could not make locked")
+	body := make([]byte, 1 << 20, context.temp_allocator)
+	slice.fill(body, 'x')
+	testing.expect(
+		t,
+		os.write_entire_file(fmt.tprintf("%s/big.bin", locked), body) == nil,
+		"no big",
+	)
+	testing.expect(
+		t,
+		os.write_entire_file(fmt.tprintf("%s/a.txt", root), body[:100]) == nil,
+		"no a",
+	)
+	testing.expect(t, os.chmod(locked, {}) == nil, "could not lock the directory")
+	return root, true
+}
+
+// Give the locked directory back, so it can be read, and removed.
+@(private = "file")
+unlock :: proc(root: string) {
+	os.chmod(fmt.tprintf("%s/locked", root), {.Read_User, .Write_User, .Execute_User})
+}
+
+@(private = "file")
+flags_of :: proc(tree: ^scan.Tree, name: string) -> (flags: scan.Node_Flags, found: bool) {
+	for i in 0 ..< tree.count {
+		n := scan.node(tree, i)
+		if .Used in scan.node_flags(n) && scan.name_of(tree, i) == name {
+			return scan.node_flags(n), true
+		}
+	}
+	return {}, false
+}
+
+// A directory that will not open stays in the tree, flagged, and is counted as
+// refused for want of permission; what it holds is not charged, and the walk goes
+// on to finish without error.
+@(test)
+test_a_directory_that_cannot_be_opened_is_counted :: proc(t: ^testing.T) {
+	root, ok := locked_place(t, "locked")
+	if !ok {
+		return
+	}
+	defer os.remove_all(root)
+	defer unlock(root)
+
+	tree: scan.Tree
+	testing.expect_value(t, scan.tree_init(&tree, 1), scan.Error.None)
+	defer scan.tree_destroy(&tree)
+	testing.expect_value(t, read(root, &tree, Config{}), Error.None)
+
+	count, denied := scan.unread(&tree)
+	testing.expect_value(t, count, 1)
+	testing.expect(t, denied, "a mode 000 directory was not refused for permission")
+	flags, found := flags_of(&tree, "locked")
+	testing.expect(t, found, "the locked directory is not in the tree")
+	testing.expect(
+		t,
+		.Unread in flags && .Directory in flags,
+		"the locked directory is not flagged",
+	)
+	_, charged := flags_of(&tree, "big.bin")
+	testing.expect(t, !charged, "a file behind a locked directory was recorded")
+	testing.expectf(
+		t,
+		tree.bytes_done < 1 << 20,
+		"charged %d bytes through a locked door",
+		tree.bytes_done,
+	)
+}
+
+// An update copies what the base has, but the base has nothing of a directory it
+// could not open, so that one is walked: once the directory can be read, the
+// update finds what it holds, and the count of unread directories falls to zero.
+@(test)
+test_an_update_walks_what_the_base_could_not_read :: proc(t: ^testing.T) {
+	root, ok := locked_place(t, "relocked")
+	if !ok {
+		return
+	}
+	defer os.remove_all(root)
+	defer unlock(root)
+
+	base: scan.Tree
+	testing.expect_value(t, scan.tree_init(&base, 1), scan.Error.None)
+	defer scan.tree_destroy(&base)
+	testing.expect_value(t, read(root, &base, Config{}), Error.None)
+	was, _ := scan.unread(&base)
+	testing.expect_value(t, was, 1)
+
+	unlock(root)
+	tree: scan.Tree
+	testing.expect_value(t, scan.tree_init(&tree, 1), scan.Error.None)
+	defer scan.tree_destroy(&tree)
+	u := Update {
+		base = &base,
+	}
+	defer delete(u.marks)
+	testing.expect_value(t, update(root, &u, &tree, Config{}), Error.None)
+
+	count, denied := scan.unread(&tree)
+	testing.expect_value(t, count, 0)
+	testing.expect(t, !denied, "nothing was refused this time")
+	flags, found := flags_of(&tree, "locked")
+	testing.expect(t, found && .Unread not_in flags, "the directory read is still flagged")
+	_, charged := flags_of(&tree, "big.bin")
+	testing.expect(t, charged, "the update did not read the directory the base could not")
 }

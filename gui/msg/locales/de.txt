@@ -13,7 +13,6 @@ theme_dark = Dunkles Design
 export = Exportieren
 exporting = Wird exportiert…
 licence = Lizenz
-licence_free = Lizenz: kostenlos für private Nutzung
 
 # About
 version = Version {0}

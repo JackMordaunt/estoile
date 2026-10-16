@@ -12,7 +12,6 @@ theme_dark = Тёмная тема
 export = Экспорт
 exporting = Экспорт…
 licence = Лицензия
-licence_free = Лицензия: бесплатно для личного использования
 
 # About
 version = Версия {0}

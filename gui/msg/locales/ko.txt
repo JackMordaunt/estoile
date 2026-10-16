@@ -12,7 +12,6 @@ theme_dark = 어두운 테마
 export = 내보내기
 exporting = 내보내는 중…
 licence = 라이선스
-licence_free = 라이선스: 개인 용도 무료
 
 # About
 version = 버전 {0}

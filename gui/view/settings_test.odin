@@ -77,7 +77,7 @@ settings_menu_holds_the_bar_actions :: proc(t: ^testing.T) {
 	testing.expect(t, !ui.probe_tagged(p, "Monitoring"), "closed to begin with")
 	testing.expect(t, ui.probe_click(p, "Settings"))
 	ui.probe_advance(p, 10, 1.0 / 60)
-	for item in ([]string{"Export", "Stop", "Monitoring", "Licence: free for personal use", "Language", "Dark theme", "About Leita"}) {
+	for item in ([]string{"Export", "Stop", "Monitoring", "Licence", "Language", "Dark theme", "About Leita"}) {
 		testing.expectf(t, ui.probe_tagged(p, item), "the menu has %s", item)
 	}
 	testing.expect(t, !ui.probe_tagged(p, "Rescan"), "no Rescan while a scan runs")

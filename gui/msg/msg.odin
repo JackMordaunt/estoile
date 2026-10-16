@@ -31,7 +31,6 @@ Msg :: enum u16 {
 	Export,
 	Exporting,
 	Licence,
-	Licence_Free,
 	Version,
 	Tagline,
 	Explainer,

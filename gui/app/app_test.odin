@@ -2248,11 +2248,11 @@ signer_make :: proc(t: ^testing.T) -> (s: Signer) {
 	return
 }
 
-// open_licence opens the licence dialog from the settings menu's item, named as
-// it is while leita is unlicensed or licensed. The item asks the host for the
-// licence once the menu opens, so the click waits for its answer.
+// open_licence opens the licence dialog from the settings menu's item. The item
+// asks the host for the licence once the menu opens, so the click waits for its
+// answer.
 @(private = "file")
-open_licence :: proc(t: ^testing.T, r: ^Rig, name := "Licence: free for personal use") {
+open_licence :: proc(t: ^testing.T, r: ^Rig, name := "Licence") {
 	testing.expect(t, open_settings(r) && settle(r, name), "the menu offers the licence")
 	testing.expect(t, ui.probe_click_top(&r.p, name))
 	ui.probe_advance(&r.p, 20, 1.0 / 60)
@@ -2571,7 +2571,7 @@ the_language_menu_switches_the_window_and_the_host :: proc(t: ^testing.T) {
 	testing.expect(t, settle(&r, msg.tr(de, .Done)), "the window speaks German")
 	testing.expect(t, !ui.probe_tagged(&r.p, "Done"))
 
-	open_licence(t, &r, msg.tr(de, .Licence_Free))
+	open_licence(t, &r, msg.tr(de, .Licence))
 	testing.expect(t, ui.probe_click(&r.p, msg.tr(de, .Licence_To_Add)))
 	ui.probe_type(&r.p, "not a key")
 	ui.probe_frame(&r.p)

@@ -31,7 +31,7 @@ licence_item :: proc(gtx: ^ui.Ctx, menu: ^primer.Action_Menu) -> bool {
 	licensed := r != nil && r.licensed
 	return primer.action_menu_item(
 		menu,
-		tr(.Licence) if licensed else tr(.Licence_Free),
+		tr(.Licence),
 		leading = .Verified if licensed else .Key,
 	)
 }

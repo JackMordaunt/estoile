@@ -15,7 +15,6 @@ theme_dark = ダークテーマ
 export = 書き出す
 exporting = 書き出し中…
 licence = ライセンス
-licence_free = ライセンス: 個人利用は無料
 
 # About
 version = バージョン {0}

@@ -12,7 +12,6 @@ theme_dark = Tema scuro
 export = Esporta
 exporting = Esportazione…
 licence = Licenza
-licence_free = Licenza: gratuita per uso personale
 
 # About
 version = Versione {0}

@@ -38,7 +38,14 @@ jm    := env("JM", root / "jm")
 # described, or a bare commit as git describe names one, g and its hash, so Odin
 # never reads it as a number; dev without git. LEITA_VERSION=<v> sets it instead.
 version := env("LEITA_VERSION", `git describe --tags --dirty 2>/dev/null || { h=$(git describe --always --dirty 2>/dev/null) && echo "g$h"; } || echo dev`)
-flags := "-vet -strict-style -collection:jm=" + jm + " -define:LEITA_VERSION=" + version + " -define:LEITA_SHORT=" + short
+# check_flags is what odin check takes; flags adds the macOS minimum, which
+# only build, run and test accept.
+check_flags := "-vet -strict-style -collection:jm=" + jm + " -define:LEITA_VERSION=" + version + " -define:LEITA_SHORT=" + short
+flags := check_flags + minos
+# macOS 11.0 is the oldest Odin targets, and jm builds its native libraries
+# for it. Without the flag a binary carries the building Mac's own version as
+# its minimum, and an older Mac refuses to start it.
+minos := if os() == "macos" { " -minimum-os-version:11.0" } else { "" }
 san   := env("SAN", "-sanitize:address")
 exe   := if os() == "windows" { ".exe" } else { "" }
 bin   := "leita"
@@ -50,6 +57,20 @@ short := "le"
 # The window is Leita and builds into app/ beside the CLI: macOS and Windows
 # fold case by default, so leita and Leita in one directory are one file.
 gui   := "Leita"
+# What links jm:ui/shell on macOS: the static SDL3 jm's sdl3 recipe builds, so
+# the window starts on a Mac without Homebrew, and the frameworks a static
+# SDL3 needs, the Libs line of the sdl3.pc that build writes. vendor:sdl3 asks
+# for -lSDL3, and Odin puts -L/opt/homebrew/lib ahead of any -L given here, so
+# ld would take a Homebrew dylib where one is installed: the archive is loaded
+# whole by path instead, and the dylib, then unused, dropped. Linux finds its
+# SDL3 in a system lib directory and Windows loads the DLL, so neither adds
+# anything.
+sdl3_dir  := jm / "ui/shell/lib"
+sdl3_link := if os() == "macos" { "-extra-linker-flags:\"-L" + sdl3_dir + " -Wl,-force_load," + sdl3_dir + "/libSDL3.a -Wl,-dead_strip_dylibs" + \
+    " -framework CoreMedia -framework CoreVideo -framework Cocoa -Wl,-weak_framework,UniformTypeIdentifiers" + \
+    " -framework IOKit -framework ForceFeedback -framework Carbon -framework CoreAudio -framework AudioToolbox" + \
+    " -framework AVFoundation -framework Foundation -framework GameController -framework Metal -framework QuartzCore" + \
+    " -Wl,-weak_framework,CoreHaptics\"" } else { "" }
 
 # `just` alone lists the recipes.
 default:
@@ -84,7 +105,7 @@ gui mode="debug": deps
     *) echo "gui: the mode is debug or release, not {{mode}}" >&2; exit 1 ;;
     esac
     mkdir -p build/{{mode}}/app
-    {{odin}} build gui $opt {{flags}} -out:build/{{mode}}/app/{{gui}}{{exe}}
+    {{odin}} build gui $opt {{flags}} {{sdl3_link}} -out:build/{{mode}}/app/{{gui}}{{exe}}
 
 # A first argument of release builds and runs the release build.
 #
@@ -113,8 +134,8 @@ btrfs-test *args: sqlite
 
 # Type-check both modes without producing a binary.
 check:
-    {{odin}} check . {{flags}}
-    {{odin}} check . -debug {{flags}}
+    {{odin}} check . {{check_flags}}
+    {{odin}} check . -debug {{check_flags}}
 
 # The jm submodule, when JM does not name another checkout, and SQLite, which
 # keeps both binaries' scans: all the command line links that is not Odin. Built
@@ -127,8 +148,8 @@ sqlite:
     ls sqlite3/lib/sqlite3.* >/dev/null 2>&1 || just sqlite
 
 # What sqlite fetches, and the libraries jm:ui links: Blend2D to draw,
-# kb_text_shape to shape text, AccessKit for screen readers. Each is built or
-# fetched by jm's own recipe, once.
+# kb_text_shape to shape text, AccessKit for screen readers, and on macOS
+# SDL3 itself. Each is built or fetched by jm's own recipe, once.
 deps: sqlite
     #!/usr/bin/env bash
     set -euo pipefail
@@ -152,7 +173,7 @@ hot *args: deps
     #!/usr/bin/env bash
     set -euo pipefail
     mkdir -p build/debug/app build/hot
-    {{odin}} build gui/host -debug {{san}} {{flags}} -out:build/debug/app/{{gui}}-host{{exe}}
+    {{odin}} build gui/host -debug {{san}} {{flags}} {{sdl3_link}} -out:build/debug/app/{{gui}}-host{{exe}}
     rm -f build/hot/view.watch
     (
       last=""
@@ -188,7 +209,7 @@ hot *args: deps
 # Run the window's suites under ASan
 gui-test: deps
     mkdir -p build/test/app
-    {{odin}} test gui/app -debug {{san}} {{flags}} -out:build/test/app/{{gui}}{{exe}}
+    {{odin}} test gui/app -debug {{san}} {{flags}} {{sdl3_link}} -out:build/test/app/{{gui}}{{exe}}
     {{odin}} test gui/files -debug {{san}} {{flags}} -out:build/test/app/{{gui}}-files{{exe}}
     {{odin}} test gui/view -debug {{san}} {{flags}} -out:build/test/app/{{gui}}-view{{exe}}
     {{odin}} test gui/msg -debug {{san}} {{flags}} -out:build/test/app/{{gui}}-msg{{exe}}

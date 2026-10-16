@@ -194,7 +194,9 @@ evaluate leita for 30 days before you buy. The full terms are in
 ## Build from source
 
 leita is written in [Odin](https://odin-lang.org) and builds with
-[just](https://just.systems).
+[just](https://just.systems). `just deps` fetches the jm submodule and builds
+the native libraries both binaries link, SDL3 among them on macOS; a Mac
+needs cmake for that, from Homebrew, and nothing from Homebrew at run time.
 
 ```sh
 just build release   # build/release/leita and build/release/app/Leita

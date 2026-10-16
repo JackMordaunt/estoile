@@ -37,7 +37,7 @@ fake_run :: proc(argv: []string, user: rawptr) -> Outcome {
 		f.task = from_utf16(data)
 		f.has_task = true
 	case strings.has_prefix(line, "schtasks /Query"):
-		return {ok = f.has_task}
+		return {ok = f.has_task, out = f.task if f.has_task else ""}
 	case strings.has_prefix(line, "schtasks /Delete"):
 		f.has_task = false
 	}
@@ -73,6 +73,7 @@ fake_host :: proc(t: ^testing.T, f: ^Fake, system: System) -> Host {
 	}
 	h.units, _ = filepath.join({dir, "config", "systemd", "user"}, context.temp_allocator)
 	h.agents, _ = filepath.join({dir, "Library", "LaunchAgents"}, context.temp_allocator)
+	h.log, _ = filepath.join({dir, "Library", "Logs", "leita", "monitor.log"}, context.temp_allocator)
 	h.temp = dir
 	return h
 }
@@ -114,10 +115,18 @@ a_systemd_timer_runs_the_monitor_hourly_and_catches_up :: proc(t: ^testing.T) {
 	testing.expect_value(t, f.commands[0], "systemctl --user daemon-reload")
 	testing.expect_value(t, f.commands[1], "systemctl --user enable --now leita-monitor.timer")
 	testing.expect_value(t, f.commands[2], "loginctl show-user ann -p Linger")
+	testing.expect_value(t, program(h), "/opt/leita dev/bin/leita")
+
+	clear(&f.commands)
+	testing.expect(t, loaded(h))
+	testing.expect_value(t, f.commands[0], "systemctl --user is-enabled leita-monitor.timer")
+	f.refuse = "systemctl --user is-enabled"
+	testing.expect(t, !loaded(h), "systemd no longer has the timer")
 
 	clear(&f.commands)
 	testing.expect_value(t, remove(h), "")
 	testing.expect(t, !installed(h))
+	testing.expect_value(t, program(h), "")
 	testing.expect_value(t, f.commands[0], "systemctl --user disable --now leita-monitor.timer")
 	testing.expect_value(t, remove(h), "") // what is gone is removed
 }
@@ -170,8 +179,12 @@ a_task_repeats_hourly_catches_up_once_and_never_stacks :: proc(t: ^testing.T) {
 		strings.has_suffix(f.commands[0], `/TN leita\monitor /F`),
 		f.commands[0],
 	)
+	testing.expect_value(t, program(h), `C:\Program Files\leita\leita.exe`)
+	testing.expect(t, loaded(h))
 
 	testing.expect_value(t, remove(h), "")
+	testing.expect_value(t, program(h), "")
+	testing.expect(t, !loaded(h))
 	testing.expect(t, !installed(h))
 	clear(&f.commands)
 	testing.expect_value(t, remove(h), "")
@@ -194,10 +207,22 @@ a_launchd_agent_runs_hourly_in_the_background :: proc(t: ^testing.T) {
 		"<string>/Applications/Leita.app/Contents/MacOS/Leita</string>\n\t\t<string>monitor</string>\n\t\t<string>run</string>",
 		"<key>StartInterval</key>\n\t<integer>3600</integer>",
 		"<key>LowPriorityIO</key>\n\t<true/>",
+		strings.concatenate(
+			{"<key>StandardOutPath</key>\n\t<string>", h.log, "</string>"},
+			context.temp_allocator,
+		),
+		strings.concatenate(
+			{"<key>StandardErrorPath</key>\n\t<string>", h.log, "</string>"},
+			context.temp_allocator,
+		),
 	}
 	for w in want {
 		testing.expectf(t, strings.contains(string(plist), w), "missing %q in\n%s", w, plist)
 	}
+	folder, _ := filepath.split(h.log)
+	testing.expect(t, os.is_dir(folder), "the log's folder is made for launchd")
+	testing.expect_value(t, program(h), "/Applications/Leita.app/Contents/MacOS/Leita")
+	testing.expect_value(t, log_path(h), h.log)
 	testing.expect_value(t, f.commands[0], "launchctl bootout gui/501/dev.mordaunt.leita.monitor")
 	testing.expect_value(
 		t,
@@ -207,8 +232,81 @@ a_launchd_agent_runs_hourly_in_the_background :: proc(t: ^testing.T) {
 			context.temp_allocator,
 		),
 	)
+	clear(&f.commands)
+	testing.expect(t, loaded(h))
+	testing.expect_value(t, f.commands[0], "launchctl print gui/501/dev.mordaunt.leita.monitor")
+	f.refuse = "launchctl print"
+	testing.expect(t, !loaded(h), "launchd no longer holds the agent")
+
 	testing.expect_value(t, remove(h), "")
 	testing.expect(t, !installed(h))
+	testing.expect_value(t, program(h), "")
+}
+
+/*
+The program an entry records is the path leita was started by, its links kept:
+a bare name through PATH, a relative path through cwd, an absolute one as is;
+one inside an application bundle is the bundle's, and one found nowhere the
+resolved executable.
+*/
+@(test)
+the_program_recorded_is_the_path_leita_was_started_by :: proc(t: ^testing.T) {
+	dir, err := os.make_directory_temp("", "leita-program-*", context.temp_allocator)
+	testing.expect(t, err == nil)
+	defer os.remove_all(dir)
+	bin, _ := filepath.join({dir, "bin"}, context.temp_allocator)
+	cellar, _ := filepath.join({dir, "Cellar", "leita", "1.0", "bin"}, context.temp_allocator)
+	testing.expect(t, os.make_directory_all(bin) == nil)
+	testing.expect(t, os.make_directory_all(cellar) == nil)
+	real, _ := filepath.join({cellar, "leita"}, context.temp_allocator)
+	testing.expect(t, os.write_entire_file(real, transmute([]byte)string("#!/bin/sh\n")) == nil)
+	link, _ := filepath.join({bin, "leita"}, context.temp_allocator)
+	when ODIN_OS == .Windows {
+		testing.expect(t, os.write_entire_file(link, transmute([]byte)string("")) == nil)
+	} else {
+		testing.expect(t, os.symlink(real, link) == nil)
+	}
+	empty, _ := filepath.join({dir, "empty"}, context.temp_allocator)
+	testing.expect(t, os.make_directory_all(empty) == nil)
+	sep := [1]byte{filepath.LIST_SEPARATOR}
+	path := strings.join({empty, bin}, string(sep[:]), context.temp_allocator)
+
+	a := context.temp_allocator
+	testing.expect_value(t, stable_program("leita", real, path, dir, a), link)
+	testing.expect_value(t, stable_program("leita", real, empty, dir, a), real)
+	testing.expect_value(t, stable_program("", real, path, dir, a), real)
+	testing.expect_value(t, stable_program(link, real, "", dir, a), link)
+	rel, _ := filepath.rel(dir, link, context.temp_allocator)
+	rel = strings.concatenate({".", string(filepath.SEPARATOR_STRING), rel}, a)
+	testing.expect_value(t, stable_program(rel, real, "", dir, a), link)
+	app := "/Applications/Leita.app/Contents/MacOS/Leita"
+	testing.expect_value(t, stable_program("leita", app, path, dir, a), app)
+
+	mine := this_program(a)
+	exe, _ := os.get_executable_path(a)
+	testing.expect(t, mine != "", "this process has a program path")
+	testing.expect(t, os.exists(mine), mine)
+	when ODIN_OS != .Windows {
+		info, _ := os.stat(mine, a)
+		resolved, _ := os.stat(exe, a)
+		testing.expect_value(t, info.fullpath, resolved.fullpath)
+	}
+}
+
+// Each entry's program is read back as it was written, whatever it holds.
+@(test)
+an_entry_gives_back_the_program_it_was_given :: proc(t: ^testing.T) {
+	odd := `/opt/leita "dev" & co/100%$HOME/leita`
+	testing.expect_value(t, agent_program(agent_plist({odd, "monitor", "run"}, "")), odd)
+	testing.expect_value(t, agent_program("<plist></plist>"), "")
+	testing.expect_value(t, service_program(service_text({odd, "monitor", "run"})), odd)
+	testing.expect_value(t, service_program(service_text({"/usr/bin/leita", "monitor", "run"})), "/usr/bin/leita")
+	testing.expect_value(t, service_program("[Unit]\n"), "")
+	windows := `C:\Program Files\leita "dev"\leita.exe`
+	testing.expect_value(t, task_program(task_xml({windows, "monitor", "run"})), windows)
+	testing.expect_value(t, task_program(task_xml({`C:\leita\leita.exe`, "monitor", "run"})), `C:\leita\leita.exe`)
+	testing.expect_value(t, windows_unquote(`"C:\Program Files\\"`), `C:\Program Files\`)
+	testing.expect_value(t, task_program("<Task/>"), "")
 }
 
 @(test)

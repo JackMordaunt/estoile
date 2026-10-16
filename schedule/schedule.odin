@@ -68,6 +68,8 @@ Host :: struct {
 	agents: string,
 	// The user's id, for launchctl's gui/<uid> domain.
 	uid:    string,
+	// The file launchd writes the monitor's output to: ~/Library/Logs/leita/monitor.log.
+	log:    string,
 	// Who is logged in, whose lingering decides whether user timers run while
 	// they are logged out.
 	login:  string,
@@ -89,6 +91,7 @@ host_default :: proc(allocator := context.allocator) -> Host {
 	}
 	h.units, _ = filepath.join({config, "systemd", "user"}, allocator)
 	h.agents, _ = filepath.join({home, "Library", "LaunchAgents"}, allocator)
+	h.log, _ = filepath.join({home, "Library", "Logs", "leita", "monitor.log"}, allocator)
 	h.login = os.get_env("USER", allocator)
 	h.temp, _ = os.temp_directory(allocator)
 	return h
@@ -99,6 +102,7 @@ host_destroy :: proc(h: ^Host, allocator := context.allocator) {
 	delete(h.units, allocator)
 	delete(h.agents, allocator)
 	delete(h.uid, allocator)
+	delete(h.log, allocator)
 	delete(h.login, allocator)
 	delete(h.temp, allocator)
 	h^ = {}

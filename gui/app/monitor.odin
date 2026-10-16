@@ -21,7 +21,10 @@ shows a run that finished while it was open the next time it answers.
 Turning monitoring on hands the monitor to the system's scheduler as this
 binary, `Leita monitor run`, which the window's main answers as the command
 line's does; turning it off takes it back. Both are refused while the paid
-features are locked but for turning it off, which always works.
+features are locked but for turning it off, which always works. The binary is
+named by the path it was started by (schedule.this_program), and an entry found
+at launch running leita by another path is moved to this one, as the command
+line does, without a word: the dialog shows monitoring on either way.
 
 On Linux the dialog also turns the recorder of changes on and off (package
 journal), which is not a paid feature: `pkexec Leita journal on|off`, since it
@@ -86,7 +89,8 @@ monitor_refresh :: proc(d: ^Desk) {
 
 // monitor_open readies monitoring beside the history store at kept: on the
 // system's scheduler running this binary, unless the caller gives a scheduler
-// of its own and what it runs.
+// of its own and what it runs. It runs after settings_open, so an entry that
+// runs leita by another path can be moved to this one.
 monitor_open :: proc(d: ^Desk, kept: string, scheduler: ^schedule.Host, argv: []string) {
 	mo := &d.monitoring
 	mo.paths = monitor.paths_beside(kept)
@@ -96,17 +100,15 @@ monitor_open :: proc(d: ^Desk, kept: string, scheduler: ^schedule.Host, argv: []
 		mo.host = schedule.host_default()
 		mo.own_host = true
 	}
-	exe := ""
-	if len(argv) > 0 {
-		exe = strings.clone(argv[0])
-	} else if path, err := os.get_executable_path(context.allocator); err == nil {
-		exe = path
-	} else {
-		exe = strings.clone(os.args[0])
-	}
+	exe := strings.clone(argv[0]) if len(argv) > 0 else schedule.this_program()
 	mo.argv = make([]string, 3)
 	mo.argv[0], mo.argv[1], mo.argv[2] = exe, "monitor", "run"
 	mo.scheduler = strings.clone(schedule.describe(mo.host))
+	if d.settings != nil && settings.monitoring(d.settings) {
+		if was := schedule.program(mo.host); was != "" && was != exe {
+			schedule.install(mo.host, mo.argv)
+		}
+	}
 }
 
 monitor_close :: proc(d: ^Desk) {

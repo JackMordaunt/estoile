@@ -37,11 +37,14 @@ target               {"path", "volume", "filesystem", "engine"}
   filesystem         "ntfs" "refs" "exfat" "fat32" "network" "other", or null
   engine             "mft" (read NTFS's table), "walk", "synthetic", or null
 scan                 {"started": time or null, "duration": ISO 8601 duration}
-totals               {"bytes", "files", "directories"}
+totals               {"bytes", "files", "directories", "unread"}
   bytes              on disk under the target, the target's own included
   files              files under the target; another hard link to a file
                      already counted is not counted again
   directories        directories under the target, not counting the target
+  unread             directories the scan could not open or list, for want
+                     of permission or otherwise; what they hold is in none of
+                     the totals, so a nonzero count means bytes is short
 space                {"total", "free"} of the volume, or null when unknown
 compared             {"taken": time, "bytes"}, the earlier scan of the same
                      place that sizes are compared with, or null for none

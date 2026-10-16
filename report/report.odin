@@ -48,6 +48,7 @@ Report :: struct {
 	bytes:               u64, // on disk under the target, the target's own included
 	files:               u64,
 	directories:         u64, // under the target, not counting it
+	unread:              u64, // directories the scan could not open, so left out
 	space:               Maybe(Space),
 	// The earlier scan the largest entries are compared with: absent when there
 	// is none, or the caller had none to give.
@@ -202,6 +203,7 @@ build :: proc(
 	}
 	r.target = scan.path(t, top, allocator)
 	r.bytes = survey.total(roll, top)
+	r.unread, _ = scan.unread(t)
 
 	n := opt.top if opt.top > 0 else DEFAULT_TOP
 	dirs := make([]Contender, n, context.temp_allocator)

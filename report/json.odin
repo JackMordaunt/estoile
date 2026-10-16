@@ -46,10 +46,11 @@ write_json :: proc(sb: ^strings.Builder, r: ^Report) {
 
 	fmt.sbprintf(
 		sb,
-		"  \"totals\": {{\"bytes\": %d, \"files\": %d, \"directories\": %d}},\n",
+		"  \"totals\": {{\"bytes\": %d, \"files\": %d, \"directories\": %d, \"unread\": %d}},\n",
 		r.bytes,
 		r.files,
 		r.directories,
+		r.unread,
 	)
 
 	strings.write_string(sb, "  \"space\": ")

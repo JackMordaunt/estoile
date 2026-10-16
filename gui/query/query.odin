@@ -53,6 +53,10 @@ Progress_Result :: struct {
 	reread:     u64,
 	since:      i64,
 	why:        string,
+	// Directories the scan could not open, so left out of every total, and whether
+	// permission was what any of them lacked.
+	unread:     u64,
+	denied:     bool,
 }
 
 // Notice is what came of a request the window made: an entry moved to the

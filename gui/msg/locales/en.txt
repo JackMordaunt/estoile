@@ -39,6 +39,10 @@ stopped = Stopped
 failed = Failed
 scan_failed = The scan failed
 slow_hint = Reading this volume's own table would be far faster, given permission to open the device.
+# {0} folders the scan could not open, so left out; the hint follows it on macOS, {0} the product
+unread_folders.one = {0} folder could not be read.
+unread_folders = {0} folders could not be read.
+unread_hint = Grant Full Disk Access to {0} in System Settings › Privacy & Security › Full Disk Access.
 # {0} items found so far
 count_items.one = {0} item
 count_items = {0} items

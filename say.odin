@@ -3,6 +3,7 @@ package main
 import "core:fmt"
 import "core:strings"
 
+import "scan"
 import "term"
 
 /*
@@ -49,4 +50,22 @@ say_error :: proc(format: string, args: ..any) {
 // standard output stays whole.
 say_note :: proc(format: string, args: ..any) {
 	fmt.eprintfln("%s %s", term.painted(estyle, {.Bold}, "note:"), fmt.tprintf(format, ..args))
+}
+
+/*
+say_unread says how many directories the scan could not open, on standard error as
+a warning rather than a failure: the tree is short of them, not wrong. On macOS a
+refusal for want of permission is commonly a folder the system guards under the home
+directory, such as Library/Mail, which Full Disk Access for the terminal lifts.
+*/
+say_unread :: proc(t: ^scan.Tree) {
+	count, denied := scan.unread(t)
+	if count == 0 {
+		return
+	}
+	hint := ""
+	if ODIN_OS == .Darwin && denied {
+		hint = "; grant Full Disk Access to your terminal in System Settings › Privacy & Security › Full Disk Access"
+	}
+	say_note("%d %s could not be read%s", count, "folder" if count == 1 else "folders", hint)
 }

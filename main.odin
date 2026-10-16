@@ -413,6 +413,7 @@ scan_and_say :: proc(opt: Options, kept := "", licensee := "", locked := false) 
 		)
 		say_how_read(&f)
 	}
+	say_unread(&t)
 
 	// The same charging the live scan does, run once over a tree nobody is still
 	// filling. A node left uncharged here has an ancestor that never resolved, and

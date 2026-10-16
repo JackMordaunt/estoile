@@ -47,6 +47,8 @@ Msg :: enum u16 {
 	Failed,
 	Scan_Failed,
 	Slow_Hint,
+	Unread_Folders,
+	Unread_Hint,
 	Count_Items,
 	Count_Free,
 	Count_Seconds,

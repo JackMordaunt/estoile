@@ -800,6 +800,7 @@ progress :: proc(d: ^Desk) -> query.Progress_Result {
 	if s.grown {
 		r.nodes = sync.atomic_load(&s.tree.nodes_done)
 		r.bytes = sync.atomic_load(&s.tree.bytes_done)
+		r.unread, r.denied = scan.unread(&s.tree)
 	}
 	return r
 }

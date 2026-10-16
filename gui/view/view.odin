@@ -546,6 +546,24 @@ status :: proc(gtx: ^ui.Ctx, m: ^Model, prog: ^query.Progress_Result) {
 	if prog.slow {
 		primer.inline_message(gtx, tr(.Slow_Hint), .Warning, .Small)
 	}
+	if prog.unread > 0 {
+		primer.inline_message(gtx, unread(gtx, prog), .Warning, .Small)
+	}
+}
+
+// unread says how many folders the scan could not open, and on macOS, where a
+// refusal is commonly a folder the system guards under the home directory, how to
+// let the window in.
+@(private)
+unread :: proc(gtx: ^ui.Ctx, prog: ^query.Progress_Result) -> string {
+	text := trf(gtx, .Unread_Folders, int(prog.unread))
+	if ODIN_OS == .Darwin && prog.denied {
+		return strings.concatenate(
+			{text, " ", trf(gtx, .Unread_Hint, version.NAME)},
+			gtx.allocator,
+		)
+	}
+	return text
 }
 
 // how_read is how a finished scan with history on read its place, as the command

@@ -163,7 +163,7 @@ EMPTY_JSON :: `{
   "generator": {"name": "leita", "version": "test", "licensee": null},
   "target": {"path": "/empty", "volume": null, "filesystem": null, "engine": null},
   "scan": {"started": null, "duration": "PT0.000S"},
-  "totals": {"bytes": 0, "files": 0, "directories": 0},
+  "totals": {"bytes": 0, "files": 0, "directories": 0, "unread": 0},
   "space": null,
   "compared": null,
   "largest_directories": [],

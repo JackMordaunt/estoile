@@ -111,7 +111,7 @@ settings_menu :: proc(gtx: ^ui.Ctx, m: ^Model, prog: ^query.Progress_Result) {
 		m.dark = !m.dark
 		ui.command(gtx, command.Command(command.Theme{dark = m.dark}))
 	}
-	if primer.action_menu_item(&menu, trf(gtx, .About, version.NAME), leading = .Info) {
+	if primer.action_menu_item(&menu, trf(gtx, .About, version.PRODUCT), leading = .Info) {
 		m.settings_dialog = .About
 	}
 	language_menu(gtx, &menu, m)

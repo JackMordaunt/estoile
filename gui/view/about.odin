@@ -40,7 +40,7 @@ about_dialog :: proc(gtx: ^ui.Ctx, m: ^Model) {
 	if primer.dialog(
 		gtx,
 		&m.about_open,
-		trf(gtx, .About, version.NAME),
+		trf(gtx, .About, version.PRODUCT),
 		footer = buttons[:],
 		width = .Medium,
 	) {
@@ -48,7 +48,7 @@ about_dialog :: proc(gtx: ^ui.Ctx, m: ^Model) {
 		if ui.row(gtx, gap = 16, align = .Center) {
 			about_mark(gtx)
 			if ui.column(gtx, gap = 2) {
-				title(gtx, version.NAME)
+				title(gtx, version.PRODUCT)
 				primer.text(
 					gtx,
 					trf(gtx, .Version, version.VERSION),
@@ -100,7 +100,7 @@ notices_dialog :: proc(gtx: ^ui.Ctx, m: ^Model) {
 		height = .Large,
 	) {
 		ui.column(gtx, gap = 24, align = .Start)
-		primer.text(gtx, trf(gtx, .Notices_Intro, version.NAME))
+		primer.text(gtx, trf(gtx, .Notices_Intro, version.PRODUCT))
 		for n, i in notices.ALL {
 			component(gtx, n, u64(i + 1))
 		}

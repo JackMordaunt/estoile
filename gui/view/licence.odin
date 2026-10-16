@@ -129,7 +129,7 @@ licence_dialog :: proc(gtx: ^ui.Ctx, m: ^Model) {
 		}
 		primer.text(
 			gtx,
-			trf(gtx, .Licence_Privacy, version.NAME),
+			trf(gtx, .Licence_Privacy, version.PRODUCT),
 			.Small,
 			color = primer.color(.Fg_Color_Muted),
 		)
@@ -204,7 +204,7 @@ trial_banner :: proc(gtx: ^ui.Ctx, m: ^Model) {
 // is over: .Reports_Locked for Export, .Change_Locked for colouring by change.
 @(private)
 locked_text :: proc(gtx: ^ui.Ctx, why: msg.Msg) -> string {
-	return trf(gtx, why, version.NAME)
+	return trf(gtx, why, version.PRODUCT)
 }
 
 // LICENCE_PICK is the area the file dialog answers, as EXPORT_PICK is.

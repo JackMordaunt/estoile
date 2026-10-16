@@ -493,7 +493,7 @@ side :: proc(gtx: ^ui.Ctx, m: ^Model) {
 toolbar :: proc(gtx: ^ui.Ctx, m: ^Model, prog: ^query.Progress_Result) {
 	ui.row(gtx, gap = 8, align = .Center)
 	logo(gtx)
-	title(gtx, version.NAME)
+	title(gtx, version.PRODUCT)
 	ui.spacer(gtx, 8)
 	ui.flexible(gtx, 1)
 	location_bar(gtx, m, prog)
@@ -611,7 +611,7 @@ status_messages :: proc(gtx: ^ui.Ctx, prog: ^query.Progress_Result) -> []Status_
 	if prog.unread > 0 {
 		detail := ""
 		if ODIN_OS == .Darwin && prog.denied {
-			detail = trf(gtx, .Unread_Hint, version.NAME)
+			detail = trf(gtx, .Unread_Hint, version.PRODUCT)
 		}
 		append(&msgs, Status_Message{trf(gtx, .Unread_Folders, int(prog.unread)), detail, true})
 	}
@@ -903,7 +903,7 @@ window_title :: proc(path: string, allocator := context.temp_allocator) -> strin
 	when ODIN_OS == .Darwin {
 		return strings.clone(name, allocator)
 	} else {
-		return strings.concatenate({name, " — ", version.NAME}, allocator)
+		return strings.concatenate({name, " — ", version.PRODUCT}, allocator)
 	}
 }
 

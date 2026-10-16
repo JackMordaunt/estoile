@@ -147,7 +147,7 @@ take :: proc(d: ^Desk, text: string) {
 // licence_problem says why a licence was not taken, in the heap.
 @(private = "file")
 licence_problem :: proc(d: ^Desk, err: licence.Error) -> string {
-	return strings.clone(say(d, LICENCE_ERRORS[err], version.NAME))
+	return strings.clone(say(d, LICENCE_ERRORS[err], version.PRODUCT))
 }
 
 // licence_settle ends an offer, with why it was not taken, "" when it was. problem is
@@ -169,7 +169,7 @@ activate :: proc(d: ^Desk, key: string) {
 	if d.client == nil {
 		client, err := http.start()
 		if err != .None {
-			licence_settle(d, strings.clone(say(d, .Cannot_Connect, version.NAME)))
+			licence_settle(d, strings.clone(say(d, .Cannot_Connect, version.PRODUCT)))
 			return
 		}
 		d.client = client
@@ -189,7 +189,7 @@ activate :: proc(d: ^Desk, key: string) {
 		user_agent = "leita/" + version.VERSION,
 	}
 	if _, err := http.submit(d.client, req, activated, d.activations); err != .None {
-		licence_settle(d, strings.clone(say(d, .Cannot_Connect, version.NAME)))
+		licence_settle(d, strings.clone(say(d, .Cannot_Connect, version.PRODUCT)))
 		return
 	}
 	d.activating = true
@@ -217,7 +217,7 @@ take_activation :: proc(d: ^Desk, a: ^Activated) {
 	case a.err == .Timed_Out:
 		licence_settle(d, strings.clone(say(d, .Server_Slow)))
 	case a.err != .None:
-		licence_settle(d, strings.clone(say(d, .Server_Unreachable, version.NAME)))
+		licence_settle(d, strings.clone(say(d, .Server_Unreachable, version.PRODUCT)))
 	case a.status >= 200 && a.status < 300 && a.whole:
 		take(d, body)
 	case a.status >= 400 && a.status < 500:

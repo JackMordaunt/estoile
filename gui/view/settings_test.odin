@@ -77,7 +77,7 @@ settings_menu_holds_the_bar_actions :: proc(t: ^testing.T) {
 	testing.expect(t, !ui.probe_tagged(p, "Monitoring"), "closed to begin with")
 	testing.expect(t, ui.probe_click(p, "Settings"))
 	ui.probe_advance(p, 10, 1.0 / 60)
-	for item in ([]string{"Export", "Stop", "Monitoring", "Licence: free for personal use", "Language", "Dark theme", "About leita"}) {
+	for item in ([]string{"Export", "Stop", "Monitoring", "Licence: free for personal use", "Language", "Dark theme", "About Leita"}) {
 		testing.expectf(t, ui.probe_tagged(p, item), "the menu has %s", item)
 	}
 	testing.expect(t, !ui.probe_tagged(p, "Rescan"), "no Rescan while a scan runs")
@@ -122,7 +122,7 @@ a_dialog_from_the_settings_menu_keeps_the_focus :: proc(t: ^testing.T) {
 	defer render.headless_destroy(&h)
 	p := &h.p
 
-	testing.expect(t, choose(p, &c.m, "About leita"))
+	testing.expect(t, choose(p, &c.m, "About Leita"))
 	ui.probe_advance(p, 10, 1.0 / 60)
 	testing.expect(t, c.m.about_open)
 	said := ui.probe_semantics(p, context.temp_allocator)

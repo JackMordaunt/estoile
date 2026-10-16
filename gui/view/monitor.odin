@@ -99,7 +99,7 @@ monitor_dialog :: proc(gtx: ^ui.Ctx, m: ^Model) {
 				primer.text(gtx, tr(.Scheduled_Scans), weight = .Semibold)
 				primer.text(
 					gtx,
-					trf(gtx, .Monitoring_Explain, version.NAME),
+					trf(gtx, .Monitoring_Explain, version.PRODUCT),
 					.Small,
 					color = primer.color(.Fg_Color_Muted),
 				)
@@ -173,7 +173,7 @@ recorder_row :: proc(gtx: ^ui.Ctx, m: ^Model, r: ^query.Monitor_Result, waiting:
 			primer.text(gtx, tr(.Record_Changes), weight = .Semibold)
 			primer.text(
 				gtx,
-				trf(gtx, .Record_Changes_Explain, version.NAME),
+				trf(gtx, .Record_Changes_Explain, version.PRODUCT),
 				.Small,
 				color = primer.color(.Fg_Color_Muted),
 			)

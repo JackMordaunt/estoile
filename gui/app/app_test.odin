@@ -1133,7 +1133,7 @@ every_window_size_lays_out_without_a_clash :: proc(t: ^testing.T) {
 				r.p.size = {width, height}
 				ui.probe_advance(&r.p, 30, 1.0 / 60)
 				at := fmt.tprintf("%v at %vx%v", colour, width, height)
-				tool := []string{"leita", "Location", "Search", "Settings"}
+				tool := []string{"Leita", "Location", "Search", "Settings"}
 				for i in 0 ..< len(tool) {
 					for j in i + 1 ..< len(tool) {
 						a, b := ui.probe_bounds(&r.p, tool[i]), ui.probe_bounds(&r.p, tool[j])
@@ -2311,7 +2311,7 @@ a_licence_is_checked_kept_and_read_back :: proc(t: ^testing.T) {
 			t,
 			settle(
 				&r,
-				"The licence is not a leita licence; paste the whole line, from leita1. to its end.",
+				"The licence is not a Leita licence; paste the whole line, from leita1. to its end.",
 			),
 			"a broken licence says why",
 		)
@@ -2404,7 +2404,7 @@ a_licence_key_is_exchanged_for_its_licence :: proc(t: ^testing.T) {
 			t,
 			settle(
 				&r,
-				"leita could not reach the licence server. Check the connection, or open the licence file from your receipt instead.",
+				"Leita could not reach the licence server. Check the connection, or open the licence file from your receipt instead.",
 			),
 			"an unreachable server says so",
 		)
@@ -2506,7 +2506,7 @@ reports_and_change_tracking_need_a_licence_after_the_trial :: proc(t: ^testing.T
 			t,
 			ui.probe_tagged(
 				&r.p,
-				"Seeing what changed since the last scan needs a licence now the 30-day trial has ended. leita still keeps every scan, so it is all there once you add one.",
+				"Seeing what changed since the last scan needs a licence now the 30-day trial has ended. Leita still keeps every scan, so it is all there once you add one.",
 			),
 			"colouring by change says why",
 		)

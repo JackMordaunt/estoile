@@ -8,9 +8,13 @@ package version
 // justfile's version, from git describe); "dev" otherwise.
 VERSION :: #config(LEITA_VERSION, "dev")
 
-// NAME is the product's name, the one place it is spelled: the command line's
-// messages, the window's title and toolbar, its About dialog, and every message
-// that names it. The binaries' file names and the LEITA_ variables are the
+// PRODUCT is the product's name as the window and its messages spell it: the
+// toolbar, the window's title, the About dialog, and every message that names
+// the product.
+PRODUCT :: "Leita"
+
+// NAME is the command's name as typed at a prompt, and as the command line's
+// messages spell it. The binaries' file names and the LEITA_ variables are the
 // build's and the environment's, and change apart from it.
 NAME :: "leita"
 

@@ -69,7 +69,7 @@ the_window_is_named_after_the_place :: proc(t: ^testing.T) {
 	when ODIN_OS == .Darwin {
 		testing.expect_value(t, window_title("/top"), "top")
 	} else {
-		testing.expect_value(t, window_title("/top"), "top — leita")
+		testing.expect_value(t, window_title("/top"), "top — Leita")
 	}
 	testing.expect_value(t, ui.probe_title(p), window_title("/top"))
 

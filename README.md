@@ -208,6 +208,7 @@ just build release   # build/release/leita and build/release/app/Leita
 just install         # the release command line on PATH, as leita and as le
 just run             # a debug build of the window, opened on the home directory
 just test
+just hot             # the debug window, the view reloaded on every edit; no sanitizer, for speed
 ```
 
 `just` alone lists every recipe.

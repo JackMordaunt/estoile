@@ -14,7 +14,8 @@
 #   just clean                remove build/
 #   just deps                 fetch the jm submodule and the native libraries the window links
 #   just sqlite               fetch the jm submodule and build SQLite, all the command line links
-#   just hot [dir]            run's debug window, the view reloaded in place on every edit
+#   just hot [dir]            run's debug window without the sanitizer, the view reloaded
+#                             in place on every edit
 #   just gui-test             run the window's tests, the host's on a real directory
 #
 # The debug allocator, flow, sqlite3, stream and ui come from the jm collection, pinned as
@@ -24,7 +25,8 @@
 # Debug and test builds carry -sanitize:address. The debug allocator poisons its
 # guard bytes and freed blocks, so instrumented reads past the end or after free
 # trap at the faulting instruction. Pass SAN= to build without it:
-# `SAN= just build`. Odin does not create output directories, hence the mkdir.
+# `SAN= just build`. The hot-reload window alone builds without it, hot_opt
+# below. Odin does not create output directories, hence the mkdir.
 
 odin  := env("ODIN", "odin")
 # Forward slashes throughout: justfile_directory() on Windows returns
@@ -47,6 +49,11 @@ flags := check_flags + minos
 # its minimum, and an older Mac refuses to start it.
 minos := if os() == "macos" { " -minimum-os-version:11.0" } else { "" }
 san   := env("SAN", "-sanitize:address")
+# What just hot builds the host and the view with, instead of -debug {{san}}:
+# no ASan. A frame in the view costs 5.5x release with it, 2.3x without
+# (measured 2026-10-16), and the loop is for editing the view; just gui, just
+# test and just gui-test keep it.
+hot_opt := "-debug"
 exe   := if os() == "windows" { ".exe" } else { "" }
 bin   := "leita"
 # The short name install puts beside leita, the same command in two letters, as
@@ -167,13 +174,14 @@ deps: sqlite
 # the scan or the pipeline (gui/app, survey, scan, walk, ntfs) needs the recipe
 # run again. A shell loop rather than jm's tools/hot-watch, which passes its own
 # checkout as the jm collection. stat is GNU's -c or BSD's -f, whichever runs.
+# Both builds take hot_opt, the sanitizer-free profile, not -debug {{san}}.
 #
 # Open the window, reloading the view on every edit: just hot [dir]
 hot *args: deps
     #!/usr/bin/env bash
     set -euo pipefail
     mkdir -p build/debug/app build/hot
-    {{odin}} build gui/host -debug {{san}} {{flags}} {{sdl3_link}} -out:build/debug/app/{{gui}}-host{{exe}}
+    {{odin}} build gui/host {{hot_opt}} {{flags}} {{sdl3_link}} -out:build/debug/app/{{gui}}-host{{exe}}
     rm -f build/hot/view.watch
     (
       last=""
@@ -185,7 +193,7 @@ hot *args: deps
           last=$mt
           n=$((n + 1))
           out=build/hot/view-$(date +%s)-${n}{{exe}}
-          if {{odin}} build gui/child -debug {{san}} {{flags}} -out:"$out"; then
+          if {{odin}} build gui/child {{hot_opt}} {{flags}} -out:"$out"; then
             printf '%s' "$out" > build/hot/view.watch
             echo "hot: view ready $out"
             ls -t build/hot/view-* | tail -n +3 | xargs -r rm -f

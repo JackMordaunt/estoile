@@ -61,6 +61,7 @@ Context :: struct {
 	paths:    Paths,
 	host:     schedule.Host,
 	argv:     []string, // what the scheduler runs: this binary, monitor, run
+	aside:    io.Writer, // where a note beside the answer goes: stderr, or the answer's writer when nil
 	unlocked: bool,
 	now:      time.Time,
 	notify:   alert.Runner,
@@ -101,6 +102,7 @@ dispatch :: proc(c: Context, args: []string, w: io.Writer) -> int {
 			w,
 		)
 	case "list":
+		heal(c, w)
 		return list(c, w)
 	case "add":
 		Add_Flags :: struct {
@@ -155,6 +157,7 @@ dispatch :: proc(c: Context, args: []string, w: io.Writer) -> int {
 				return EXIT_FAILED
 			}
 		}
+		heal(c, w)
 		return add(c, f.path, every, limits, w)
 	case "remove":
 		Remove_Flags :: struct {
@@ -164,6 +167,7 @@ dispatch :: proc(c: Context, args: []string, w: io.Writer) -> int {
 		if code, ok := parse(c, &f, rest, w); !ok {
 			return code
 		}
+		heal(c, w)
 		return remove(c, f.path, w)
 	case "on":
 		if !c.unlocked {
@@ -304,6 +308,35 @@ remove :: proc(c: Context, path: string, w: io.Writer) -> int {
 	return EXIT_FAILED
 }
 
+/*
+heal puts the scheduler's entry right when monitoring is on but the entry runs
+leita at another path than this one: an entry made by an earlier install, or
+by the other binary, would run what is no longer there. It says so once,
+beside the answer, since the person asked for something else.
+*/
+@(private)
+heal :: proc(c: Context, w: io.Writer) {
+	st: settings.Store
+	if settings.open(&st, c.paths.settings) != nil {
+		return
+	}
+	defer settings.close(&st)
+	if !settings.monitoring(&st) {
+		return
+	}
+	was := schedule.program(c.host)
+	if was == "" || was == c.argv[0] {
+		return
+	}
+	aside := c.aside if c.aside.procedure != nil else w
+	entry := schedule.describe(c.host)
+	if problem, _ := schedule.install(c.host, c.argv); problem != "" {
+		errorf(c, aside, "the %s ran %s and cannot be moved to %s: %s", entry, was, c.argv[0], problem)
+		return
+	}
+	notef(c, aside, "the %s ran %s; it now runs %s", entry, was, c.argv[0])
+}
+
 // switch_on hands the monitor to the scheduler, then turns monitoring on.
 switch_on :: proc(c: Context, w: io.Writer) -> int {
 	st: settings.Store
@@ -361,10 +394,26 @@ list :: proc(c: Context, w: io.Writer) -> int {
 	}
 	defer settings.close(&st)
 	switch {
-	case settings.monitoring(&st):
-		fmt.wprintfln(w, "monitoring is on, through the %s", schedule.describe(c.host))
-	case:
+	case !settings.monitoring(&st):
 		fmt.wprintln(w, "monitoring is off")
+	case !schedule.loaded(c.host):
+		fmt.wprintfln(
+			w,
+			"monitoring is on, but the %s is missing; leita monitor on puts it back",
+			schedule.describe(c.host),
+		)
+	case !os.exists(schedule.program(c.host)):
+		fmt.wprintfln(
+			w,
+			"monitoring is on, but the %s runs %s, which is gone; leita monitor on puts it right",
+			schedule.describe(c.host),
+			schedule.program(c.host),
+		)
+	case:
+		fmt.wprintfln(w, "monitoring is on, through the %s", schedule.describe(c.host))
+		if log := schedule.log_path(c.host); log != "" {
+			fmt.wprintfln(w, "each run is logged to %s", log)
+		}
 	}
 	watches, err := settings.watches(&st, context.temp_allocator)
 	if err != nil {
@@ -458,10 +507,10 @@ when_ :: proc(unix: i64) -> string {
 
 /*
 run_command_line runs the monitor's command line on this machine, as either
-binary does
-when its first argument is monitor: the stores beside the history store, the
-system's scheduler, and this binary as what the scheduler runs. It says how it
-went on standard output and returns the exit code.
+binary does when its first argument is monitor: the stores beside the history
+store, the system's scheduler, and this binary, by the path it was started by
+(schedule.this_program), as what the scheduler runs. It says how it went on
+standard output, a note beside it on standard error, and returns the exit code.
 */
 run_command_line :: proc(args: []string) -> int {
 	mode, _ := term.parse_mode(os.get_env("LEITA_COLOR", context.temp_allocator))
@@ -471,10 +520,6 @@ run_command_line :: proc(args: []string) -> int {
 		errorf({style = style}, os.to_writer(os.stderr), "no folder to keep leita's data in")
 		return EXIT_FAILED
 	}
-	exe, err := os.get_executable_path(context.temp_allocator)
-	if err != nil {
-		exe = os.args[0]
-	}
 	host := schedule.host_default(context.temp_allocator)
 	paths := paths_beside(kept, context.temp_allocator)
 	licensee := licence.licensee_kept(paths.licence)
@@ -483,7 +528,8 @@ run_command_line :: proc(args: []string) -> int {
 		style    = style,
 		paths    = paths,
 		host     = host,
-		argv     = {exe, "monitor", "run"},
+		argv     = {schedule.this_program(context.temp_allocator), "monitor", "run"},
+		aside    = os.to_writer(os.stderr),
 		unlocked = licence.unlocked(licensee != "", first),
 		now      = time.now(),
 		notify   = show,

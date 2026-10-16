@@ -21,6 +21,7 @@ Bench :: struct {
 	place:    string,
 	c:        Context,
 	commands: [dynamic]string,
+	refuse:   string, // a scheduler command that starts with this fails
 	out:      strings.Builder,
 	shown:    [dynamic]string, // each notification's body
 }
@@ -41,7 +42,11 @@ join :: proc(parts: ..string) -> string {
 @(private = "file")
 record_command :: proc(argv: []string, user: rawptr) -> schedule.Outcome {
 	b := (^Bench)(user)
-	append(&b.commands, strings.join(argv, " ", context.temp_allocator))
+	line := strings.join(argv, " ", context.temp_allocator)
+	append(&b.commands, line)
+	if b.refuse != "" && strings.has_prefix(line, b.refuse) {
+		return {err = "refused"}
+	}
 	return {ok = true}
 }
 
@@ -55,6 +60,9 @@ bench_open :: proc(t: ^testing.T, b: ^Bench) {
 	body := make([]byte, 2 << 20, context.temp_allocator)
 	slice.fill(body, 'x')
 	testing.expect(t, os.write_entire_file(join(b.place, "photos", "big.raw"), body) == nil)
+	// The binary the scheduler is to run, which list looks for.
+	testing.expect(t, os.make_directory_all(join(dir, "bin")) == nil)
+	testing.expect(t, os.write_entire_file(join(dir, "bin", "leita"), nil) == nil)
 	kept := join(dir, "data", "history.db")
 	b.commands = make([dynamic]string, context.temp_allocator)
 	b.shown = make([dynamic]string, context.temp_allocator)
@@ -69,7 +77,7 @@ bench_open :: proc(t: ^testing.T, b: ^Bench) {
 		paths    = paths_beside(kept, context.temp_allocator),
 		host     = host,
 		argv     = slice.clone(
-			[]string{"/usr/bin/leita", "monitor", "run"},
+			[]string{join(dir, "bin", "leita"), "monitor", "run"},
 			context.temp_allocator,
 		),
 		unlocked = true,
@@ -183,9 +191,64 @@ on_hands_the_monitor_to_the_scheduler_and_off_takes_it_back :: proc(t: ^testing.
 		join(b.c.host.units, "leita-monitor.service"),
 		context.temp_allocator,
 	)
-	testing.expect(t, strings.contains(string(service), "ExecStart=/usr/bin/leita monitor run\n"))
+	first := b.c.argv[0]
+	testing.expect(
+		t,
+		strings.contains(string(service), fmt.tprintf("ExecStart=%s monitor run\n", first)),
+		string(service),
+	)
 	_, out = run_monitor(&b, "list")
-	testing.expect(t, strings.has_prefix(out, "monitoring is on"), out)
+	testing.expect(t, strings.has_prefix(out, "monitoring is on, through the systemd"), out)
+
+	// Started by another path, leita moves the entry to it and says so once.
+	moved := join(b.dir, "bin", "leita2")
+	testing.expect(t, os.write_entire_file(moved, nil) == nil)
+	b.c.argv[0] = moved
+	_, out = run_monitor(&b, "list")
+	testing.expect(
+		t,
+		strings.has_prefix(
+			out,
+			fmt.tprintf(
+				"note: the systemd user timer leita-monitor.timer ran %s; it now runs %s\n" +
+				"monitoring is on, through the systemd",
+				first,
+				moved,
+			),
+		),
+		out,
+	)
+	testing.expect_value(t, schedule.program(b.c.host), moved)
+	_, out = run_monitor(&b, "list")
+	testing.expect(t, strings.has_prefix(out, "monitoring is on, through"), "and not again")
+
+	// The binary gone, list says which is missing rather than that all is well.
+	testing.expect(t, os.remove(moved) == nil)
+	_, out = run_monitor(&b, "list")
+	testing.expect(
+		t,
+		strings.has_prefix(
+			out,
+			fmt.tprintf(
+				"monitoring is on, but the systemd user timer leita-monitor.timer runs %s, which is gone; leita monitor on puts it right\n",
+				moved,
+			),
+		),
+		out,
+	)
+
+	// The timer gone from systemd, list says so rather than that all is well.
+	b.refuse = "systemctl --user is-enabled"
+	_, out = run_monitor(&b, "list")
+	testing.expect(
+		t,
+		strings.has_prefix(
+			out,
+			"monitoring is on, but the systemd user timer leita-monitor.timer is missing; leita monitor on puts it back\n",
+		),
+		out,
+	)
+	b.refuse = ""
 
 	code, out = run_monitor(&b, "off")
 	testing.expect_value(t, code, 0)

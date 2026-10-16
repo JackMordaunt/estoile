@@ -3,6 +3,7 @@ package leita_monitor
 
 import "core:c"
 import "core:strings"
+import "core:time"
 import "core:sys/posix"
 
 when ODIN_OS == .Darwin {
@@ -42,13 +43,32 @@ lock :: proc(path: string) -> (l: Lock, result: Lock_Result) {
 	if fd < 0 {
 		return {fd = -1}, .Failed
 	}
-	if flock(fd, LOCK_EX | LOCK_NB) == 0 {
-		return {fd}, .Taken
+	// A process being started by a thread beside this one holds a copy of
+	// every open file from its fork until its exec closes the close-on-exec
+	// ones, the lock's among them; a lock let go an instant ago reads as
+	// held for that window. A few short retries outlast it; a run that is
+	// truly still going holds the lock for far longer.
+	errno: posix.Errno
+	for _ in 0 ..< HELD_RETRIES {
+		if flock(fd, LOCK_EX | LOCK_NB) == 0 {
+			return {fd}, .Taken
+		}
+		errno = posix.errno()
+		if errno != .EWOULDBLOCK {
+			break
+		}
+		time.sleep(HELD_RETRY_WAIT)
 	}
-	errno := posix.errno()
 	posix.close(fd)
 	return {fd = -1}, .Held if errno == .EWOULDBLOCK else .Failed
 }
+
+// HELD_RETRIES and HELD_RETRY_WAIT bound how long lock waits out a fork window
+// before reporting the lock held: 100 ms in all.
+@(private = "file")
+HELD_RETRIES :: 10
+@(private = "file")
+HELD_RETRY_WAIT :: 10 * time.Millisecond
 
 // unlock lets the lock go.
 unlock :: proc(l: ^Lock) {

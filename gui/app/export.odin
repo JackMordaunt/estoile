@@ -58,7 +58,7 @@ export :: proc(d: ^Desk, c: command.Export) {
 	}
 	opt := report.Options {
 		reclaim = c.reclaim,
-		home    = synth.HOME if s.engine == .Synthetic else "",
+		user    = {synth.HOME, ""} if s.engine == .Synthetic else {},
 	}
 	if d.licensed {
 		opt.licensee = d.licence.licensee

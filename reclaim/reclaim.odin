@@ -23,6 +23,8 @@ import "core:mem"
 import "core:slice"
 import "core:strings"
 
+import "../home"
+
 Category :: enum u8 {
 	Dependencies, // installed packages a manifest names
 	Build_Output, // what a build made
@@ -167,6 +169,7 @@ Candidate :: struct {
 Finder :: struct {
 	src:       Source,
 	home:      string,
+	uid:       string,
 	path:      strings.Builder,
 	found:     [dynamic]Candidate,
 	allocator: mem.Allocator,
@@ -174,18 +177,21 @@ Finder :: struct {
 
 /*
 find searches the directory top, whose path is top_path, for candidates, the
-largest first, their paths in allocator. home is the user's home directory, for
-the candidates that are where they are; "" leaves those out.
+largest first, their paths in allocator. user is whose home directory and user id
+the candidates that are where they are belong to; an empty home or id leaves
+those out.
 */
 find :: proc(
 	src: Source,
 	top: u32,
-	top_path, home: string,
+	top_path: string,
+	user: home.User,
 	allocator := context.allocator,
 ) -> []Candidate {
 	f := Finder {
 		src       = src,
-		home      = strings.trim_right(home, "/"),
+		home      = strings.trim_right(user.dir, "/"),
+		uid       = user.uid,
 		path      = strings.builder_make(context.temp_allocator),
 		found     = make([dynamic]Candidate, allocator),
 		allocator = allocator,

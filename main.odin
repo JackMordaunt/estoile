@@ -22,6 +22,7 @@ import "core:terminal"
 import "core:time"
 
 import "history"
+import "home"
 import "human"
 @(require) import "jm:debug"
 import "journal"
@@ -303,7 +304,8 @@ scan_and_say :: proc(opt: Options, kept := "", licensee := "", locked := false) 
 
 	target_str := opt.target
 	if target_str == "" {
-		target_str = os.user_home_dir(context.temp_allocator) or_else "/"
+		who := home.user(context.temp_allocator)
+		target_str = who.dir if who.dir != "" else "/"
 	}
 	opts := ntfs.Read_Options {
 		chunk_size = opt.chunk,

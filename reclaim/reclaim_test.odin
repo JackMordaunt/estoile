@@ -4,6 +4,12 @@ import "core:slice"
 import "core:strings"
 import "core:testing"
 
+import "../home"
+
+// ANN is the made-up user the trees below belong to.
+@(private)
+ANN :: home.User{"/home/ann", "1000"}
+
 // A tree made in memory: each entry's parent is its index's slot in the tree.
 @(private)
 Fake :: struct {
@@ -122,6 +128,7 @@ home_tree :: proc(t: ^Fake) -> (root: u32) {
 	fake_add(t, fake_path(t, home, ".cache"), "a-file-in-cache", false, 5)
 	fake_path(t, home, "go/pkg/mod/github.com")
 	fake_path(t, home, TRASH + "/files")
+
 	return
 }
 
@@ -130,7 +137,7 @@ only_what_proves_itself_regenerable_is_found :: proc(t: ^testing.T) {
 	tree: Fake
 	defer fake_destroy(&tree)
 	root := home_tree(&tree)
-	found := find(fake_source(&tree), root, "/", "/home/ann")
+	found := find(fake_source(&tree), root, "/", ANN)
 	defer candidates_destroy(found)
 
 	want := []string {
@@ -152,7 +159,7 @@ each_candidate_says_what_it_is :: proc(t: ^testing.T) {
 	tree: Fake
 	defer fake_destroy(&tree)
 	root := home_tree(&tree)
-	found := find(fake_source(&tree), root, "/", "/home/ann")
+	found := find(fake_source(&tree), root, "/", ANN)
 	defer candidates_destroy(found)
 	testing.expect_value(t, len(found), 7)
 	for c in found {
@@ -185,7 +192,7 @@ a_scan_below_home_finds_by_rule_alone :: proc(t: ^testing.T) {
 	fake_add(&tree, web, "package.json", false, 1)
 	fake_path(&tree, web, "node_modules")
 	fake_path(&tree, web, ".cache/x")
-	found := find(fake_source(&tree), web, "/home/ann/src/web", "/home/ann")
+	found := find(fake_source(&tree), web, "/home/ann/src/web", ANN)
 	defer candidates_destroy(found)
 	testing.expect(t, slice.equal(found_paths(found), []string{"/home/ann/src/web/node_modules"}))
 }
@@ -196,7 +203,7 @@ nothing_under_a_system_directory_even_from_its_top :: proc(t: ^testing.T) {
 	defer fake_destroy(&tree)
 	lib := fake_add(&tree, 0, "lib", true)
 	fake_path(&tree, lib, "python3/__pycache__")
-	found := find(fake_source(&tree), lib, "/usr/lib", "/home/ann")
+	found := find(fake_source(&tree), lib, "/usr/lib", ANN)
 	defer candidates_destroy(found)
 	testing.expect_value(t, len(found), 0)
 	testing.expect(t, under_system("/usr"))

@@ -471,7 +471,7 @@ build_describes_the_scan :: proc(t: ^testing.T) {
 		{
 			top = 2,
 			reclaim = true,
-			home = "/nowhere",
+			user = {"/nowhere", ""},
 			previous = Snapshot{time.unix(1, 0), previous},
 		},
 	)
@@ -568,7 +568,11 @@ every_format_frees_what_build_made_at_its_size :: proc(t: ^testing.T) {
 			&tree,
 			&roll,
 			{engine = .Walk},
-			{reclaim = true, home = "/nowhere", previous = Snapshot{time.unix(1, 0), previous}},
+			{
+				reclaim = true,
+				user = {"/nowhere", ""},
+				previous = Snapshot{time.unix(1, 0), previous},
+			},
 		)
 		sb := strings.builder_make()
 		err := export(strings.to_writer(&sb), &r, format)

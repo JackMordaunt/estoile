@@ -15,13 +15,13 @@ need not be UTF-8. Each format says how it writes those (see export).
 package report
 
 import "core:mem"
-import "core:os"
 import "core:path/filepath"
 import "core:slice"
 import "core:strings"
 import "core:time"
 
 import "../history"
+import "../home"
 import "../kinds"
 import "../reclaim"
 import "../scan"
@@ -122,8 +122,8 @@ Options are what a report holds beyond the scan's own.
 
 top is how many of the largest directories and files to list, DEFAULT_TOP for 0.
 reclaim asks for Reclaim's candidates, which needs the rollup linked
-(survey.Rollup.linked) before it rolled anything up; home is the user's home
-directory for those, "" for the process's own.
+(survey.Rollup.linked) before it rolled anything up; user is whose home directory
+and id those are relative to, the zero value for the person running the process.
 
 previous is an earlier scan of the same place to compare with: its entries by
 path under the top, names joined by "/", "" for the top, as the window keeps
@@ -132,7 +132,7 @@ them (history).
 Options :: struct {
 	top:       int,
 	reclaim:   bool,
-	home:      string,
+	user:      home.User,
 	previous:  Maybe(Snapshot),
 	licensee:  string, // whose licence leita runs under, "" for none
 	warn_used: int, // --warn-used, percent used; 0 for no check
@@ -291,7 +291,7 @@ build :: proc(
 	r.largest_files = entries(t, places, top, files[:file_count], p, allocator)
 
 	if opt.reclaim {
-		r.reclaim = candidates(t, roll, top, r.target, opt.home, facts.engine, allocator)
+		r.reclaim = candidates(t, roll, top, r.target, opt.user, facts.engine, allocator)
 	}
 	return
 }
@@ -410,7 +410,8 @@ candidates :: proc(
 	t: ^scan.Tree,
 	roll: ^survey.Rollup,
 	top: u32,
-	top_path, home: string,
+	top_path: string,
+	user: home.User,
 	engine: scan.Engine,
 	allocator: mem.Allocator,
 ) -> []Group {
@@ -440,12 +441,13 @@ candidates :: proc(
 			}
 		},
 	}
-	home := home
-	if home == "" {
-		// A made-up disk has a made-up owner, whose home is places its caches are.
-		home = synth.HOME if engine == .Synthetic else os.get_env("HOME", context.temp_allocator)
+	who := user
+	if who == {} {
+		// A made-up disk has a made-up owner, whose home is where its caches are.
+		who =
+			home.User{synth.HOME, ""} if engine == .Synthetic else home.user(context.temp_allocator)
 	}
-	found := reclaim.find(src, top, top_path, home, context.temp_allocator)
+	found := reclaim.find(src, top, top_path, who, context.temp_allocator)
 	// By category, and within one largest first as find left them.
 	slice.stable_sort_by(found, proc(a, b: reclaim.Candidate) -> bool {
 		return a.category < b.category

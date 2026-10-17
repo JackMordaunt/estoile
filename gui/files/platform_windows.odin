@@ -80,6 +80,17 @@ is_link :: proc(path: string) -> bool {
 	return tag == win32.IO_REPARSE_TAG_SYMLINK || tag == win32.IO_REPARSE_TAG_MOUNT_POINT
 }
 
+// held_alone is the space deleting the entry at path gives back, as far as its
+// length says: os.File_Info carries no allocated size (core/os/stat.odin).
+@(private)
+held_alone :: proc(path: string) -> u64 {
+	info, err := os.stat_do_not_follow_links(path, context.temp_allocator)
+	if err != nil || info.type != .Regular {
+		return 0
+	}
+	return u64(max(info.size, 0))
+}
+
 // reveal opens Explorer with path selected.
 @(private)
 reveal :: proc(path: string) {

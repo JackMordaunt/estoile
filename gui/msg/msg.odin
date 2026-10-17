@@ -272,6 +272,7 @@ Msg :: enum u16 {
 	File_Not_Recycled,
 	File_Bad_Name,
 	File_Not_Directory,
+	File_Partly,
 	File_Unsupported,
 	File_Other,
 	Name_Empty,

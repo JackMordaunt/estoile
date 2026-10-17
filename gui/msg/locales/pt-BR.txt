@@ -320,6 +320,7 @@ file_cross_device = está em um sistema de arquivos diferente do da Lixeira
 file_not_recycled = a Lixeira recusou; nada foi excluído
 file_bad_name = esse não é um nome válido para um arquivo
 file_not_directory = não é uma pasta
+file_partly = parte não pôde ser excluída
 file_unsupported = este sistema não permite isso
 file_other = o sistema recusou
 name_empty = o nome não pode ficar vazio

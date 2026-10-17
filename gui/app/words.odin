@@ -80,6 +80,7 @@ FILE_ERRORS := [files.Error]msg.Msg {
 	.Not_Recycled  = .File_Not_Recycled,
 	.Bad_Name      = .File_Bad_Name,
 	.Not_Directory = .File_Not_Directory,
+	.Partly        = .File_Partly,
 	.Unsupported   = .File_Unsupported,
 	.Other         = .File_Other,
 }

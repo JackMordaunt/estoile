@@ -279,6 +279,7 @@ file_cross_device = 它与回收站不在同一个文件系统上
 file_not_recycled = 回收站拒绝了它；未删除任何内容
 file_bad_name = 这不是有效的文件名
 file_not_directory = 它不是目录
+file_partly = 部分内容无法删除
 file_unsupported = 此系统不支持该操作
 file_other = 系统拒绝了该操作
 name_empty = 名称不能为空

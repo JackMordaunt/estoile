@@ -1512,8 +1512,43 @@ reclaim_offers_only_what_rebuilds_and_deletes_what_is_chosen :: proc(t: ^testing
 		count      = 1,
 	}
 	stream.port_send(r.h.cmd_port, command.Command(forged))
-	testing.expect(t, settle(&r, "Deleted 0 folders and freed 0 B; 1 could not be deleted"))
+	testing.expect(t, settle(&r, "Deleted 0 folders and freed 0 B; 1 could not be deleted in full"))
 	testing.expect(t, os.exists(fmt.tprintf("%s/plain/build/out.o", root)), "nothing went")
+}
+
+// A folder that cannot all be deleted stays in the list and the chart, and only
+// what went is counted freed. Here node_modules is emptied, but its own folder
+// stays: web is made read-only after the scan, so nothing in it can be unlinked.
+@(test)
+reclaim_counts_a_partial_delete_as_what_went :: proc(t: ^testing.T) {
+	root := projects(t, "reclaim_partly")
+	web := fmt.tprintf("%s/web", root)
+	defer os.remove_all(root)
+	r: Rig
+	rig_open(&r, root)
+	defer rig_close(&r)
+	testing.expect(t, settle(&r, "Done"))
+	testing.expect(t, ui.probe_click(&r.p, "Reclaim"))
+	press_and_hand_on(&r)
+	testing.expect(t, settle(&r, "65.5 kB in 1 folder chosen"))
+
+	testing.expect(t, os.change_mode(web, {.Read_User, .Execute_User}) == nil)
+	defer os.change_mode(web, {.Read_User, .Write_User, .Execute_User})
+	// Root, or Windows, whose read-only attribute on a folder guards nothing in it,
+	// can still delete from it, so nothing would be left over.
+	if os.make_directory(fmt.tprintf("%s/probe", web)) == nil {
+		log.warn("skipped: a read-only folder does not stop a delete here")
+		return
+	}
+	confirm(t, &r, "Clean up", "Delete")
+	testing.expect(
+		t,
+		settle(&r, "Deleted 0 folders and freed 65.5 kB; 1 could not be deleted in full"),
+		"what went is freed, and the folder is not counted deleted",
+	)
+	testing.expect(t, !os.exists(fmt.tprintf("%s/node_modules/lib", web)), "its insides went")
+	testing.expect(t, os.exists(fmt.tprintf("%s/node_modules", web)), "the folder did not")
+	testing.expect(t, settle(&r, "web/node_modules"), "so it stays in the list")
 }
 
 @(test)

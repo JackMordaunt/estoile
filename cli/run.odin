@@ -595,14 +595,65 @@ Kind :: enum {
 	directories,
 }
 
+// Whether i lies under root, memoizing the climb so a chain shared by siblings is
+// walked once. The MFT reader loads the whole volume even when asked for a
+// subtree, rooting the tree below the volume's own root rather than at it, so
+// without this a subtree's ranking would include whatever the rest of the volume
+// holds, root among them.
+@(private = "file")
+Under_State :: enum u8 {
+	Unknown,
+	Inside,
+	Outside,
+}
+
+@(private = "file")
+under_root :: proc(t: ^scan.Tree, roll: ^survey.Rollup, root: u32, known: []Under_State, i: u32) -> bool {
+	chain: [64]u32
+	depth := 0
+	cur := i
+	state := Under_State.Outside
+	for {
+		if cur == root {
+			state = .Inside
+			break
+		}
+		if known[cur] != .Unknown {
+			state = known[cur]
+			break
+		}
+		if depth == len(chain) {
+			break
+		}
+		chain[depth] = cur
+		depth += 1
+		parent := scan.node(t, cur).parent
+		if parent == cur || parent >= roll.seen {
+			break
+		}
+		cur = parent
+	}
+	for j := depth - 1; j >= 0; j -= 1 {
+		known[chain[j]] = state
+	}
+	return state == .Inside
+}
+
 // The directories that hold the most, largest first.
 rank :: proc(t: ^scan.Tree, roll: ^survey.Rollup, top: []Sized) -> int {
 	count := 0
+	// Not the temp allocator: a live scan calls this every pass, as fast as it can,
+	// with nothing in that loop ever resetting it.
+	known := make([]Under_State, roll.seen, context.allocator)
+	defer delete(known)
 	// Bounded by what the rollup has seen rather than the tree: a reader may hand out
 	// more slots while this runs, and those have not been charged yet.
 	for i in 0 ..< roll.seen {
 		f := scan.node_flags(scan.node(t, i))
-		if .Used not_in f || .Directory not_in f {
+		if .Used not_in f || .Directory not_in f || i == t.root {
+			continue
+		}
+		if !under_root(t, roll, t.root, known, i) {
 			continue
 		}
 		bytes := survey.total(roll, i)
@@ -617,10 +668,12 @@ rank :: proc(t: ^scan.Tree, roll: ^survey.Rollup, top: []Sized) -> int {
 print_largest :: proc(t: ^scan.Tree, roll: ^survey.Rollup, kind: Kind) {
 	top: [TOP_N]Sized
 	count := 0
+	known := make([]Under_State, roll.seen, context.allocator)
+	defer delete(known)
 	for i in 0 ..< roll.seen {
 		n := scan.node(t, i)
 		flags := scan.node_flags(n)
-		if .Used not_in flags {
+		if .Used not_in flags || !under_root(t, roll, t.root, known, i) {
 			continue
 		}
 		bytes: u64
@@ -631,7 +684,7 @@ print_largest :: proc(t: ^scan.Tree, roll: ^survey.Rollup, kind: Kind) {
 			}
 			bytes = n.disk
 		case .directories:
-			if .Directory not_in flags {
+			if .Directory not_in flags || i == t.root {
 				continue
 			}
 			bytes = survey.total(roll, i)

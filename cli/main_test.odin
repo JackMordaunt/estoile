@@ -452,6 +452,7 @@ a_live_scan_keeps_a_baseline_beside_the_store :: proc(t: ^testing.T) {
 	defer delete(store)
 	defer os.remove_all(root)
 	defer os.remove_all(filepath.dir(store))
+	defer remove_deep(root)
 	if !keeps_events(t, root) {
 		return
 	}
@@ -464,12 +465,11 @@ a_live_scan_keeps_a_baseline_beside_the_store :: proc(t: ^testing.T) {
 	}
 	// The largest thing, whose path each frame's line spells, deep and long enough
 	// to reach past where the scan put the baseline's path.
-	deep := root
-	for _ in 0 ..< 4 {
-		deep = fmt.tprintf("%s/%s", deep, strings.repeat("x", 200, context.temp_allocator))
-		testing.expect(t, os.make_directory(deep) == nil, "could not make a deep directory")
+	for depth in 1 ..= DEPTH {
+		made := os.make_directory(long(deep(root, depth)))
+		testing.expect(t, made == nil, "could not make a deep directory")
 	}
-	write_zeros(t, fmt.tprintf("%s/big.bin", deep), 1 << 20)
+	write_zeros(t, long(fmt.tprintf("%s/big.bin", deep(root, DEPTH))), 1 << 20)
 	target, _, err := scan.resolve(root)
 	testing.expect_value(t, err, scan.Error.None)
 	defer scan.target_destroy(&target)
@@ -485,6 +485,45 @@ a_live_scan_keeps_a_baseline_beside_the_store :: proc(t: ^testing.T) {
 	}
 	testing.expect_value(t, scan_and_say(live, store), 0)
 	testing.expectf(t, os.exists(baseline), "no baseline at %s", baseline)
+}
+
+// How many directories of 200 characters a_live_scan_keeps_a_baseline_beside_the_store
+// nests its largest file under.
+@(private)
+DEPTH :: 4
+
+// The directory `depth` levels down that chain under root.
+@(private)
+deep :: proc(root: string, depth: int) -> string {
+	path := root
+	for _ in 0 ..< depth {
+		path = fmt.tprintf("%s/%s", path, strings.repeat("x", 200, context.temp_allocator))
+	}
+	return path
+}
+
+// The chain of deep directories and its file, innermost first, by their long form:
+// on Windows os.remove_all hands the tree to SHFileOperationW (core/os/path_windows.odin,
+// _remove_all), which takes no \\?\ path and so none past 260 characters.
+@(private)
+remove_deep :: proc(root: string) {
+	os.remove(long(fmt.tprintf("%s/big.bin", deep(root, DEPTH))))
+	for depth := DEPTH; depth > 0; depth -= 1 {
+		os.remove(long(deep(root, depth)))
+	}
+}
+
+// `path` as Windows takes one past 260 characters: with the \\?\ prefix, which also
+// stops Windows rewriting it, so every separator must be a backslash. Other systems
+// have no such limit.
+@(private)
+long :: proc(path: string) -> string {
+	when ODIN_OS == .Windows {
+		slashed, _ := strings.replace_all(path, "/", `\`, context.temp_allocator)
+		return fmt.tprintf(`\\?\%s`, slashed)
+	} else {
+		return path
+	}
 }
 
 // A store another program holds locked for writing past history.BUSY_WAIT leaves

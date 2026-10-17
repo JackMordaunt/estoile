@@ -147,6 +147,26 @@ a_saved_licence_reads_back :: proc(t: ^testing.T) {
 	testing.expect_value(t, path_beside(""), "")
 }
 
+// SAMPLE is a licence the private half of the key this build was made with
+// signed, as just check-licence gives it: -define:LEITA_LICENCE_SAMPLE=<licence>.
+SAMPLE :: #config(LEITA_LICENCE_SAMPLE, "")
+
+// A build with a key takes the licences its private half signed, as a release
+// must; a build without one, as just test makes, has no key to check them with.
+@(test)
+the_key_built_in_checks_what_it_signed :: proc(t: ^testing.T) {
+	key, ok := public_key()
+	if KEY == "" {
+		testing.expect(t, !ok, "a build without a key has none")
+		return
+	}
+	testing.expect(t, ok, "the key is 32 bytes in hex")
+	testing.expect(t, SAMPLE != "", "a build with a key is given a licence it signed")
+	l, err := check(SAMPLE, key[:], context.temp_allocator)
+	testing.expect_value(t, err, Error.None)
+	testing.expect(t, l.licensee != "", "it names whose it is")
+}
+
 // Memo is a ledger kept in memory, standing in for settings.db.
 Memo :: struct {
 	text:     string,

@@ -34,7 +34,8 @@ import "core:time"
 PREFIX :: "leita1."
 
 // KEY is the public key licences are checked against, in hex, set with
-// -define:LEITA_LICENCE_KEY=<hex>. A build without one takes no licence.
+// -define:LEITA_LICENCE_KEY=<hex>. A build without one takes no licence, so the
+// justfile's release recipes refuse to build without it.
 KEY :: #config(LEITA_LICENCE_KEY, "")
 
 // Tier is what a licence was bought for, as the price list sells them.

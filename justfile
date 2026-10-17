@@ -11,6 +11,9 @@
 #                             as root too with --sudo where sudo asks no password
 #   just install              put the release command line on PATH as leita and le
 #   just check                type-check both modes without producing a binary
+#   just check-licence [key licence]
+#                             test that a build with key takes a licence its private
+#                             half signed; the test key and its licence by default
 #   just clean                remove build/
 #   just deps                 fetch the jm submodule and the native libraries the window links
 #   just sqlite               fetch the jm submodule and build SQLite, all the command line links
@@ -21,6 +24,11 @@
 # The debug allocator, flow, sqlite3, stream and ui come from the jm collection, pinned as
 # the jm submodule (https://mordaunt.dev/code/jm); JM=<path> builds against another
 # checkout instead.
+#
+# A release checks licences against the public key in LEITA_LICENCE_KEY, 64 hex
+# characters, which only the release build is given: just cli release and just
+# gui release refuse to build without it, since a release without a key takes no
+# licence. Debug and test builds take none.
 #
 # Debug and test builds carry -sanitize:address. The debug allocator poisons its
 # guard bytes and freed blocks, so instrumented reads past the end or after free
@@ -89,6 +97,12 @@ sdl3_link := if os() == "macos" { "-extra-linker-flags:\"-L" + sdl3_dir + " -Wl,
     " -framework AVFoundation -framework Foundation -framework GameController -framework Metal -framework QuartzCore" + \
     " -Wl,-weak_framework,CoreHaptics\"" } else { "" }
 
+# A key and a licence it signed, for tests and CI alone. Its private half was
+# thrown away once it had signed test_licence, so no one can sign another: a
+# build with it takes this licence and no other. Never a release's key.
+test_licence_key := "e83dc875975880f373348c2eccbf6b5c719736abf15727e77f3968c0c6644553"
+test_licence     := "leita1.eyJsaWNlbnNlZSI6ICJMZWl0YSB0ZXN0IGtleSIsICJ0aWVyIjogInN1cHBvcnRlciIsICJvcmRlciI6ICJ0ZXN0IiwgImlzc3VlZCI6ICIyMDI2LTEwLTE3In0=.LbCdZ5rVE+RbchkATmwkKC0DGIo8Sp6MK+n4KnIM9ACXFZDBF0Q3N1kHeQUW6kIhLSTwFgpP0rC9qL5bh7XiBg=="
+
 # `just` alone lists the recipes.
 default:
     @just --list --unsorted
@@ -104,7 +118,7 @@ cli mode="debug": sqlite
     set -euo pipefail
     case "{{mode}}" in
     debug) opt="-debug {{san}}" ;;
-    release) opt="-o:speed" ;;
+    release) opt="-o:speed -define:LEITA_LICENCE_KEY=$(just --justfile "{{justfile()}}" release-key)" ;;
     *) echo "cli: the mode is debug or release, not {{mode}}" >&2; exit 1 ;;
     esac
     mkdir -p build/{{mode}}
@@ -118,7 +132,7 @@ gui mode="debug": deps
     set -euo pipefail
     case "{{mode}}" in
     debug) opt="-debug {{san}}" ;;
-    release) opt="-o:speed" ;;
+    release) opt="-o:speed -define:LEITA_LICENCE_KEY=$(just --justfile "{{justfile()}}" release-key)" ;;
     *) echo "gui: the mode is debug or release, not {{mode}}" >&2; exit 1 ;;
     esac
     mkdir -p build/{{mode}}/app
@@ -127,6 +141,19 @@ gui mode="debug": deps
         cp "$({{odin}} root)/vendor/sdl3/SDL3.dll" build/{{mode}}/app/
         cp "{{jm}}/ui/accesskit/lib/accesskit.dll" build/{{mode}}/app/ 2>/dev/null || true
     fi
+
+# The licence public key a release is built with, from LEITA_LICENCE_KEY: it
+# fails, saying why, when the key is unset or not 64 hex characters.
+[private]
+release-key:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    key="${LEITA_LICENCE_KEY:-}"
+    if ! [[ $key =~ ^[0-9a-fA-F]{64}$ ]]; then
+        echo "release: LEITA_LICENCE_KEY must be the licence public key, 64 hex characters; a release without it takes no licence" >&2
+        exit 1
+    fi
+    printf '%s' "$key"
 
 # A first argument of release builds and runs the release build.
 #
@@ -152,6 +179,23 @@ test: sqlite
 # as CI does. See tools/btrfs-fixture: just btrfs-test [--sudo] [--keep]
 btrfs-test *args: sqlite
     tools/btrfs-fixture --odin "{{odin}}" --flags "{{san}} {{flags}}" {{args}}
+
+# The licence package's tests built with key, as a release is, and licence, one
+# its private half signed, checked against it: the test key and its licence when
+# neither is given. Any other key needs a licence it signed.
+#
+# Test that a build with a key takes what it signed: just check-licence [key licence]
+check-licence key=test_licence_key licence="": sqlite
+    #!/usr/bin/env bash
+    set -euo pipefail
+    licence='{{licence}}'
+    if [ -z "$licence" ] && [ '{{key}}' = '{{test_licence_key}}' ]; then licence='{{test_licence}}'; fi
+    if [ -z "$licence" ]; then
+        echo "check-licence: give a licence the key signed: just check-licence KEY LICENCE" >&2
+        exit 1
+    fi
+    mkdir -p build/test
+    {{odin}} test licence -debug {{san}} {{flags}} '-define:LEITA_LICENCE_KEY={{key}}' "-define:LEITA_LICENCE_SAMPLE=$licence" -out:build/test/licence{{exe}}
 
 # Type-check both modes without producing a binary.
 check:

@@ -35,7 +35,7 @@ dispatch :: proc(style: term.Style, args: []string, w: io.Writer) -> int {
 			errorf(style, w, "%s", problem)
 			return EXIT_FAILED
 		}
-		fmt.wprintfln(w, "recording changes: %s runs %s journal run", SERVICE, BINARY_PATH)
+		fmt.wprintfln(w, "recording changes: %s runs %s journal run", SERVICE, service_binary())
 		return EXIT_OK
 	case "off":
 		if linux.geteuid() != 0 {
@@ -50,10 +50,14 @@ dispatch :: proc(style: term.Style, args: []string, w: io.Writer) -> int {
 			errorf(style, w, "%s", problem)
 			return EXIT_FAILED
 		}
-		fmt.wprintln(
-			w,
-			"not recording changes: the recorder, its service and its logs are removed",
-		)
+		if packaged() {
+			fmt.wprintln(w, "not recording changes: the recorder is off and its logs are removed")
+		} else {
+			fmt.wprintln(
+				w,
+				"not recording changes: the recorder, its service and its logs are removed",
+			)
+		}
 		return EXIT_OK
 	case "status":
 		say_status(style, w)
@@ -91,13 +95,30 @@ run_until_signalled :: proc(style: term.Style, w: io.Writer) -> int {
 	return EXIT_OK
 }
 
+// packaged is whether a .deb or .rpm installed the service, and so owns it.
+packaged :: proc() -> bool {
+	return os.exists(PACKAGE_UNIT_PATH)
+}
+
+// service_binary is the copy of leita the service runs: the one leita journal
+// on put in place, which overrides a package's, else the package's.
+@(private = "file")
+service_binary :: proc() -> string {
+	return PACKAGE_BINARY_PATH if packaged() && !os.exists(UNIT_PATH) else BINARY_PATH
+}
+
 /*
-switch_on copies this binary to BINARY_PATH, root's and not writable by anyone
-else, writes the service that runs it and starts it, restarting one already
-running so a newer copy takes over. It says why it could not, or "".
+switch_on starts the recorder. Where a package installed the service, it
+enables and starts that one; otherwise it copies this binary to BINARY_PATH,
+root's and not writable by anyone else, writes the service that runs it and
+starts it. Either way it restarts one already running, so a newer copy takes
+over. It says why it could not, or "".
 */
 @(private = "file")
 switch_on :: proc() -> string {
+	if service_binary() == PACKAGE_BINARY_PATH {
+		return enable_packaged()
+	}
 	exe, exe_err := os.get_executable_path(context.temp_allocator)
 	if exe_err != nil {
 		return fmt.tprintf("cannot find this program: %v", exe_err)
@@ -138,14 +159,36 @@ switch_on :: proc() -> string {
 	return ""
 }
 
+// enable_packaged enables and starts the service a package installed, making
+// the folder its ReadWritePaths names first: a path there without a "-" prefix
+// must exist, or the service fails to set up its namespace (systemd.exec(5),
+// ReadWritePaths=).
+@(private = "file")
+enable_packaged :: proc() -> string {
+	dir_perm := os.Permissions_Read_All + os.Permissions_Execute_All + {.Write_User}
+	if err := os.make_directory_all(DIR, dir_perm); err != nil && err != .Exist {
+		return fmt.tprintf("cannot make %s: %v", DIR, err)
+	}
+	steps := [][]string{{"systemctl", "enable", SERVICE}, {"systemctl", "restart", SERVICE}}
+	for step in steps {
+		if r := sh.exec(step, {}, context.temp_allocator); !r.ok {
+			return sh.error(r, context.temp_allocator)
+		}
+	}
+	return ""
+}
+
 /*
 switch_off stops the service and removes everything switch_on made: the service,
 the copy of leita, and the logs, which a recorder started again would not trust.
+A service a package installed is disabled and left for the package to remove.
 */
 @(private = "file")
 switch_off :: proc() -> string {
-	if os.exists(UNIT_PATH) {
+	if os.exists(UNIT_PATH) || packaged() {
 		sh.exec({"systemctl", "disable", "--now", SERVICE}, {}, context.temp_allocator)
+	}
+	if os.exists(UNIT_PATH) {
 		if err := os.remove(UNIT_PATH); err != nil && err != .Not_Exist {
 			return fmt.tprintf("cannot delete %s: %v", UNIT_PATH, err)
 		}
@@ -165,9 +208,17 @@ switch_off :: proc() -> string {
 	return ""
 }
 
-// installed is whether the recorder's service is written.
+// installed is whether the recorder's service is written by leita journal on, or
+// a package's enabled: a package installs it whether or not it is wanted.
 installed :: proc() -> bool {
-	return os.exists(UNIT_PATH)
+	if os.exists(UNIT_PATH) {
+		return true
+	}
+	if !packaged() {
+		return false
+	}
+	r := sh.exec({"systemctl", "is-enabled", SERVICE}, {}, context.temp_allocator)
+	return r.ok && strings.trim_space(r.stdout) == "enabled"
 }
 
 // active is whether systemd says the recorder's service is running.

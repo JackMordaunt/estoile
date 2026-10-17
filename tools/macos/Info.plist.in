@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+Leita.app's Info.plist. just bundle fills each @NAME@ with sed: VERSION is
+LEITA_VERSION as Apple takes it, up to three numbers, and YEAR is LEITA_YEAR.
+-->
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>dev.mordaunt.leita</string>
+	<key>CFBundleName</key>
+	<string>Leita</string>
+	<key>CFBundleDisplayName</key>
+	<string>Leita</string>
+	<key>CFBundleExecutable</key>
+	<string>Leita</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleVersion</key>
+	<string>@VERSION@</string>
+	<key>CFBundleShortVersionString</key>
+	<string>@VERSION@</string>
+	<key>CFBundleIconFile</key>
+	<string>Leita</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>11.0</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.utilities</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>© @YEAR@ Librium LLC</string>
+</dict>
+</plist>

@@ -4,6 +4,8 @@
 #                             default, release optimised
 #   just cli [release]        the command line alone -> build/<mode>/leita
 #   just gui [release]        the window alone -> build/<mode>/app/Leita
+#   just bundle [window cli]  Leita.app from the release window and command line,
+#                             macOS only -> build/release/Leita.app
 #   just run [release] [dir]  build the window, then open it on a directory, the
 #                             home directory by default
 #   just test                 run every imported package's tests under ASan -> build/test/
@@ -142,6 +144,53 @@ gui mode="debug": deps
         cp "$({{odin}} root)/vendor/sdl3/SDL3.dll" build/{{mode}}/app/
         cp "{{jm}}/ui/accesskit/lib/accesskit.dll" build/{{mode}}/app/ 2>/dev/null || true
     fi
+
+# Leita.app, the window as a Mac installs it, from the release window and
+# command line, built here when neither is given: the window as
+# Contents/MacOS/Leita, the command line as Contents/Helpers/leita, beside the
+# Info.plist tools/macos/Info.plist.in fills and the icon branding/icon.png
+# makes. The command line is not in MacOS/ beside the window, since a Mac folds
+# case by default and leita and Leita there would be one file; Helpers/ is
+# where a bundle keeps a tool of its own, and a Terminal user links to it.
+# Apple takes a version of up to three numbers, so v1.2.0-rc1 is 1.2.0 and a
+# bare commit, g and its hash, is 0.0.0. iconutil and sips are Apple's, so
+# another host says so and does nothing. Unsigned: release.yml signs it.
+#
+# Build Leita.app -> build/release/Leita.app: just bundle [window cli]
+bundle window="" cli="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ "{{os()}}" != macos ]; then echo "bundle: skipped: Leita.app is built on macOS, with Apple's iconutil and sips"; exit 0; fi
+    window='{{window}}'
+    cli='{{cli}}'
+    if [ -z "$window" ] && [ -z "$cli" ]; then
+        just --justfile "{{justfile()}}" build release
+        window=build/release/app/{{gui}}
+        cli=build/release/{{bin}}
+    fi
+    if [ -z "$window" ] || [ -z "$cli" ]; then
+        echo "bundle: give both the window and the command line, or neither" >&2
+        exit 1
+    fi
+    v='{{version}}'
+    v=${v#v}
+    number=0.0.0
+    if [[ $v =~ ^[0-9]+(\.[0-9]+){0,2} ]]; then number=${BASH_REMATCH[0]}; fi
+    app=build/release/{{gui}}.app
+    rm -rf "$app" build/release/{{gui}}.iconset
+    mkdir -p "$app/Contents/MacOS" "$app/Contents/Helpers" "$app/Contents/Resources" build/release/{{gui}}.iconset
+    install -m 755 "$window" "$app/Contents/MacOS/{{gui}}"
+    install -m 755 "$cli" "$app/Contents/Helpers/{{bin}}"
+    sed -e "s/@VERSION@/$number/g" -e 's/@YEAR@/{{year}}/g' tools/macos/Info.plist.in > "$app/Contents/Info.plist"
+    plutil -lint "$app/Contents/Info.plist"
+    printf 'APPL????' > "$app/Contents/PkgInfo"
+    for size in 16 32 128 256 512; do
+        sips -z $size $size branding/icon.png --out "build/release/{{gui}}.iconset/icon_${size}x${size}.png" >/dev/null
+        sips -z $((size * 2)) $((size * 2)) branding/icon.png --out "build/release/{{gui}}.iconset/icon_${size}x${size}@2x.png" >/dev/null
+    done
+    iconutil -c icns build/release/{{gui}}.iconset -o "$app/Contents/Resources/{{gui}}.icns"
+    rm -rf build/release/{{gui}}.iconset
+    echo "bundle: $app, version $number"
 
 # The licence public key a release is built with, from LEITA_LICENCE_KEY: it
 # fails, saying why, when the key is unset or not 64 hex characters.

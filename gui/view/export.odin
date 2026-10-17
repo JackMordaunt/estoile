@@ -46,7 +46,7 @@ export_item :: proc(menu: ^primer.Action_Menu, m: ^Model, prog: ^query.Progress_
 // export_show opens the export dialog, or the licence dialog saying why not.
 @(private)
 export_show :: proc(gtx: ^ui.Ctx, m: ^Model) {
-	if unlocked(gtx) {
+	if unlocked(gtx, m) {
 		m.export_open = true
 	} else {
 		licence_show(m, msg.Msg.Reports_Locked)

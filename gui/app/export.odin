@@ -36,7 +36,7 @@ export :: proc(d: ^Desk, c: command.Export) {
 		tell(d, true, .Export_Unfinished)
 		return
 	}
-	if !licence.unlocked(d.licensed, d.first_use) {
+	if !licence.unlocked(d.licensed, d.first_use, time.now()) {
 		tell(d, true, .Reports_Locked)
 		return
 	}

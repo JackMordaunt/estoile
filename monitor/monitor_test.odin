@@ -352,6 +352,22 @@ monitoring_is_refused_once_the_trial_is_over_but_can_still_be_turned_off :: proc
 	testing.expect_value(t, code, 0)
 }
 
+// The trial is kept in settings.db as well as the first-use file, so deleting
+// the file does not open monitoring again once the trial is over.
+@(test)
+monitoring_stays_locked_when_the_first_use_file_is_deleted :: proc(t: ^testing.T) {
+	dir, err := os.make_directory_temp("", "leita-trial-*", context.temp_allocator)
+	testing.expect(t, err == nil)
+	defer os.remove_all(dir)
+	kept := join(dir, "data", "history.db")
+	began := time.unix(1_800_000_000, 0)
+	testing.expect(t, unlocked_beside(kept, began), "the first run starts the trial")
+	month := time.time_add(began, 31 * 24 * time.Hour)
+	testing.expect(t, !unlocked_beside(kept, month), "a month on, it is over")
+	testing.expect(t, os.remove(join(dir, "data", "first-use")) == nil)
+	testing.expect(t, !unlocked_beside(kept, month), "deleting the file does not restart it")
+}
+
 @(test)
 a_run_holds_a_lock_another_run_stands_aside_for :: proc(t: ^testing.T) {
 	dir, err := os.make_directory_temp("", "leita-lock-*", context.temp_allocator)

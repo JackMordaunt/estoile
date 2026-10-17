@@ -34,6 +34,7 @@ monitor_open :: proc(s: ^Monitor_Rig) {
 		query.Progress{},
 		query.Progress_Result{generation = 1, state = .Scanning, target = "/top"},
 	)
+	ui.probe_deliver(&s.h.p, query.Licence{}, query.Licence_Result{unlocked = true})
 	monitor_answer(s, {on = false, scheduler = "systemd"})
 }
 

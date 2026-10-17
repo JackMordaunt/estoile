@@ -65,7 +65,7 @@ monitor_dialog :: proc(gtx: ^ui.Ctx, m: ^Model) {
 			ui.text_set(&m.watch_text, "")
 		}
 	}
-	locked := !unlocked(gtx)
+	locked := !unlocked(gtx, m)
 	waiting := m.monitor_sent != nil
 	close := false
 	buttons := [1]primer.Dialog_Button{{content = tr(.Close), clicked = &close}}

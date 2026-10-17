@@ -3,6 +3,7 @@ package leita_licence
 import "core:crypto"
 import "core:crypto/ed25519"
 import "core:encoding/base64"
+import "core:fmt"
 import "core:os"
 import "core:path/filepath"
 import "core:strings"
@@ -146,18 +147,170 @@ a_saved_licence_reads_back :: proc(t: ^testing.T) {
 	testing.expect_value(t, path_beside(""), "")
 }
 
+// Memo is a ledger kept in memory, standing in for settings.db.
+Memo :: struct {
+	text:     string,
+	found:    bool,
+	readonly: bool,
+}
+
+memo_ledger :: proc(m: ^Memo) -> Ledger {
+	return {
+		user = m,
+		get = proc(user: rawptr) -> (string, bool) {
+			m := (^Memo)(user)
+			return m.text, m.found
+		},
+		set = proc(user: rawptr, text: string) -> bool {
+			m := (^Memo)(user)
+			if m.readonly {
+				return false
+			}
+			m.text, m.found = strings.clone(text, context.temp_allocator), true
+			return true
+		},
+	}
+}
+
+// trial_dir is a folder for one test's first-use file, and the file's path.
+trial_dir :: proc(t: ^testing.T) -> (dir, path: string) {
+	err: os.Error
+	dir, err = os.make_directory_temp("", "leita-first-*", context.temp_allocator)
+	testing.expect(t, err == nil)
+	path, _ = filepath.join({dir, "data", FIRST_USE}, context.temp_allocator)
+	return
+}
+
+unix :: proc(at: time.Time) -> i64 {
+	return time.to_unix_seconds(at)
+}
+
 @(test)
 first_use_is_remembered_from_the_first_time_it_is_asked :: proc(t: ^testing.T) {
-	dir, derr := os.make_directory_temp("", "leita-first-*", context.temp_allocator)
-	testing.expect(t, derr == nil)
+	dir, path := trial_dir(t)
 	defer os.remove_all(dir)
-	path, _ := filepath.join({dir, "data", "first-use"}, context.temp_allocator)
+	memo: Memo
+	now := time.unix(1_800_000_000, 0)
 
-	first := first_use(path)
-	testing.expect(t, os.exists(path), "it is written the first time")
-	testing.expect_value(t, time.to_unix_seconds(first_use(path)), time.to_unix_seconds(first))
+	first := first_use(path, memo_ledger(&memo), now)
+	testing.expect_value(t, unix(first), unix(now))
+	testing.expect(t, os.exists(path), "the file is written the first time")
+	testing.expect_value(t, memo.text, "1800000000")
+	later := time.time_add(now, 3 * DAY)
+	testing.expect_value(t, unix(first_use(path, memo_ledger(&memo), later)), unix(now))
+	testing.expect_value(t, days_left(first, later), TRIAL_DAYS - 3)
+	testing.expect(t, unlocked(false, first, later))
+	testing.expect(t, !unlocked(false, first, time.time_add(now, TRIAL_DAYS * DAY)))
+	testing.expect(t, unlocked(true, first, time.time_add(now, TRIAL_DAYS * DAY)))
+}
 
-	testing.expect(t, os.write_entire_file(path, "1000\n") == nil)
-	testing.expect_value(t, time.to_unix_seconds(first_use(path)), 1000)
-	testing.expect(t, time.since(first_use("")) < time.Minute, "nowhere to keep it is now")
+// Deleting either place does not start the trial again: the other gives it
+// back, and the earlier of two starts is the one that counts.
+@(test)
+a_deleted_stamp_does_not_restart_the_trial :: proc(t: ^testing.T) {
+	dir, path := trial_dir(t)
+	defer os.remove_all(dir)
+	memo: Memo
+	now := time.unix(1_800_000_000, 0)
+	first := first_use(path, memo_ledger(&memo), now)
+	later := time.time_add(now, 40 * DAY)
+
+	testing.expect(t, os.remove(path) == nil)
+	testing.expect_value(t, unix(first_use(path, memo_ledger(&memo), later)), unix(first))
+	testing.expect(t, !unlocked(false, first_use(path, memo_ledger(&memo), later), later))
+	data, _ := os.read_entire_file(path, context.temp_allocator)
+	testing.expect_value(t, strings.trim_space(string(data)), "1800000000")
+
+	memo = {}
+	testing.expect_value(t, unix(first_use(path, memo_ledger(&memo), later)), unix(first))
+	testing.expect_value(t, memo.text, "1800000000")
+
+	// A later start in one place is put back to the earlier one.
+	memo.text = "1900000000"
+	testing.expect_value(t, unix(first_use(path, memo_ledger(&memo), later)), unix(first))
+	testing.expect_value(t, memo.text, "1800000000")
+}
+
+// A stamp that is not a number, or a file that is there but cannot be read,
+// ends the trial unless the other place holds a start; then it is mended.
+@(test)
+a_garbled_stamp_ends_the_trial :: proc(t: ^testing.T) {
+	dir, path := trial_dir(t)
+	defer os.remove_all(dir)
+	now := time.unix(1_800_000_000, 0)
+	testing.expect(t, os.make_directory_all(filepath.dir(path)) == nil)
+
+	testing.expect(t, os.write_entire_file(path, "x\n") == nil)
+	memo: Memo
+	testing.expect_value(t, first_use(path, memo_ledger(&memo), now), TRIAL_OVER)
+	testing.expect(t, !unlocked(false, first_use(path, memo_ledger(&memo), now), now))
+	testing.expect(t, !memo.found, "nothing is written over it")
+
+	memo = {text = "x", found = true}
+	testing.expect_value(t, first_use("", memo_ledger(&memo), now), TRIAL_OVER)
+
+	memo = {text = "1799000000", found = true}
+	testing.expect_value(t, unix(first_use(path, memo_ledger(&memo), now)), 1_799_000_000)
+	data, _ := os.read_entire_file(path, context.temp_allocator)
+	testing.expect_value(t, strings.trim_space(string(data)), "1799000000")
+
+	// A folder where the file should be: there, but not readable as one.
+	testing.expect(t, os.remove(path) == nil)
+	testing.expect(t, os.make_directory(path) == nil)
+	testing.expect_value(t, first_use(path, {}, now), TRIAL_OVER)
+}
+
+// A start ahead of the clock, as when the stamp is set in the future or the
+// clock is turned back past it, ends the trial; a little ahead, as a clock set
+// by the network may be, is now.
+@(test)
+a_start_ahead_of_the_clock_ends_the_trial :: proc(t: ^testing.T) {
+	dir, path := trial_dir(t)
+	defer os.remove_all(dir)
+	now := time.unix(1_800_000_000, 0)
+	testing.expect(t, os.make_directory_all(filepath.dir(path)) == nil)
+
+	ahead := unix(time.time_add(now, 365 * DAY))
+	testing.expect(t, os.write_entire_file(path, fmt.tprintf("%d\n", ahead)) == nil)
+	testing.expect_value(t, first_use(path, {}, now), TRIAL_OVER)
+	data, _ := os.read_entire_file(path, context.temp_allocator)
+	testing.expect_value(t, strings.trim_space(string(data)), fmt.tprintf("%d", ahead))
+
+	// The clock turned back: started at now, asked two days before it.
+	testing.expect(t, os.remove(path) == nil)
+	memo: Memo
+	first := first_use(path, memo_ledger(&memo), now)
+	back := time.time_add(now, -2 * DAY)
+	testing.expect_value(t, first_use(path, memo_ledger(&memo), back), TRIAL_OVER)
+	testing.expect(t, !unlocked(false, first, back), "a window already open locks too")
+	testing.expect_value(t, days_left(first, back), 0)
+
+	nudged := time.time_add(now, -time.Hour)
+	testing.expect_value(t, unix(first_use(path, memo_ledger(&memo), nudged)), unix(now))
+	testing.expect_value(t, days_left(first, nudged), TRIAL_DAYS)
+}
+
+// Where neither place can keep the start it would be now on every run, so the
+// trial is over; one place that keeps it is enough.
+@(test)
+nowhere_to_keep_the_start_ends_the_trial :: proc(t: ^testing.T) {
+	dir, _ := trial_dir(t)
+	defer os.remove_all(dir)
+	now := time.unix(1_800_000_000, 0)
+	// A file where the data folder should be: nothing can be written under it.
+	blocked, _ := filepath.join({dir, "blocked"}, context.temp_allocator)
+	testing.expect(t, os.write_entire_file(blocked, "") == nil)
+	path, _ := filepath.join({blocked, FIRST_USE}, context.temp_allocator)
+
+	testing.expect_value(t, first_use("", {}, now), TRIAL_OVER)
+	testing.expect_value(t, first_use(path, {}, now), TRIAL_OVER)
+	memo := Memo {
+		readonly = true,
+	}
+	testing.expect_value(t, first_use(path, memo_ledger(&memo), now), TRIAL_OVER)
+
+	memo = {}
+	testing.expect_value(t, unix(first_use(path, memo_ledger(&memo), now)), unix(now))
+	testing.expect_value(t, memo.text, "1800000000")
+	testing.expect_value(t, unix(first_use("", memo_ledger(&memo), now)), unix(now))
 }

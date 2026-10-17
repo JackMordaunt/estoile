@@ -46,12 +46,19 @@ licence_show :: proc(m: ^Model, why: Maybe(msg.Msg) = nil) {
 	m.licence_answered = false
 }
 
-// unlocked is whether the paid features work, as the host last said: under a
-// licence, or in the trial. Before it says, they do.
+/*
+unlocked is whether the paid features work, as the host last said: under a
+licence, or in the trial. On the first frame, before the host can have said,
+they do, so the window does not open on a lock it then takes away. After it, no
+answer means locked: a host that never answers must not leave them open.
+*/
 @(private)
-unlocked :: proc(gtx: ^ui.Ctx) -> bool {
+unlocked :: proc(gtx: ^ui.Ctx, m: ^Model) -> bool {
 	r, _ := ui.need(gtx, query.Licence{}, query.Licence_Result)
-	return r == nil || r.unlocked
+	if r == nil {
+		return !m.drawn
+	}
+	return r.unlocked
 }
 
 // licence_dialog is the licence: whose it is, and a field to give leita another.

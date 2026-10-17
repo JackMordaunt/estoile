@@ -9,6 +9,7 @@ import "jm:http"
 import "jm:stream"
 
 import "../../licence"
+import "../../settings"
 import "../../version"
 import "../command"
 import "../query"
@@ -64,7 +65,9 @@ licence_open :: proc(d: ^Desk, path: string, key: []byte, activate_url: string) 
 	}
 	d.activate_url = strings.clone(url if url != "" else ACTIVATE_URL)
 	d.first_use = licence.first_use(
-		licence.path_beside(path, context.temp_allocator, "first-use") if path != "" else "",
+		licence.path_beside(path, context.temp_allocator, licence.FIRST_USE),
+		settings.trial_ledger(d.settings),
+		time.now(),
 	)
 	if key != nil {
 		d.licence_key = key
@@ -236,12 +239,13 @@ take_activation :: proc(d: ^Desk, a: ^Activated) {
 }
 
 licence_answer :: proc(d: ^Desk) -> query.Licence_Result {
+	now := time.now()
 	r := query.Licence_Result {
 		licensed   = d.licensed,
 		activating = d.activating,
 		offered    = d.licence_offered,
-		unlocked   = licence.unlocked(d.licensed, d.first_use),
-		trial_left = max(0, licence.TRIAL_DAYS - int(time.since(d.first_use) / (24 * time.Hour))),
+		unlocked   = licence.unlocked(d.licensed, d.first_use, now),
+		trial_left = licence.days_left(d.first_use, now),
 		problem    = d.licence_problem,
 	}
 	if d.licensed {

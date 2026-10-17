@@ -22,6 +22,7 @@ import "../monitor"
 import "../ntfs"
 import "../report"
 import "../scan"
+import "../settings"
 import "../survey"
 import "../term"
 import "../version"
@@ -179,8 +180,9 @@ run :: proc(args: []string) -> int {
 	// next with, and the licence beside it, whether or not this run keeps its scan.
 	data := history.default_path(context.temp_allocator)
 	licensee := licence.licensee_kept(licence.path_beside(data, context.temp_allocator))
-	first := licence.first_use(licence.path_beside(data, context.temp_allocator, "first-use"))
-	return scan_and_say(opt, data, licensee, !licence.unlocked(licensee != "", first))
+	now := time.now()
+	first := settings.trial_began(data, now)
+	return scan_and_say(opt, data, licensee, !licence.unlocked(licensee != "", first, now))
 }
 
 // is_subcommand says whether args open with a command of its own, monitor or

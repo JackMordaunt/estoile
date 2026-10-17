@@ -230,6 +230,7 @@ Model :: struct {
 	licence_answered: bool,
 	licence_why:      Maybe(msg.Msg), // why a paid feature opened it, nil for none
 	trial_seen:       bool, // the trial banner was dismissed, until leita next starts
+	drawn:            bool, // a frame is done: no licence answer now means locked (unlocked)
 	buy_url:          string,
 	about_open:       bool, // the About dialog (about.odin)
 	notices_open:     bool, // the licences of what leita is built on (about.odin)
@@ -312,6 +313,7 @@ model_destroy :: proc(m: ^Model) {
 
 view :: proc(gtx: ^ui.Ctx, user: rawptr) {
 	m := (^Model)(user)
+	defer m.drawn = true
 	recall_settings(gtx, m)
 	theme: primer.Theme = m.dark ? .Dark : .Light
 	m.scheme = primer.theme_scheme(theme)

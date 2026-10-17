@@ -184,35 +184,169 @@ path_beside :: proc(kept: string, allocator := context.allocator, name := "licen
 // before it must buy a Commercial Licence.
 TRIAL_DAYS :: 30
 
-// unlocked is whether the paid features work: under a licence, or in the trial
-// that began at first.
-unlocked :: proc(licensed: bool, first: time.Time) -> bool {
-	return licensed || time.since(first) < TRIAL_DAYS * 24 * time.Hour
+// DAY is a day of the trial.
+DAY :: 24 * time.Hour
+
+/*
+CLOCK_SLACK is how far ahead of the clock a trial's start may be and still
+count as now, so that a clock corrected back by minutes or hours after the
+first run does not end the trial. A start further ahead than this means the
+clock was turned back past it, and the trial is over.
+*/
+CLOCK_SLACK :: DAY
+
+// FIRST_USE is the file beside the history store that holds when the trial
+// began (first_use).
+FIRST_USE :: "first-use"
+
+// TRIAL_OVER is the start first_use gives when it has no honest one: so long
+// ago that the trial is over.
+TRIAL_OVER :: time.Time{}
+
+// unlocked is whether the paid features work at now: under a licence, or in the
+// trial that began at first.
+unlocked :: proc(licensed: bool, first, now: time.Time) -> bool {
+	return licensed || days_left(first, now) > 0
+}
+
+// days_left is how many days of the trial that began at first are left at now,
+// counting the day under way; 0 once it is over, or when the clock was turned
+// back past its start.
+days_left :: proc(first, now: time.Time) -> int {
+	gone := time.diff(first, now)
+	if gone < -CLOCK_SLACK || gone >= TRIAL_DAYS * DAY {
+		return 0
+	}
+	return TRIAL_DAYS - int(max(gone, 0) / DAY)
 }
 
 /*
-first_use is when leita first ran on this machine, as the file at path
-remembers it, writing now there the first time it is asked. It is the start of
-the trial the paid features have. Now when path is "" or cannot be read or
-written, so a machine with nowhere to keep it is never told its time is up.
+Ledger is the second place the trial's start is kept, beside the first-use
+file: settings.db, which the caller holds, since this package keeps to files of
+its own (settings.trial_ledger). get is the text kept there and whether there is
+any; set keeps text there and says whether it did. The zero Ledger keeps
+nothing.
 */
-first_use :: proc(path: string) -> time.Time {
-	now := time.now()
-	if path == "" {
-		return now
-	}
-	if data, err := os.read_entire_file(path, context.temp_allocator); err == nil {
-		if secs, ok := strconv.parse_i64(strings.trim_space(string(data))); ok {
-			return time.unix(secs, 0)
+Ledger :: struct {
+	user: rawptr,
+	get:  proc(user: rawptr) -> (text: string, found: bool),
+	set:  proc(user: rawptr, text: string) -> bool,
+}
+
+// Holding is what one place holds of the trial's start.
+@(private)
+Holding :: enum u8 {
+	Nothing, // no file, no setting: never written, or deleted
+	Garbled, // there, but unreadable or not a number
+	Stamp, // a start, in unix seconds
+}
+
+@(private)
+Stamp :: struct {
+	held: Holding,
+	secs: i64,
+}
+
+/*
+first_use is when the trial of the paid features began on this machine, as the
+file at path and ledger remember it, at now. The first time it is asked it
+writes now to both. Either may lose it, so the earlier of the two is the start,
+and a place that lost it, or holds a later one, is given it again: deleting the
+file, or settings.db, does not start the trial again while the other holds it.
+
+Every other doubt ends the trial, and first_use returns TRIAL_OVER: a start that
+is not a number, a file that is there but cannot be read, a start further ahead
+of now than CLOCK_SLACK, and a machine where neither place can be written, which
+would be told now again on every run. This fails closed on purpose. What it
+guards is the paid features, reports and change tracking; scanning and Reclaim
+never ask. Failing open would let a deleted file, a stamp set years ahead or a
+read-only folder keep the trial for ever.
+*/
+first_use :: proc(path: string, ledger: Ledger, now: time.Time) -> time.Time {
+	file, kept := stamp_of_file(path), stamp_of_ledger(ledger)
+	secs, found := earliest(file, kept)
+	if !found {
+		if file.held == .Garbled || kept.held == .Garbled {
+			return TRIAL_OVER
 		}
-		return now
+		secs = time.to_unix_seconds(now)
+	}
+	start := time.unix(secs, 0)
+	if time.diff(start, now) < -CLOCK_SLACK {
+		return TRIAL_OVER
+	}
+	text := fmt.tprintf("%d\n", secs)
+	wrote := false
+	if file != (Stamp{.Stamp, secs}) {
+		wrote = write_stamp(path, text) || wrote
+	}
+	if kept != (Stamp{.Stamp, secs}) && ledger.set != nil {
+		wrote = ledger.set(ledger.user, strings.trim_space(text)) || wrote
+	}
+	if !found && !wrote {
+		return TRIAL_OVER
+	}
+	return start
+}
+
+// earliest is the earlier start of a and b, and whether either holds one.
+@(private)
+earliest :: proc(a, b: Stamp) -> (secs: i64, found: bool) {
+	for s in ([2]Stamp{a, b}) {
+		if s.held == .Stamp && (!found || s.secs < secs) {
+			secs, found = s.secs, true
+		}
+	}
+	return
+}
+
+// stamp_of_file is what the file at path holds of the trial's start.
+@(private)
+stamp_of_file :: proc(path: string) -> Stamp {
+	if path == "" || !os.exists(path) {
+		return {}
+	}
+	data, err := os.read_entire_file(path, context.temp_allocator)
+	if err != nil {
+		return {held = .Garbled}
+	}
+	return stamp_of(string(data))
+}
+
+// stamp_of_ledger is what ledger holds of the trial's start.
+@(private)
+stamp_of_ledger :: proc(ledger: Ledger) -> Stamp {
+	if ledger.get == nil {
+		return {}
+	}
+	text, found := ledger.get(ledger.user)
+	if !found {
+		return {}
+	}
+	return stamp_of(text)
+}
+
+// stamp_of reads text as a start in unix seconds.
+@(private)
+stamp_of :: proc(text: string) -> Stamp {
+	secs, ok := strconv.parse_i64(strings.trim_space(text))
+	if !ok {
+		return {held = .Garbled}
+	}
+	return {.Stamp, secs}
+}
+
+// write_stamp writes text to the file at path, making its folder if need be,
+// and says whether it did.
+@(private)
+write_stamp :: proc(path, text: string) -> bool {
+	if path == "" {
+		return false
 	}
 	if dir := filepath.dir(path); !os.exists(dir) {
 		os.make_directory_all(dir)
 	}
-	// Unwritten, it is asked again next time, and is now again then.
-	_ = os.write_entire_file(path, fmt.tprintf("%d\n", time.to_unix_seconds(now)))
-	return now
+	return os.write_entire_file(path, text) == nil
 }
 
 // read is the text of the file at path, in the temp allocator.

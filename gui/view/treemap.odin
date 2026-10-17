@@ -75,7 +75,7 @@ colour_switch :: proc(gtx: ^ui.Ctx, m: ^Model, compact := false) {
 	}
 	#assert(len(colourings) == len(Colouring))
 	// The trial can end while leita is coloured by change.
-	if m.colour == .Change && !unlocked(gtx) {
+	if m.colour == .Change && !unlocked(gtx, m) {
 		m.colour = .Folder
 	}
 	at := int(m.colour)
@@ -87,7 +87,7 @@ colour_switch :: proc(gtx: ^ui.Ctx, m: ^Model, compact := false) {
 		size = .Small,
 		hide_labels = compact,
 	) {
-		if Colouring(at) == .Change && !unlocked(gtx) {
+		if Colouring(at) == .Change && !unlocked(gtx, m) {
 			licence_show(m, msg.Msg.Change_Locked)
 		} else {
 			m.colour = Colouring(at)

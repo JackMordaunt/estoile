@@ -522,20 +522,27 @@ run_command_line :: proc(args: []string) -> int {
 	}
 	host := schedule.host_default(context.temp_allocator)
 	paths := paths_beside(kept, context.temp_allocator)
-	licensee := licence.licensee_kept(paths.licence)
-	first := licence.first_use(licence.path_beside(kept, context.temp_allocator, "first-use"))
+	now := time.now()
 	c := Context {
 		style    = style,
 		paths    = paths,
 		host     = host,
 		argv     = {schedule.this_program(context.temp_allocator), "monitor", "run"},
 		aside    = os.to_writer(os.stderr),
-		unlocked = licence.unlocked(licensee != "", first),
-		now      = time.now(),
+		unlocked = unlocked_beside(kept, now),
+		now      = now,
 		notify   = show,
 		desktop  = alert.SYSTEM,
 	}
 	return dispatch(c, args, os.to_writer(os.stdout))
+}
+
+// unlocked_beside is whether the paid features work at now for the stores beside
+// the history store at kept: under the licence kept there, or in the trial
+// (settings.trial_began).
+unlocked_beside :: proc(kept: string, now: time.Time) -> bool {
+	licensee := licence.licensee_kept(licence.path_beside(kept, context.temp_allocator))
+	return licence.unlocked(licensee != "", settings.trial_began(kept, now), now)
 }
 
 // show runs a notification's command for real, and says whether it ran.

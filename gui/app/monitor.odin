@@ -141,7 +141,7 @@ monitor_settle :: proc(d: ^Desk, problem: string) {
 // unlocked is whether the paid features work: under a licence, or in the trial.
 @(private = "file")
 unlocked :: proc(d: ^Desk) -> bool {
-	return licence.unlocked(d.licensed, d.first_use)
+	return licence.unlocked(d.licensed, d.first_use, time.now())
 }
 
 // set_monitoring turns monitoring on or off as c asks.

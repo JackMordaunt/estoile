@@ -1195,12 +1195,26 @@ hovering_a_largest_file_lights_its_arc :: proc(t: ^testing.T) {
 	testing.expect(t, ui.probe_tagged(&r.p, said), "hovering the largest file lights its arc")
 }
 
+/*
+trial_data is a data folder beside root, and the history store in it, for a
+rig that must run in the trial: with nowhere to keep when it began, the trial
+is over (licence.first_use). Remove data after.
+*/
+trial_data :: proc(t: ^testing.T, root: string) -> (data, kept: string) {
+	data = fmt.tprintf("%s-data", root)
+	os.remove_all(data)
+	testing.expect(t, os.make_directory(data) == nil)
+	return data, fmt.tprintf("%s/history.db", data)
+}
+
 @(test)
 every_window_size_lays_out_without_a_clash :: proc(t: ^testing.T) {
 	root := fixture(t, "layout")
 	defer os.remove_all(root)
+	data, kept := trial_data(t, root)
+	defer os.remove_all(data)
 	r: Rig
-	rig_open(&r, root)
+	rig_open(&r, root, kept = kept)
 	defer rig_close(&r)
 	testing.expect(t, settle(&r, "Done"))
 	testing.expect(t, settle(&r, "arc photos"))
@@ -1957,8 +1971,10 @@ export_writes_a_report_of_each_format :: proc(t: ^testing.T) {
 	os.remove_all(reports)
 	testing.expect(t, os.make_directory(reports) == nil)
 	defer os.remove_all(reports)
+	data, kept := trial_data(t, root)
+	defer os.remove_all(data)
 	r: Rig
-	rig_open(&r, root, reports = reports)
+	rig_open(&r, root, kept = kept, reports = reports)
 	defer rig_close(&r)
 	testing.expect(t, settle(&r, "Done"))
 
@@ -2044,8 +2060,10 @@ the_export_dialog_saves_a_report_where_chosen_and_offers_locate :: proc(t: ^test
 	defer os.remove_all(reports)
 	chosen := fmt.tprintf("%s/mine.html", reports)
 	testing.expect(t, os.write_entire_file(chosen, "an older report") == nil)
+	trial, kept := trial_data(t, root)
+	defer os.remove_all(trial)
 	r: Rig
-	rig_open(&r, root, reports = reports)
+	rig_open(&r, root, kept = kept, reports = reports)
 	defer rig_close(&r)
 	testing.expect(t, settle(&r, "Done"))
 
@@ -2103,8 +2121,10 @@ a_cancelled_save_dialog_exports_nothing :: proc(t: ^testing.T) {
 	os.remove_all(reports)
 	testing.expect(t, os.make_directory(reports) == nil)
 	defer os.remove_all(reports)
+	data, kept := trial_data(t, root)
+	defer os.remove_all(data)
 	r: Rig
-	rig_open(&r, root, reports = reports)
+	rig_open(&r, root, kept = kept, reports = reports)
 	defer rig_close(&r)
 	testing.expect(t, settle(&r, "Done"))
 
@@ -2180,8 +2200,10 @@ export_is_busy_until_it_is_saved_or_fails :: proc(t: ^testing.T) {
 		r.m.settings_open = false
 	}
 
+	data, kept := trial_data(t, root)
+	defer os.remove_all(data)
 	saves: Rig
-	rig_open(&saves, root, reports = reports)
+	rig_open(&saves, root, kept = kept, reports = reports)
 	export_once(t, &saves, "Saved report to ")
 	rig_close(&saves)
 	listed, _ := os.read_all_directory_by_path(reports, context.temp_allocator)
@@ -2196,7 +2218,7 @@ export_is_busy_until_it_is_saved_or_fails :: proc(t: ^testing.T) {
 
 	// A folder that is not there: the report cannot be saved.
 	fails: Rig
-	rig_open(&fails, root, reports = fmt.tprintf("%s/missing", reports))
+	rig_open(&fails, root, kept = kept, reports = fmt.tprintf("%s/missing", reports))
 	defer rig_close(&fails)
 	export_once(t, &fails, "Could not save the report in ")
 }

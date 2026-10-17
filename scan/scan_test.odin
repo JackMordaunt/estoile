@@ -19,9 +19,10 @@ test_choose_prefers_the_mft_when_it_can_be_read :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_choose_walks_a_directory_within_an_ntfs_volume :: proc(t: ^testing.T) {
-	// The MFT reader would answer with the whole volume (see choose), so a directory under its
-	// top is walked, and elevation is not suggested because it would not help.
+test_choose_walks_a_directory_within_an_ntfs_volume_without_a_record :: proc(t: ^testing.T) {
+	// resolve found the subtree but not its record (or never tried): the MFT reader
+	// has nothing to root the tree at, so it is walked instead. Elevation is not
+	// suggested because the volume already opened.
 	sub := Target {
 		fs     = .Ntfs,
 		volume = `\\.\C:`,
@@ -33,6 +34,25 @@ test_choose_walks_a_directory_within_an_ntfs_volume :: proc(t: ^testing.T) {
 	testing.expect(t, !c.permission_would_help)
 	sub.root = ""
 	testing.expect_value(t, choose(sub, readable = true).engine, Engine.Mft)
+}
+
+@(test)
+test_choose_reads_a_directory_with_a_record_from_the_mft :: proc(t: ^testing.T) {
+	// resolve found root's file reference number, so the MFT reader can root the
+	// tree at it directly rather than walking.
+	sub := Target {
+		fs     = .Ntfs,
+		volume = `\\.\C:`,
+		mount  = `C:\`,
+		root   = `Users\ann\src`,
+		record = 123,
+	}
+	testing.expect_value(t, choose(sub, readable = true).engine, Engine.Mft)
+
+	// The volume itself did not open: elevation would help, a record notwithstanding.
+	fallback := choose(sub, readable = false)
+	testing.expect_value(t, fallback.engine, Engine.Walk)
+	testing.expect(t, fallback.permission_would_help)
 }
 
 @(test)

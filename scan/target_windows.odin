@@ -108,6 +108,9 @@ resolve :: proc(
 	// Whatever of the path lies below the mount point is the subtree to report on.
 	if len(path) > len(t.mount) {
 		t.root = strings.clone(path[len(t.mount) - 1:], allocator)
+		if t.fs == .Ntfs {
+			t.record = file_record(wpath)
+		}
 	}
 	// The mount point answered everything above; nothing has touched the volume
 	// itself. Whether that opens is what decides the reader.
@@ -146,6 +149,37 @@ is_drive_spec :: proc(s: string) -> bool {
 		return false
 	}
 	return true
+}
+
+/*
+root's file reference number, the MFT's own index for it, read straight off a normal
+handle. Unlike the raw volume handle can_open tests, this needs no elevation: it is
+the same permission that already let resolve list the directory.
+*/
+@(private)
+file_record :: proc(wpath: win.LPCWSTR) -> Maybe(u32) {
+	h := win.CreateFileW(
+		wpath,
+		win.FILE_READ_ATTRIBUTES,
+		win.FILE_SHARE_READ | win.FILE_SHARE_WRITE | win.FILE_SHARE_DELETE,
+		nil,
+		win.OPEN_EXISTING,
+		win.FILE_FLAG_BACKUP_SEMANTICS,
+		nil,
+	)
+	if h == win.INVALID_HANDLE_VALUE {
+		return nil
+	}
+	defer win.CloseHandle(h)
+	info: win.BY_HANDLE_FILE_INFORMATION
+	if !win.GetFileInformationByHandle(h, &info) {
+		return nil
+	}
+	// The low 48 bits of the file reference number are the record; the high 16 are a
+	// sequence number that detects reuse, which a caller that just wants the record
+	// has no use for.
+	ref := u64(info.nFileIndexHigh) << 32 | u64(info.nFileIndexLow)
+	return u32(ref & 0x0000_ffff_ffff_ffff)
 }
 
 /*

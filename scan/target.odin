@@ -17,6 +17,10 @@ Target :: struct {
 	volume:    string, // device path to open, e.g. \\.\C:
 	mount:     string, // where that volume is mounted, e.g. C:\
 	root:      string, // subtree within the volume; "" means all of it
+	// root's own file reference number, found without opening the volume, so a
+	// reader that can address a record directly is not limited to walking a
+	// subtree. nil when root is "" or finding it failed.
+	record:    Maybe(u32),
 	fs:        Filesystem,
 	media:     Media,
 	image:     bool, // a file holding a volume rather than a mounted one
@@ -133,16 +137,21 @@ is a separate procedure so the whole decision table can be tested without a disk
 because anything else needs to choose. An image needs no special case: it is a file,
 so it opens.
 
-The MFT reader takes the whole volume at once and has no way yet to keep only a
-subtree of it: ntfs/tree.odin's projection only renames the top, so given one it
-answers with the whole volume (a report of a temp directory, on an elevated Windows
-runner, listed C:\$MFT as its largest file). So a subtree is walked, which reads
-only what is under it, and elevation would not change that.
+The MFT reader takes the whole volume at once; ntfs/tree.odin's projection roots the
+tree at `record` instead of the volume's own root, so a subtree gets a true answer
+rather than the whole volume's (a report of a temp directory once listed C:\$MFT as
+its largest file, found rooted at the volume all along). Finding `record` needs no
+elevation, only opening the subtree itself, so a subtree with one goes to the MFT
+reader exactly as the whole volume does. Without one, resolve either found no record
+or never tried, so a subtree is walked instead.
 */
 @(private)
 choose :: proc(t: Target, readable: bool) -> Choice {
 	if t.fs == .Ntfs && t.root != "" && t.mount != "" {
-		return {engine = .Walk}
+		if readable && t.record != nil {
+			return {engine = .Mft}
+		}
+		return {engine = .Walk, permission_would_help = !readable}
 	}
 	if t.fs == .Ntfs {
 		if readable {

@@ -74,6 +74,89 @@ bench_an_update_against_a_whole_read :: proc(t: ^testing.T) {
 	}
 }
 
+/*
+What the MFT reader saves over a walk on one folder of an NTFS volume, measured when
+LEITA_BENCH_MFT names the folder (`just mft-bench <folder>`). The MFT engine opens
+the volume raw, which resolve finds refused without an elevated prompt (survey's
+problem says so for Access_Denied), so anything else fails here rather than timing
+two walks. Each engine reads the folder twice and the
+second, warm, read is timed. Both trees are counted by slot, as a search reads them,
+so counts far apart mean the MFT's tree is not the folder's alone.
+*/
+@(test)
+bench_a_folder_from_the_mft_against_a_walk :: proc(t: ^testing.T) {
+	place := os.get_env("LEITA_BENCH_MFT", context.temp_allocator)
+	if place == "" {
+		return
+	}
+	target, choice, err := scan.resolve(place)
+	testing.expect_value(t, err, scan.Error.None)
+	defer scan.target_destroy(&target)
+	if choice.engine != .Mft {
+		testing.expectf(
+			t,
+			false,
+			"%s is read by %v, not the MFT: it takes an NTFS folder and an elevated prompt",
+			place,
+			choice.engine,
+		)
+		return
+	}
+
+	// The heap, as above, so the allocator is not what is measured.
+	context.allocator = runtime.heap_allocator()
+	mft := read_twice(t, target, .Mft)
+	walked := read_twice(t, target, .Walk)
+	fmt.printfln(
+		"bench %s: MFT %.0f ms, %d nodes, %d bytes; walk %.0f ms, %d nodes, %d bytes (%.1fx)",
+		place,
+		time.duration_milliseconds(mft.took),
+		mft.nodes,
+		mft.bytes,
+		time.duration_milliseconds(walked.took),
+		walked.nodes,
+		walked.bytes,
+		time.duration_seconds(walked.took) / max(time.duration_seconds(mft.took), 1e-9),
+	)
+}
+
+@(private = "file")
+Read :: struct {
+	took:  time.Duration,
+	nodes: u64, // used nodes, not counting a file's extra names
+	bytes: u64,
+}
+
+// Read the target whole with one engine, twice, and time and count the second.
+@(private = "file")
+read_twice :: proc(t: ^testing.T, target: scan.Target, engine: scan.Engine) -> (r: Read) {
+	for _ in 0 ..< 2 {
+		tree: scan.Tree
+		testing.expect_value(t, scan.tree_init(&tree, 32), scan.Error.None)
+		defer scan.tree_destroy(&tree)
+		f := Fill {
+			target = target,
+			engine = engine,
+			wcfg = {media = target.media, pace = .Full},
+			tree = &tree,
+		}
+		defer fill_destroy(&f)
+		start := time.tick_now()
+		fill_run(&f)
+		r = {took = time.tick_since(start)}
+		testing.expectf(t, problem(&f) == "", "%s", problem(&f))
+		for i in 0 ..< scan.slots(&tree) {
+			n := scan.node(&tree, i)
+			flags := scan.node_flags(n)
+			if .Used in flags && .Extra_Name not_in flags {
+				r.nodes += 1
+				r.bytes += n.disk
+			}
+		}
+	}
+	return
+}
+
 @(private = "file")
 measure :: proc(
 	t: ^testing.T,

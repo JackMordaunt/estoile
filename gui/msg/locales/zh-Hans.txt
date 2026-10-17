@@ -234,6 +234,7 @@ licence_unreadable = 无法读取许可证文件。
 licence_unwritable = 无法保存许可证。
 not_a_key = 这不是许可证密钥：请粘贴收据中的密钥，或以 leita1. 开头的许可证。
 cannot_connect = {0} 无法建立连接以获取许可证。
+no_curl = {0} 需要 libcurl 才能获取许可证，但此系统中没有。请安装 curl 软件包，或改为打开收据中的许可证文件。
 server_slow = 许可证服务器未及时响应，请重试。
 server_unreachable = {0} 无法连接到许可证服务器。请检查网络连接，或改为打开收据中的许可证文件。
 key_refused = 许可证密钥未被接受。

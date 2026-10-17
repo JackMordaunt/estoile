@@ -12,6 +12,7 @@ import "../../licence"
 import "../../settings"
 import "../../version"
 import "../command"
+import "../msg"
 import "../query"
 
 /*
@@ -172,7 +173,10 @@ activate :: proc(d: ^Desk, key: string) {
 	if d.client == nil {
 		client, err := http.start()
 		if err != .None {
-			licence_settle(d, strings.clone(say(d, .Cannot_Connect, version.PRODUCT)))
+			// Linux opens libcurl at run time, so a system without it
+			// still runs the window; only this request needs it.
+			why := msg.Msg.No_Curl if err == .No_Library else msg.Msg.Cannot_Connect
+			licence_settle(d, strings.clone(say(d, why, version.PRODUCT)))
 			return
 		}
 		d.client = client

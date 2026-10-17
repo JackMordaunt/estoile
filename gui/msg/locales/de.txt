@@ -251,6 +251,7 @@ licence_unreadable = Die Lizenzdatei konnte nicht gelesen werden.
 licence_unwritable = Die Lizenz konnte nicht gespeichert werden.
 not_a_key = Das ist kein Lizenzschlüssel: Fügen Sie den Schlüssel aus Ihrem Kaufbeleg ein oder eine Lizenz, die mit leita1. beginnt.
 cannot_connect = {0} konnte keine Verbindung zum Abrufen der Lizenz herstellen.
+no_curl = {0} braucht libcurl, um die Lizenz abzurufen, und dieses System hat keine. Installieren Sie das Paket curl oder öffnen Sie stattdessen die Lizenzdatei aus Ihrem Kaufbeleg.
 server_slow = Der Lizenzserver hat nicht rechtzeitig geantwortet; versuchen Sie es erneut.
 server_unreachable = {0} konnte den Lizenzserver nicht erreichen. Prüfen Sie die Verbindung oder öffnen Sie stattdessen die Lizenzdatei aus Ihrem Kaufbeleg.
 key_refused = Der Lizenzschlüssel wurde nicht akzeptiert.

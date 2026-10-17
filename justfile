@@ -60,6 +60,12 @@ flags := check_flags + minos
 # its minimum, and an older Mac refuses to start it.
 minos := if os() == "macos" { " -minimum-os-version:11.0" } else { "" }
 san   := env("SAN", "-sanitize:address")
+# Linux opens libcurl when a licence key is first sent, not at start-up
+# (jm:http/libcurl): Ubuntu's desktop may carry only the GnuTLS build, or none,
+# and the window must start either way. macOS links its own; Windows ships
+# libcurl inside vendor:curl. Only what imports jm:http, the window, takes it;
+# odin warns of a define nothing reads.
+curl_open := if os() == "linux" { " -define:JM_HTTP_DLOPEN=true" } else { "" }
 # What just hot builds the host and the view with, instead of -debug {{san}}:
 # the loop is for editing the view, and every edit waits on a child build, so
 # the profile buys frame time only where it costs no compile time. No ASan: a
@@ -88,11 +94,15 @@ gui   := "Leita"
 # SDL3 needs, the Libs line of the sdl3.pc that build writes. vendor:sdl3 asks
 # for -lSDL3, and Odin puts -L/opt/homebrew/lib ahead of any -L given here, so
 # ld would take a Homebrew dylib where one is installed: the archive is loaded
-# whole by path instead, and the dylib, then unused, dropped. Linux finds its
-# SDL3 in a system lib directory and Windows loads the DLL, so neither adds
-# anything.
+# whole by path instead, and the dylib, then unused, dropped. Linux links the
+# static SDL3 deps builds into the same directory (sdl3-static), so a stock
+# Ubuntu, which packages no SDL3, starts the window: ld takes libSDL3.a from
+# the first -L directory holding a libSDL3, before the system's own. Every
+# backend SDL3 has on Linux, X11, Wayland and the sound servers among them,
+# is opened at run time, so the archive needs nothing more on the line.
+# Windows loads the DLL and adds nothing.
 sdl3_dir  := jm / "ui/shell/lib"
-sdl3_link := if os() == "macos" { "-extra-linker-flags:\"-L" + sdl3_dir + " -Wl,-force_load," + sdl3_dir + "/libSDL3.a -Wl,-dead_strip_dylibs" + \
+sdl3_link := if os() == "linux" { "-extra-linker-flags:\"-L" + sdl3_dir + "\"" } else if os() == "macos" { "-extra-linker-flags:\"-L" + sdl3_dir + " -Wl,-force_load," + sdl3_dir + "/libSDL3.a -Wl,-dead_strip_dylibs" + \
     " -framework CoreMedia -framework CoreVideo -framework Cocoa -Wl,-weak_framework,UniformTypeIdentifiers" + \
     " -framework IOKit -framework ForceFeedback -framework Carbon -framework CoreAudio -framework AudioToolbox" + \
     " -framework AVFoundation -framework Foundation -framework GameController -framework Metal -framework QuartzCore" + \
@@ -137,7 +147,7 @@ gui mode="debug": deps
     *) echo "gui: the mode is debug or release, not {{mode}}" >&2; exit 1 ;;
     esac
     mkdir -p build/{{mode}}/app
-    {{odin}} build gui $opt {{flags}} {{sdl3_link}} -out:build/{{mode}}/app/{{gui}}{{exe}}
+    {{odin}} build gui $opt {{flags}} {{curl_open}} {{sdl3_link}} -out:build/{{mode}}/app/{{gui}}{{exe}}
     if [ "{{os()}}" = windows ]; then
         cp "$({{odin}} root)/vendor/sdl3/SDL3.dll" build/{{mode}}/app/
         cp "{{jm}}/ui/accesskit/lib/accesskit.dll" build/{{mode}}/app/ 2>/dev/null || true
@@ -232,8 +242,9 @@ sqlite:
     ls sqlite3/lib/sqlite3.* >/dev/null 2>&1 || just sqlite
 
 # What sqlite fetches, and the libraries jm:ui links: Blend2D to draw,
-# kb_text_shape to shape text, AccessKit for screen readers, and on macOS
-# SDL3 itself. Each is built or fetched by jm's own recipe, once.
+# kb_text_shape to shape text, AccessKit for screen readers, and on macOS and
+# Linux SDL3 itself. Each is built or fetched by jm's own recipe, once, but
+# Linux's SDL3, which sdl3-static builds here.
 deps: sqlite
     #!/usr/bin/env bash
     set -euo pipefail
@@ -242,6 +253,33 @@ deps: sqlite
     ls ui/kb/lib/kb_text_shape.* >/dev/null 2>&1 || just kb
     ls ui/accesskit/lib/*accesskit* >/dev/null 2>&1 || just accesskit
     just sdl3
+    if [ "{{os()}}" = linux ]; then just --justfile "{{justfile()}}" sdl3-static; fi
+
+# jm builds SDL3 static for macOS alone and leaves Linux to a system SDL3,
+# which Ubuntu does not package; this is its macOS build, at the same pinned
+# commit, for Linux, into the directory sdl3_link names. Position-independent,
+# since Odin links a PIE. SDL3 finds X11, Wayland, libdecor, PipeWire,
+# PulseAudio and ALSA at configure time and opens them at run time, so the
+# machine that builds it needs their headers (CI installs them; see the setup
+# action) and the one that runs it needs none of them but its desktop's own.
+[private]
+[linux]
+sdl3-static:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{jm}}"
+    [ -f ui/shell/lib/libSDL3.a ] && exit 0
+    rev=$(just --evaluate sdl3_rev)
+    just fetch build/src/sdl3 https://github.com/libsdl-org/SDL "$rev"
+    echo "cmake sdl3 (static) -> ui/shell/lib/libSDL3.a"
+    mkdir -p ui/shell/lib build
+    cmake --fresh -S build/src/sdl3 -B build/sdl3-static -DCMAKE_BUILD_TYPE=Release \
+        -DSDL_SHARED=OFF -DSDL_STATIC=ON -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF \
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON > build/sdl3-static.log 2>&1 \
+        || { tail -n 30 build/sdl3-static.log >&2; exit 1; }
+    cmake --build build/sdl3-static --parallel >> build/sdl3-static.log 2>&1 \
+        || { tail -n 30 build/sdl3-static.log >&2; exit 1; }
+    cp build/sdl3-static/libSDL3.a build/sdl3-static/sdl3.pc ui/shell/lib/
 
 # The window with its view hot-reloaded. The host (gui/host) owns the window and
 # the scan; the view runs as gui/child in a subprocess, rebuilt here whenever an
@@ -258,7 +296,7 @@ hot *args: deps
     #!/usr/bin/env bash
     set -euo pipefail
     mkdir -p build/debug/app build/hot
-    {{odin}} build gui/host {{hot_opt}} {{flags}} {{sdl3_link}} -out:build/debug/app/{{gui}}-host{{exe}}
+    {{odin}} build gui/host {{hot_opt}} {{flags}} {{curl_open}} {{sdl3_link}} -out:build/debug/app/{{gui}}-host{{exe}}
     rm -f build/hot/view.watch
     (
       last=""
@@ -295,8 +333,8 @@ hot *args: deps
 # Run the window's suites under ASan
 gui-test: deps
     mkdir -p build/test/app
-    {{odin}} test gui -debug {{san}} {{flags}} {{sdl3_link}} -out:build/test/app/{{gui}}-main{{exe}}
-    {{odin}} test gui/app -debug {{san}} {{flags}} {{sdl3_link}} -out:build/test/app/{{gui}}{{exe}}
+    {{odin}} test gui -debug {{san}} {{flags}} {{curl_open}} {{sdl3_link}} -out:build/test/app/{{gui}}-main{{exe}}
+    {{odin}} test gui/app -debug {{san}} {{flags}} {{curl_open}} {{sdl3_link}} -out:build/test/app/{{gui}}{{exe}}
     {{odin}} test gui/files -debug {{san}} {{flags}} -out:build/test/app/{{gui}}-files{{exe}}
     {{odin}} test gui/view -debug {{san}} {{flags}} -out:build/test/app/{{gui}}-view{{exe}}
     {{odin}} test gui/msg -debug {{san}} {{flags}} -out:build/test/app/{{gui}}-msg{{exe}}

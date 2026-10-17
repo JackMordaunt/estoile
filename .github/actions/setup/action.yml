@@ -6,7 +6,8 @@
 # leita's native libraries all come from jm (https://mordaunt.dev/code/jm):
 # SQLite for both binaries' scans, and, for the window alone, Blend2D to
 # draw, kb_text_shape to shape text, AccessKit for screen readers and, on
-# macOS, a static SDL3; vendor:sdl3's binding ships inside the Odin
+# macOS and Linux, a static SDL3 (Linux's built by leita's own justfile,
+# which jm leaves to the system); vendor:sdl3's binding ships inside the Odin
 # toolchain itself. Odin is built from the commit leita is developed with,
 # not a release: the commit is tagged brainfold-pin-<short sha> in
 # github.com/JackMordaunt/Odin (setup-odin clones a branch or tag, never a
@@ -37,11 +38,6 @@ inputs:
   odin-llvm:
     description: The LLVM major Odin is built against, the local build's
     default: "22"
-  sdl3-tag:
-    description: >-
-      The release vendor:sdl3 in odin-pin is bound against, for the Linux
-      build below; jm's sdl3_rev pins the same release's commit for macOS.
-    default: release-3.4.2
   cache:
     description: >-
       "true" to restore and save SDL3 and the native libraries in the
@@ -75,52 +71,27 @@ runs:
     # report/pdf falls back through a list of system fonts, failing its
     # test outright if it finds none; Ubuntu ships none of them, so
     # fonts-liberation is installed and symlinked where pdf/system.odin
-    # looks, the same fix jm's own test.yml uses. btrfs-progs makes and reads
-    # the image test.yml's btrfs-test runs on. cmake and ninja build
-    # Blend2D and SDL3 from source below. libcurl4-openssl-dev
-    # is jm:http's link dependency, pulled in by gui/app through
-    # jm:http/loopback even though loopback itself never opens a socket.
+    # looks, the same fix jm's own test.yml uses. btrfs-progs
+    # makes and reads the image test.yml's btrfs-test runs on. cmake and
+    # ninja build Blend2D and SDL3 from source. The -dev packages after them
+    # are the headers SDL3 needs to build its X11, Wayland, input and sound
+    # backends, which it opens at run time, so the window that links it
+    # statically starts on a desktop with either display server (the list
+    # in SDL's docs/README-linux.md, less what a window that plays no sound
+    # and shows no text of SDL's own leaves unused). No libcurl headers:
+    # Linux opens libcurl at run time (the justfile's curl_open), and the
+    # runner has it for the activation tests.
     - name: packages (linux)
       if: runner.os == 'Linux'
       shell: bash
       run: |
         sudo apt-get update -qq
-        sudo apt-get install -y --no-install-recommends cmake ninja-build fonts-liberation libcurl4-openssl-dev btrfs-progs
+        sudo apt-get install -y --no-install-recommends cmake ninja-build pkg-config fonts-liberation btrfs-progs \
+          libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev \
+          libxkbcommon-dev libdrm-dev libgbm-dev libegl-dev libgl-dev libgles-dev libwayland-dev libdecor-0-dev \
+          libdbus-1-dev libibus-1.0-dev libudev-dev libpipewire-0.3-dev libpulse-dev libasound2-dev
         sudo mkdir -p /usr/share/fonts/liberation
         sudo ln -sf /usr/share/fonts/truetype/liberation/*.ttf /usr/share/fonts/liberation/
-
-    # SDL3 for jm:ui/shell, which gui/main.odin (just gui) links.
-    # Ubuntu has no package for it, so it is built from source,
-    # console-only since nothing here opens a window, and installed to
-    # /usr/local/lib, which is on the default linker search path, so
-    # leita's own justfile finds it without changes. The window links it
-    # by soname, so a Linux release still loads the desktop's own SDL3 at
-    # run time. macOS links the static SDL3 jm's sdl3 recipe builds, with
-    # the other native libraries below.
-    - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-      if: runner.os == 'Linux' && inputs.cache == 'true'
-      id: sdl3-cache
-      with:
-        path: ${{ runner.temp }}/sdl3
-        key: sdl3-${{ inputs.sdl3-tag }}-${{ runner.os }}-${{ runner.arch }}-v1
-    - name: sdl3 build (linux)
-      if: runner.os == 'Linux' && steps.sdl3-cache.outputs.cache-hit != 'true'
-      shell: bash
-      env:
-        SDL3_TAG: ${{ inputs.sdl3-tag }}
-      run: |
-        git -c advice.detachedHead=false clone -q --depth 1 --branch "$SDL3_TAG" https://github.com/libsdl-org/SDL "$RUNNER_TEMP/sdl3-src"
-        cmake -S "$RUNNER_TEMP/sdl3-src" -B "$RUNNER_TEMP/sdl3-src/build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/sdl3" -DSDL_UNIX_CONSOLE_BUILD=ON -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF
-        cmake --build "$RUNNER_TEMP/sdl3-src/build" --parallel
-        cmake --install "$RUNNER_TEMP/sdl3-src/build"
-    - name: sdl3 install (linux)
-      if: runner.os == 'Linux'
-      shell: bash
-      run: |
-        lib=$(dirname "$(find "$RUNNER_TEMP/sdl3" -name 'libSDL3.so*' -print -quit)")
-        sudo cp -P "$lib"/libSDL3.so* /usr/local/lib/
-        sudo ldconfig
 
     # sqlite3, ui/blend2d and ui/kb are rebuilt only when the jm submodule
     # moves or the pinned Blend2D/asmjit revisions change; ui/accesskit's
@@ -147,17 +118,20 @@ runs:
           jm/ui/kb/lib
           jm/ui/accesskit/lib
           jm/ui/shell/lib
-        key: jmlibs-${{ steps.jm.outputs.sha }}-${{ steps.rev.outputs.blend2d }}-${{ steps.rev.outputs.asmjit }}-${{ steps.rev.outputs.accesskit }}-${{ steps.rev.outputs.sdl3 }}-${{ runner.os }}-${{ runner.arch }}-v2
+        key: jmlibs-${{ steps.jm.outputs.sha }}-${{ steps.rev.outputs.blend2d }}-${{ steps.rev.outputs.asmjit }}-${{ steps.rev.outputs.accesskit }}-${{ steps.rev.outputs.sdl3 }}-${{ runner.os }}-${{ runner.arch }}-v3
 
     # Unix: jm's own [unix] recipes, bash throughout, build sqlite3 and
     # Blend2D (CMake's default Unix Makefiles generator, no ninja needed)
     # and kb_text_shape with the platform's cc, and on macOS the static
-    # SDL3 the window links (sdl3 does nothing on Linux, which has the
-    # shared one above). AccessKit follows on its own.
+    # SDL3 the window links; on Linux, where jm's sdl3 does nothing, leita's
+    # sdl3-static builds the same commit static into the same directory.
+    # AccessKit follows on its own.
     - name: native libraries (unix)
       if: runner.os != 'Windows' && steps.libs-cache.outputs.cache-hit != 'true'
       shell: bash
-      run: cd jm && just sqlite blend2d kb sdl3
+      run: |
+        (cd jm && just sqlite blend2d kb sdl3)
+        if [ "$RUNNER_OS" = Linux ]; then just sdl3-static; fi
     # Windows: sqlite3 and kb_text_shape built directly with cl, and
     # Blend2D fetched at the pinned revisions and built with CMake +
     # Ninja + clang-cl (MSVC's own cl hits an internal error on Blend2D's

@@ -229,6 +229,7 @@ Msg :: enum u16 {
 	Licence_Unwritable,
 	Not_A_Key,
 	Cannot_Connect,
+	No_Curl,
 	Server_Slow,
 	Server_Unreachable,
 	Key_Refused,

@@ -286,6 +286,7 @@ licence_unreadable = The licence file could not be read.
 licence_unwritable = The licence could not be saved.
 not_a_key = That is not a licence key: paste the key from your receipt, or a licence beginning leita1.
 cannot_connect = {0} could not start a connection to fetch the licence.
+no_curl = {0} needs libcurl to fetch the licence, and this system has none. Install the curl package, or open the licence file from your receipt instead.
 server_slow = The licence server did not answer in time; try again.
 server_unreachable = {0} could not reach the licence server. Check the connection, or open the licence file from your receipt instead.
 key_refused = The licence key was not accepted.

@@ -33,8 +33,18 @@
 # pre-release, for a person to look over and publish; any other tag is
 # published at once. Signing is left to the cards that own it: the
 # executables (Windows, card 541; the macOS .app, card 542) and
-# sha256sums.txt.sig (jm:selfupdate, card 547). Linux packages and a window
-# that runs without the system's SDL3 and libcurl are card 543.
+# sha256sums.txt.sig (jm:selfupdate, card 547).
+#
+# The Linux window carries SDL3 inside it and opens libcurl only to activate
+# a licence, so it needs nothing a stock desktop lacks but glibc and
+# libstdc++: built on ubuntu-24.04, it needs glibc 2.39 (AccessKit's Rust
+# std refers to pidfd_spawnp, and the C built against 24.04's headers to
+# C23's __isoc23_strtol, 2.38), so it runs on Ubuntu 24.04 and Fedora 40
+# and later, and not on Debian 12 (2.36) or Ubuntu 22.04 (2.35). The build
+# step prints the version it needs. Reaching those would take building
+# Linux on ubuntu-22.04 with AccessKit built there from source, as arm64's
+# is (ASSUMPTION: its CMake builds SDL3 and Blend2D unchanged), or linking
+# with `zig cc -target x86_64-linux-gnu.2.35` in place of Odin's clang.
 name: release
 
 on:
@@ -208,7 +218,16 @@ jobs:
             "leita $LEITA_VERSION "*) ;;
             *) echo "::error::--version names another version than $LEITA_VERSION"; exit 1 ;;
           esac
-          if [ "$RUNNER_OS" = Linux ]; then ldd "build/release/app/Leita"; fi
+          # The Linux window must start where neither SDL3 nor libcurl is
+          # installed: neither may be among what it loads.
+          if [ "$RUNNER_OS" = Linux ]; then
+            ldd "build/release/app/Leita"
+            if ldd "build/release/app/Leita" | grep -E 'libSDL3|libcurl'; then
+              echo "::error::the window links a shared SDL3 or libcurl"
+              exit 1
+            fi
+            echo "glibc needed: $(objdump -T build/release/app/Leita build/release/leita | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1)"
+          fi
           if [ "$RUNNER_OS" = macOS ]; then otool -L "build/release/app/Leita"; fi
 
       # Each binary under its update name, and on Linux and Windows the

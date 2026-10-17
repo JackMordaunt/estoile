@@ -317,6 +317,7 @@ file_exists = ya existe algo con ese nombre
 file_missing = ya no existe
 file_denied = se denegó el permiso
 file_cross_device = está en un sistema de archivos distinto al de la Papelera
+file_not_recycled = la Papelera de reciclaje lo rechazó; no se borró nada
 file_bad_name = ese no es un nombre válido para un archivo
 file_not_directory = no es una carpeta
 file_unsupported = este sistema no lo admite

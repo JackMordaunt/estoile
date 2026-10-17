@@ -274,6 +274,7 @@ file_exists = 같은 이름의 항목이 이미 있음
 file_missing = 더 이상 존재하지 않음
 file_denied = 권한이 거부됨
 file_cross_device = 휴지통과 다른 파일 시스템에 있음
+file_not_recycled = 휴지통에서 거부함. 아무것도 삭제되지 않음
 file_bad_name = 파일에 사용할 수 없는 이름
 file_not_directory = 디렉터리가 아님
 file_unsupported = 이 시스템에서 지원하지 않는 작업

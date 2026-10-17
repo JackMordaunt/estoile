@@ -276,6 +276,7 @@ file_exists = 已存在同名项目
 file_missing = 它已不存在
 file_denied = 权限被拒绝
 file_cross_device = 它与回收站不在同一个文件系统上
+file_not_recycled = 回收站拒绝了它；未删除任何内容
 file_bad_name = 这不是有效的文件名
 file_not_directory = 它不是目录
 file_unsupported = 此系统不支持该操作

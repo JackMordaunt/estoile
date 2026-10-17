@@ -277,6 +277,7 @@ file_exists = 同じ名前の項目がすでにあります
 file_missing = 項目が見つかりません
 file_denied = アクセス権がありません
 file_cross_device = ゴミ箱とは別のファイルシステム上にあります
+file_not_recycled = ゴミ箱に拒否されました。何も削除されていません
 file_bad_name = ファイル名として使用できない名前です
 file_not_directory = ディレクトリではありません
 file_unsupported = このシステムでは実行できません

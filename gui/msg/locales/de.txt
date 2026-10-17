@@ -295,6 +295,7 @@ file_exists = etwas mit diesem Namen existiert bereits
 file_missing = es ist nicht mehr vorhanden
 file_denied = die Berechtigung wurde verweigert
 file_cross_device = es liegt auf einem anderen Dateisystem als der Papierkorb
+file_not_recycled = der Papierkorb hat es abgelehnt; nichts wurde gelöscht
 file_bad_name = dieser Name ist für eine Datei nicht zulässig
 file_not_directory = es ist kein Ordner
 file_unsupported = dieses System unterstützt das nicht

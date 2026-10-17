@@ -317,6 +317,7 @@ file_exists = un élément porte déjà ce nom
 file_missing = il n’existe plus
 file_denied = autorisation refusée
 file_cross_device = il se trouve sur un autre système de fichiers que la Corbeille
+file_not_recycled = la Corbeille l’a refusé ; rien n’a été supprimé
 file_bad_name = ce nom n’est pas valide pour un fichier
 file_not_directory = ce n’est pas un dossier
 file_unsupported = ce système ne permet pas cette opération

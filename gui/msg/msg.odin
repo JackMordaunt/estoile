@@ -269,6 +269,7 @@ Msg :: enum u16 {
 	File_Missing,
 	File_Denied,
 	File_Cross_Device,
+	File_Not_Recycled,
 	File_Bad_Name,
 	File_Not_Directory,
 	File_Unsupported,

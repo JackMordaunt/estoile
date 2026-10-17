@@ -338,6 +338,7 @@ file_exists = something already has that name
 file_missing = it is no longer there
 file_denied = permission was denied
 file_cross_device = it is on another filesystem than the Trash
+file_not_recycled = the Recycle Bin refused it; nothing was deleted
 file_bad_name = that is not a name a file can have
 file_not_directory = it is not a directory
 file_unsupported = this system cannot do that

@@ -29,6 +29,7 @@ Error :: enum u8 {
 	Missing, // the entry is no longer there
 	Denied,
 	Cross_Device, // the Trash is on another filesystem
+	Not_Recycled, // the Recycle Bin would not keep it, and nothing was deleted
 	Bad_Name,
 	Not_Directory, // asked to delete a tree at something that is not a directory
 	Unsupported,
@@ -47,6 +48,8 @@ describe :: proc(e: Error) -> string {
 		return "permission was denied"
 	case .Cross_Device:
 		return "it is on another filesystem than the Trash"
+	case .Not_Recycled:
+		return "the Recycle Bin refused it; nothing was deleted"
 	case .Bad_Name:
 		return "that is not a name a file can have"
 	case .Not_Directory:
@@ -56,6 +59,24 @@ describe :: proc(e: Error) -> string {
 	case .Other:
 	}
 	return "the system refused"
+}
+
+/*
+trash_outcome is what a shell delete to the Recycle Bin came to, from the code it
+returned, whether it says some of it was aborted, and whether the path is gone.
+Success is the path being gone, whatever the shell returned: a path still there
+was not recycled. A path gone after a failure is not claimed saved or lost, it is
+Other.
+*/
+@(private)
+trash_outcome :: proc(code: i32, aborted, gone: bool) -> Error {
+	switch {
+	case !gone:
+		return .Not_Recycled
+	case code != 0 || aborted:
+		return .Other
+	}
+	return .None
 }
 
 // Name_Fault is why a name cannot be a file's new name, which the window words.

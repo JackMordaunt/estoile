@@ -283,10 +283,10 @@ the_program_recorded_is_the_path_leita_was_started_by :: proc(t: ^testing.T) {
 	testing.expect_value(t, stable_program("leita", app, path, dir, a), app)
 
 	mine := this_program(a)
-	exe, _ := os.get_executable_path(a)
 	testing.expect(t, mine != "", "this process has a program path")
 	testing.expect(t, os.exists(mine), mine)
 	when ODIN_OS != .Windows {
+		exe, _ := os.get_executable_path(a)
 		info, _ := os.stat(mine, a)
 		resolved, _ := os.stat(exe, a)
 		testing.expect_value(t, info.fullpath, resolved.fullpath)

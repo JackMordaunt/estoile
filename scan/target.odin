@@ -137,20 +137,23 @@ is a separate procedure so the whole decision table can be tested without a disk
 because anything else needs to choose. An image needs no special case: it is a file,
 so it opens.
 
-The MFT reader takes the whole volume at once. ntfs/tree.odin's projection roots the
-tree at `record`, the subtree's own record, but every other record of the volume is
-still a used node beside it, so whatever reads the tree's nodes rather than the
-root's descendants answers with the whole volume: the window's search found 965,681
-hits in a temp folder of four files on windows-latest, and its largest files were
-the volume's (CI run 39074211450, gui/app's a_search_answers_ranked_hits_with_what_matched
-and a_largest_files_name_opens_its_folder). So a subtree is walked, which reads only
-what is under it, and elevation would not change that, until the projection keeps
-only what is under `record`.
+The MFT reader takes the whole volume at once; ntfs/tree.odin's projection roots the
+tree at `record` and keeps only what is under it, so a subtree gets the subtree's
+answer rather than the whole volume's. Rooting alone was not enough: the rest of the
+volume stayed in the tree beside the root, and the window's search found 965,681
+hits in a temp folder of four files (CI run 39074211450). Finding `record` needs no
+elevation: file_record in target_windows.odin asks GetFileInformationByHandle on a
+handle to the subtree itself, not the raw volume. So a subtree with one goes to the
+MFT reader exactly as the whole volume does. Without one, resolve either found no record
+or never tried, so a subtree is walked instead.
 */
 @(private)
 choose :: proc(t: Target, readable: bool) -> Choice {
 	if t.fs == .Ntfs && t.root != "" && t.mount != "" {
-		return {engine = .Walk}
+		if readable && t.record != nil {
+			return {engine = .Mft}
+		}
+		return {engine = .Walk, permission_would_help = !readable}
 	}
 	if t.fs == .Ntfs {
 		if readable {

@@ -362,12 +362,26 @@ make_output :: proc(t: ^Fake, from: u32, path, marker, out: string, inside := ""
 // whatever case and with either slash.
 @(test)
 nothing_under_windows_or_its_programs :: proc(t: ^testing.T) {
-	was := strings.clone(os.get_env("SystemRoot", context.temp_allocator), context.temp_allocator)
-	testing.expect(t, os.set_env("SystemRoot", `D:\WinNT\`) == nil)
-	defer if was != "" {
-		os.set_env("SystemRoot", was)
-	} else {
-		os.unset_env("SystemRoot")
+	// The environment of the Windows runner CI tests on.
+	RUNNER :: [?][2]string {
+		{"SystemRoot", `C:\Windows`},
+		{"windir", `C:\Windows`},
+		{"ProgramFiles", `C:\Program Files`},
+		{"ProgramFiles(x86)", `C:\Program Files (x86)`},
+		{"ProgramW6432", `C:\Program Files`},
+		{"ProgramData", `C:\ProgramData`},
+	}
+	was: [len(RUNNER)]string
+	for v, i in RUNNER {
+		was[i] = strings.clone(os.get_env(v[0], context.temp_allocator), context.temp_allocator)
+		testing.expect(t, os.set_env(v[0], v[1]) == nil)
+	}
+	defer for v, i in RUNNER {
+		if was[i] != "" {
+			os.set_env(v[0], was[i])
+		} else {
+			os.unset_env(v[0])
+		}
 	}
 
 	tree: Fake
@@ -391,7 +405,26 @@ nothing_under_windows_or_its_programs :: proc(t: ^testing.T) {
 	defer candidates_destroy(below)
 	testing.expect_value(t, len(below), 0)
 
+	// The runner's temporary directory, by its short name, is no program's.
+	temp := fake_path(&tree, root, "Users/RUNNER~1/AppData/Local/Temp/leita_gui_reclaim")
+	make_output(&tree, temp, "web", "package.json", "node_modules")
+	make_output(&tree, temp, "rust", "Cargo.toml", "target", "CACHEDIR.TAG")
+	runner := home.User{`C:\Users\runneradmin`, ""}
+	TEMP :: `C:\Users\RUNNER~1\AppData\Local\Temp\leita_gui_reclaim`
+	fixture := find(fake_source(&tree), temp, TEMP, runner, platform = .Windows)
+	defer candidates_destroy(fixture)
+	want = []string{TEMP + `\rust\target`, TEMP + `\web\node_modules`}
+	got = found_paths(fixture)
+	testing.expectf(
+		t,
+		slice.equal(got, want),
+		"in the runner's temp found\n%v\nwant\n%v",
+		got,
+		want,
+	)
+
 	// Windows where the environment says it is, not only at C:\Windows.
+	testing.expect(t, os.set_env("SystemRoot", `D:\WinNT\`) == nil)
 	other := fake_add(&tree, 0, `D:\`, true)
 	fake_path(&tree, other, "WinNT/x/__pycache__")
 	fake_path(&tree, other, "WinNTdata/x/__pycache__")
@@ -564,4 +597,67 @@ root_deletes_only_the_invokers_own_under_their_home :: proc(t: ^testing.T) {
 
 	// Not root: the system's permissions decide, whoever owns it.
 	testing.expect(t, root_may_delete(bobs, 1001, ann, 1000, .Unix))
+}
+
+// macOS keeps each user's temporary directory under /private/var/folders, which a
+// test's fixtures and a person's downloads land in: it is theirs, though the rest
+// of /private/var and /var is the system's.
+@(test)
+a_macs_temporary_directory_is_the_users :: proc(t: ^testing.T) {
+	tree: Fake
+	defer fake_destroy(&tree)
+	root := fake_add(&tree, 0, "/", true)
+	temp := fake_path(&tree, root, "private/var/folders/xx/abc/T/leita_gui_reclaim")
+	make_output(&tree, temp, "web", "package.json", "node_modules")
+	make_output(&tree, root, "private/var/db/app", "package.json", "node_modules")
+	make_output(&tree, root, "private/etc/app", "package.json", "node_modules")
+	make_output(&tree, root, "private/tmp/web", "package.json", "node_modules")
+	make_output(&tree, root, "Library/App", "package.json", "node_modules")
+	make_output(&tree, root, "Users/runner/Library/web", "package.json", "node_modules")
+	runner := home.User{"/Users/runner", "501"}
+	found := find(fake_source(&tree), root, "/", runner, platform = .Darwin)
+	defer candidates_destroy(found)
+	want := []string {
+		"/Users/runner/Library/web/node_modules",
+		"/private/tmp/web/node_modules",
+		"/private/var/folders/xx/abc/T/leita_gui_reclaim/web/node_modules",
+	}
+	got := found_paths(found)
+	testing.expectf(t, slice.equal(got, want), "found\n%v\nwant\n%v", got, want)
+
+	// From the fixture itself, by its real path and through the /var link.
+	for top in ([]string{"/private/var/folders/xx/abc/T/leita_gui_reclaim", "/var/folders/xx/abc/T/leita_gui_reclaim"}) {
+		below := find(fake_source(&tree), temp, top, runner, platform = .Darwin)
+		defer candidates_destroy(below)
+		testing.expectf(t, len(below) == 1, "%d found from %s", len(below), top)
+	}
+	db := fake_path(&tree, root, "private/var/db")
+	none := find(fake_source(&tree), db, "/private/var/db", runner, platform = .Darwin)
+	defer candidates_destroy(none)
+	testing.expect_value(t, len(none), 0)
+}
+
+// A home is the user's wherever it lies, as Fedora Silverblue keeps it under
+// /var/home; the rest of /var, other users' homes there among it, is not. A home
+// at the top, as root's is, is the system's.
+@(test)
+a_home_under_a_system_directory_is_the_users :: proc(t: ^testing.T) {
+	tree: Fake
+	defer fake_destroy(&tree)
+	root := fake_add(&tree, 0, "/", true)
+	make_output(&tree, root, "var/home/ann/web", "package.json", "node_modules")
+	fake_path(&tree, root, "var/home/ann/.cache/pip")
+	make_output(&tree, root, "var/home/bob/web", "package.json", "node_modules")
+	make_output(&tree, root, "var/lib/app", "package.json", "node_modules")
+	make_output(&tree, root, "root/web", "package.json", "node_modules")
+	ann := home.User{"/var/home/ann", "1000"}
+	found := find(fake_source(&tree), root, "/", ann, platform = .Unix)
+	defer candidates_destroy(found)
+	want := []string{"/var/home/ann/.cache/pip", "/var/home/ann/web/node_modules"}
+	got := found_paths(found)
+	testing.expectf(t, slice.equal(got, want), "found\n%v\nwant\n%v", got, want)
+
+	as_root := find(fake_source(&tree), root, "/", home.User{"/root", "0"}, platform = .Unix)
+	defer candidates_destroy(as_root)
+	testing.expect_value(t, len(as_root), 0)
 }

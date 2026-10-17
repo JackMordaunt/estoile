@@ -294,10 +294,29 @@ UNIX_SYSTEM := [?]string {
 	"/var",
 }
 
-// DARWIN_SYSTEM are macOS's own besides UNIX_SYSTEM: its /etc, /tmp and /var are
-// links into /private.
+/*
+DARWIN_SYSTEM are macOS's own besides UNIX_SYSTEM. Its /etc and /var are links
+into /private, so those are denied there too; /private/tmp, which /tmp links to,
+is not, as /tmp is not on Linux. /private whole is not: DARWIN_OWN lies under it.
+*/
 @(rodata)
-DARWIN_SYSTEM := [?]string{"/Applications", "/Library", "/System", "/cores", "/private"}
+DARWIN_SYSTEM := [?]string {
+	"/Applications",
+	"/Library",
+	"/System",
+	"/cores",
+	"/private/etc",
+	"/private/var",
+}
+
+/*
+DARWIN_OWN are the directories under DARWIN_SYSTEM and UNIX_SYSTEM that hold each
+user's own: macOS gives every user a temporary directory (TMPDIR) and a cache
+directory under /var/folders, which is /private/var/folders through the link. It
+is no more the system's than /tmp is on Linux, and a test's fixtures are there.
+*/
+@(rodata)
+DARWIN_OWN := [?]string{"/private/var/folders", "/var/folders"}
 
 // WINDOWS_SYSTEM are Windows's own and its programs' where it is installed as
 // usual; WINDOWS_SYSTEM_ENV name them where it is installed elsewhere.
@@ -345,6 +364,7 @@ Finder :: struct {
 	uid:       string,
 	platform:  Platform,
 	system:    []string,
+	own:       []string, // the user's own, which outrank system (own_dirs)
 	path:      strings.Builder,
 	held:      [dynamic]u32, // what a directory a rule names holds, as rule_for reads it
 	found:     [dynamic]Candidate,
@@ -376,9 +396,10 @@ find :: proc(
 		found     = make([dynamic]Candidate, allocator),
 		allocator = allocator,
 	}
+	f.own = own_dirs(f.home, platform, context.temp_allocator)
 	// The path is kept without a trailing separator, so the root is "" (or C:).
 	strings.write_string(&f.path, strings.trim_right(top_path, separators(platform)))
-	if !under_system(&f, strings.to_string(f.path)) {
+	if at := strings.to_string(f.path); !under_system(&f, at) || leads_to_own(&f, at) {
 		visit(&f, top)
 	}
 	// Largest first, as the person deciding reads them.
@@ -412,7 +433,12 @@ root_may_delete :: proc(
 	return inside && rel != ""
 }
 
-// visit looks through directory dir, whose path is the finder's, for candidates.
+/*
+visit looks through directory dir, whose path is the finder's, for candidates. A
+system directory is neither one nor looked in, unless one of the user's own lies
+under it: then it is gone through to reach that, and nothing else in it is looked
+at, so /var/home/ann is searched and /var/lib is not.
+*/
 @(private)
 visit :: proc(f: ^Finder, dir: u32) {
 	kids := make([dynamic]u32, context.temp_allocator)
@@ -430,32 +456,54 @@ visit :: proc(f: ^Finder, dir: u32) {
 		strings.write_byte(&f.path, separator(f.platform))
 		strings.write_string(&f.path, name)
 		path := strings.to_string(f.path)
-		category, matched := cache_for(f, caches, name)
-		if !matched {
-			category, matched = place_of(f, path)
-		}
-		if !matched && volume_trash(f, path) {
-			category, matched = .Trash, true
-		}
-		if !matched {
-			category, matched = rule_for(f, name, kid, kids[:])
-		}
+		system := under_system(f, path)
 		switch {
-		case matched:
-			append(
-				&f.found,
-				Candidate {
-					kid,
-					strings.clone(path, f.allocator),
-					f.src.bytes(f.src.data, kid),
-					category,
-				},
-			)
-		case !under_system(f, path):
+		case system && !leads_to_own(f, path):
+		// Neither a candidate nor looked in.
+		case system:
 			visit(f, kid)
+		case:
+			if category, matched := match(f, name, path, kid, kids[:], caches); matched {
+				append(
+					&f.found,
+					Candidate {
+						kid,
+						strings.clone(path, f.allocator),
+						f.src.bytes(f.src.data, kid),
+						category,
+					},
+				)
+			} else {
+				visit(f, kid)
+			}
 		}
 		resize(&f.path.buf, mark)
 	}
+}
+
+// match is the category of directory dir, called name at path, in a directory
+// holding siblings that may hold caches, if it is a candidate.
+@(private)
+match :: proc(
+	f: ^Finder,
+	name, path: string,
+	dir: u32,
+	siblings: []u32,
+	caches: []Cache,
+) -> (
+	Category,
+	bool,
+) {
+	if category, ok := cache_for(f, caches, name); ok {
+		return category, true
+	}
+	if category, ok := place_of(f, path); ok {
+		return category, true
+	}
+	if volume_trash(f, path) {
+		return .Trash, true
+	}
+	return rule_for(f, name, dir, siblings)
 }
 
 // rule_for is the category of directory dir, called name, in a directory holding
@@ -565,15 +613,52 @@ under_home :: proc(f: ^Finder, path: string) -> (string, bool) {
 	return rel, ok && rel != ""
 }
 
-// under_system is whether path is a system directory or under one.
+// under_system is whether path is a system directory or under one, and not one of
+// the user's own or under it.
 @(private)
 under_system :: proc(f: ^Finder, path: string) -> bool {
+	for dir in f.own {
+		if _, ok := within(path, dir, f.platform); ok {
+			return false
+		}
+	}
 	for dir in f.system {
 		if _, ok := within(path, dir, f.platform); ok {
 			return true
 		}
 	}
 	return false
+}
+
+// leads_to_own is whether one of the user's own directories lies under path.
+@(private)
+leads_to_own :: proc(f: ^Finder, path: string) -> bool {
+	for dir in f.own {
+		if _, ok := within(dir, path, f.platform); ok {
+			return true
+		}
+	}
+	return false
+}
+
+/*
+own_dirs are the directories that are the user's own wherever they lie, in
+allocator, which a system directory holding them does not take: the home, and
+on a Mac the users' temporary directories (DARWIN_OWN). A home is the user's
+under /var too, where Fedora Silverblue keeps it (/home is a link to /var/home,
+by its documentation's Technical Information); but a home that is a root or a
+directory at the top, such as /root, is the system's.
+*/
+@(private)
+own_dirs :: proc(home: string, platform: Platform, allocator := context.allocator) -> []string {
+	dirs := make([dynamic]string, allocator)
+	if platform == .Darwin {
+		append(&dirs, ..DARWIN_OWN[:])
+	}
+	if len(home) > 1 && strings.index_any(home[1:], separators(platform)) >= 0 {
+		append(&dirs, home)
+	}
+	return dirs[:]
 }
 
 // system_dirs are the directories nothing under is ever a candidate on platform,

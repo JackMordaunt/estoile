@@ -77,6 +77,7 @@ FILE_ERRORS := [files.Error]msg.Msg {
 	.Missing       = .File_Missing,
 	.Denied        = .File_Denied,
 	.Cross_Device  = .File_Cross_Device,
+	.Not_Recycled  = .File_Not_Recycled,
 	.Bad_Name      = .File_Bad_Name,
 	.Not_Directory = .File_Not_Directory,
 	.Unsupported   = .File_Unsupported,

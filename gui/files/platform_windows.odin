@@ -1,6 +1,7 @@
 #+build windows
 package leita_files
 
+import "core:os"
 import "core:strings"
 import win32 "core:sys/windows"
 
@@ -19,20 +20,39 @@ rename_noreplace :: proc(from, to: string) -> Error {
 	return .None
 }
 
-// trash moves path to the Recycle Bin through the shell, as Explorer does.
+/*
+trash moves path to the Recycle Bin through the shell, as Explorer does, and
+reports success only once path is gone. FOF_NO_UI is not passed, since it includes
+FOF_NOCONFIRMATION, which shellapi.h says assumes yes for every prompt that can be
+bypassed. FOF_WANTNUKEWARNING is passed instead: shellapi.h says it warns when a
+delete would destroy the object rather than recycle it. A refusal, a failure or a
+path still in place is Not_Recycled.
+*/
 trash :: proc(path: string) -> Error {
+	if !present(path) {
+		return .Missing
+	}
 	wide := win32.utf8_to_utf16(path, context.temp_allocator)
 	from := make([]u16, len(wide) + 2, context.temp_allocator) // the list ends in two NULs
 	copy(from, wide)
 	op := win32.SHFILEOPSTRUCTW {
 		wFunc  = win32.FO_DELETE,
 		pFrom  = cstring16(raw_data(from)),
-		fFlags = win32.FOF_ALLOWUNDO | win32.FOF_NO_UI,
+		fFlags = win32.FOF_ALLOWUNDO |
+		win32.FOF_SILENT |
+		win32.FOF_NOERRORUI |
+		win32.FOF_NOCONFIRMMKDIR |
+		win32.FOF_WANTNUKEWARNING,
 	}
-	if win32.SHFileOperationW(&op) != 0 || op.fAnyOperationsAborted {
-		return .Other
-	}
-	return .None
+	code := win32.SHFileOperationW(&op)
+	return trash_outcome(i32(code), bool(op.fAnyOperationsAborted), !present(path))
+}
+
+// present says whether anything, a link itself included, is at path.
+@(private = "file")
+present :: proc(path: string) -> bool {
+	_, err := os.stat_do_not_follow_links(path, context.temp_allocator)
+	return err == nil
 }
 
 /*

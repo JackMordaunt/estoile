@@ -190,3 +190,27 @@ a_report_is_named_for_its_target :: proc(t: ^testing.T) {
 		)
 	}
 }
+
+// A path that is still there is a refusal whatever code the call returned, and
+// nothing was deleted.
+@(test)
+a_path_still_there_is_never_a_success :: proc(t: ^testing.T) {
+	testing.expect_value(t, trash_outcome(0, false, true), Error.None)
+	testing.expect_value(t, trash_outcome(0, false, false), Error.Not_Recycled)
+	testing.expect_value(t, trash_outcome(0, true, false), Error.Not_Recycled)
+	testing.expect_value(t, trash_outcome(0x78, false, false), Error.Not_Recycled)
+	testing.expect_value(t, trash_outcome(0x78, true, false), Error.Not_Recycled)
+}
+
+// A failure with the path gone says nothing about the bin, so it does not claim
+// the file was kept.
+@(test)
+a_failure_with_the_path_gone_is_not_called_a_refusal :: proc(t: ^testing.T) {
+	testing.expect_value(t, trash_outcome(0x78, false, true), Error.Other)
+	testing.expect_value(t, trash_outcome(0, true, true), Error.Other)
+}
+
+@(test)
+a_refusal_says_nothing_was_deleted :: proc(t: ^testing.T) {
+	testing.expect(t, strings.contains(describe(.Not_Recycled), "nothing was deleted"))
+}

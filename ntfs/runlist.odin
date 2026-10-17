@@ -1,5 +1,7 @@
 package ntfs
 
+import "core:math/bits"
+
 // One contiguous extent of a non-resident attribute.
 Run :: struct {
 	vcn:    u64, // first virtual cluster (offset within the attribute, in clusters)
@@ -96,7 +98,13 @@ runlist_allocated_clusters :: proc "contextless" (b: []byte) -> (clusters: u64, 
 		length := read_uint_le(b[i:i + len_size])
 		i += len_size + ofs_size
 		if ofs_size != 0 {
-			clusters += length
+			// A wrapped sum is a small number for a huge allocation, so a corrupt
+			// length would under-count the file. Refuse the run list instead.
+			sum, wrapped := bits.overflowing_add(clusters, length)
+			if wrapped {
+				return 0, false
+			}
+			clusters = sum
 		}
 	}
 	return clusters, true

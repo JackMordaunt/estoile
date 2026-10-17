@@ -94,6 +94,25 @@ test_volume_clone_reads_independently :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_volume_read_rejects_an_offset_past_i64 :: proc(t: ^testing.T) {
+	path, content := image(t, 512)
+	defer discard(path)
+
+	v, err := volume_open(path)
+	testing.expect_value(t, err, Error.None)
+	defer volume_close(&v)
+
+	buf := make([]byte, 1, context.temp_allocator)
+	// 2^63 does not fit in the i64 pread takes. Refuse it before the call, or the
+	// cast would hand pread a negative offset.
+	testing.expect_value(t, volume_read_at(&v, buf, u64(1) << 63), Error.Read_Failed)
+
+	// An offset that does fit still reads the image.
+	testing.expect_value(t, volume_read_at(&v, buf, 0), Error.None)
+	testing.expect_value(t, buf[0], content[0])
+}
+
+@(test)
 test_volume_open_missing_path :: proc(t: ^testing.T) {
 	v, err := volume_open("/nonexistent/leita/volume.img")
 	testing.expect_value(t, err, Error.Open_Failed)

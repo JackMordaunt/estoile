@@ -19,7 +19,7 @@ Entry :: struct {
 	flags:           Record_Flags, // .In_Use and .Directory are the ones that matter
 	attributes:      File_Attributes, // from $STANDARD_INFORMATION; .Reparse_Point marks junctions and cloud placeholders
 	name:            string, // UTF-8; empty when the record has no $FILE_NAME (free records, extension records)
-	allocated:       u64, // bytes on disk across every non-resident attribute: data, alternate streams, indexes
+	allocated:       u64, // non-resident bytes on disk, plus a resident unnamed $DATA's length
 }
 
 // A file with several names. The first Win32 or POSIX name becomes Entry.name; the
@@ -36,8 +36,8 @@ Mft_Stats :: struct {
 	records_bad:        u64, // FILE records whose fixups failed
 	in_use:             u64,
 	directories:        u64,
-	// Files whose unnamed $DATA fits inside their MFT record. They occupy no clusters
-	// of their own, so their bytes are charged to $MFT rather than to their directory.
+	// Unnamed $DATA that fits in the file's MFT record. The clusters sit in $MFT.
+	// Entry.allocated still holds the length, so the file's directory shows it.
 	resident_files:     u64,
 	resident_bytes:     u64,
 	// Clusters $Bitmap reports as allocated; 0 when it could not be read. This is the
@@ -276,6 +276,10 @@ mft_add_record :: proc(m: ^Mft, record_number: u32, rec: []byte, sink: ^Sink) ->
 			} else if len(a.name) == 0 {
 				sink.stats.resident_files += 1
 				sink.stats.resident_bytes += u64(len(a.value))
+				// The bytes sit in this file's MFT record, so the clusters belong to
+				// $MFT. The entry still carries the length: a directory of small
+				// files would otherwise show as empty.
+				e.allocated += u64(len(a.value))
 			}
 		case:
 			// Directory indexes, bitmaps, reparse data, and EFS streams occupy clusters too.

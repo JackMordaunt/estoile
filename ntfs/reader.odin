@@ -1,5 +1,6 @@
 package ntfs
 
+import "core:math/bits"
 import "core:mem"
 import "core:mem/virtual"
 import "core:time"
@@ -146,6 +147,7 @@ read_mft_from_volume :: proc(
 	// $MFT's own $BITMAP marks which record slots are live, so the dead ones can be
 	// skipped rather than read and discarded.
 	slot_bitmap: []byte
+	slot_bitmap_size: u64
 	defer mem.free_bytes(slot_bitmap, allocator)
 
 	it := attributes(rec0)
@@ -184,12 +186,20 @@ read_mft_from_volume :: proc(
 			// Losing the bitmap only costs the skipping, so a failure is not fatal.
 			if bm, bm_err := read_attribute(v, a, cluster, allocator); bm_err == nil {
 				slot_bitmap = bm
+				slot_bitmap_size = a.data_size
 			}
 		}
 	}
 	if !found {
 		return .Mft_Data_Missing
 	}
+	// A bitmap that stops short of its data_size, or of one bit per record, marks
+	// every later slot clear, and bit_is_set never looks past the buffer. Those
+	// records would not be read. Ignore it and read the whole table; the skip is
+	// only a saving. The buffer is still freed with the others below.
+	bitmap_ok :=
+		slot_bitmap != nil &&
+		bitmap_covers(slot_bitmap, slot_bitmap_size, mft_bytes, u64(record_size))
 
 	// 3. Plan what to read, and cut it into chunks small enough to hand out.
 	chunk := opts.chunk_size
@@ -203,7 +213,7 @@ read_mft_from_volume :: proc(
 	// Without the slot bitmap, or with skipping turned off, the plan is the whole table.
 	extents: []Read_Extent
 	defer delete(extents, allocator)
-	if slot_bitmap != nil && opts.min_skip >= 0 {
+	if bitmap_ok && opts.min_skip >= 0 {
 		min_skip := u64(DEFAULT_MIN_SKIP)
 		if opts.min_skip > 0 {
 			min_skip = u64(opts.min_skip)
@@ -517,8 +527,16 @@ read_logical :: proc(r: ^Extent_Reader, offset: u64, buf: []byte) -> Error {
 			return .Bad_Runlist
 		}
 		in_run := pos - run.vcn * r.cluster
-		avail := run.length * r.cluster - in_run
-		n := int(min(u64(len(buf) - done), avail))
+		// length * cluster wraps to 0 for a huge length, and `done` then never
+		// moves. A run that yields no bytes is not a run the volume can mean.
+		span, over := bits.overflowing_mul(run.length, r.cluster)
+		if over || span <= in_run {
+			return .Bad_Runlist
+		}
+		n := int(min(u64(len(buf) - done), span - in_run))
+		if n <= 0 {
+			return .Bad_Runlist
+		}
 		if read_err := volume_read_at(r.v, buf[done:done + n], run.lcn * r.cluster + in_run);
 		   read_err != nil {
 			return read_err
@@ -526,4 +544,21 @@ read_logical :: proc(r: ^Extent_Reader, offset: u64, buf: []byte) -> Error {
 		done += n
 	}
 	return .None
+}
+
+// True when `bitmap` holds every byte of its data_size and a bit for every record
+// in an MFT of `mft_bytes`. Anything shorter would hide the tail of the table.
+@(private)
+bitmap_covers :: proc "contextless" (
+	bitmap: []byte,
+	data_size, mft_bytes, record_size: u64,
+) -> bool {
+	if record_size == 0 || u64(len(bitmap)) < data_size {
+		return false
+	}
+	records := mft_bytes / record_size
+	if records > max(u64) - 7 {
+		return false
+	}
+	return u64(len(bitmap)) >= (records + 7) / 8
 }

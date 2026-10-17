@@ -1,5 +1,7 @@
 package ntfs
 
+import "core:fmt"
+import "core:os"
 import "core:slice"
 import "core:testing"
 import "core:unicode/utf16"
@@ -200,7 +202,9 @@ test_boot_sector :: proc(t: ^testing.T) {
 	copy(b[3:], "NTFS    ")
 	put16(b, 0x0B, 512)
 	b[0x0D] = 8
-	put64(b, 0x28, 1_000_000)
+	// The same LCN has to sit inside the volume for 8 sectors per cluster and for
+	// the 2 MiB clusters below, where one cluster is 4096 sectors.
+	put64(b, 0x28, 786_432 * 4096 + 4096)
 	put64(b, 0x30, 786_432)
 	put64(b, 0x38, 2)
 	b[0x40] = 0xF6 // 2^10 bytes per record
@@ -228,6 +232,47 @@ test_boot_sector :: proc(t: ^testing.T) {
 	testing.expect_value(t, err, Error.Not_Ntfs)
 }
 
+// A boot sector whose sizes the volume cannot mean.
+@(test)
+test_boot_sector_rejects_what_it_cannot_mean :: proc(t: ^testing.T) {
+	// 0x80 is the literal 128 sectors: 128 * 512 = 64 KiB. A byte above 0x80 is
+	// an exponent; 0x80 is not.
+	wide := boot_sector(0x80, 128 * 4, 1)
+	bs, err := parse_boot_sector(wide)
+	testing.expect_value(t, err, Error.None)
+	testing.expect_value(t, bs.sectors_per_cluster, u32(128))
+	testing.expect_value(t, bs.bytes_per_cluster, u32(64 * 1024))
+
+	// 0xE0 encodes 2^(256-0xE0) = 2^32 sectors. The shift does not fit in u32.
+	_, err = parse_boot_sector(boot_sector(0xE0, 1 << 20, 1))
+	testing.expect_value(t, err, Error.Bad_Boot_Sector)
+
+	// 0xE9 encodes 2^23 sectors. 512 * 2^23 = 2^32, which wraps the u32 cluster size.
+	_, err = parse_boot_sector(boot_sector(0xE9, 1 << 25, 1))
+	testing.expect_value(t, err, Error.Bad_Boot_Sector)
+
+	// Ten clusters, and the MFT claims the one just past the last.
+	_, err = parse_boot_sector(boot_sector(8, 80, 10))
+	testing.expect_value(t, err, Error.Bad_Boot_Sector)
+}
+
+@(private = "file")
+boot_sector :: proc(sectors_per_cluster: byte, total_sectors, mft_lcn: u64) -> []byte {
+	b := make([]byte, 512, context.temp_allocator)
+	copy(b[3:], "NTFS    ")
+	put16(b, 0x0B, 512)
+	b[0x0D] = sectors_per_cluster
+	put64(b, 0x28, total_sectors)
+	put64(b, 0x30, mft_lcn)
+	put64(b, 0x38, 2)
+	b[0x40] = 0xF6
+	b[0x44] = 1
+	put64(b, 0x48, 0xDEADBEEF)
+	b[0x1FE] = 0x55
+	b[0x1FF] = 0xAA
+	return b
+}
+
 // ---- run lists ----------------------------------------------------------------------
 
 @(test)
@@ -249,6 +294,10 @@ test_runlist :: proc(t: ^testing.T) {
 
 	// A delta that would take the LCN negative is corruption.
 	_, err = decode_runlist([]byte{0x11, 0x01, 0xFF, 0x00}, 0, context.temp_allocator)
+	testing.expect_value(t, err, Error.Bad_Runlist)
+
+	// A length of zero is not a run. The reader would otherwise never advance.
+	_, err = decode_runlist([]byte{0x11, 0x00, 0x01, 0x00}, 0, context.temp_allocator)
 	testing.expect_value(t, err, Error.Bad_Runlist)
 }
 
@@ -296,7 +345,7 @@ test_resident_file :: proc(t: ^testing.T) {
 	testing.expect_value(t, e.parent, u32(RECORD_ROOT))
 	testing.expect_value(t, e.parent_sequence, u16(5))
 	testing.expect_value(t, e.sequence, u16(7))
-	testing.expect_value(t, e.allocated, u64(0))
+	testing.expect_value(t, e.allocated, u64(len("hello, world!")))
 	testing.expect(t, .In_Use in e.flags)
 	testing.expect(t, .Directory not_in e.flags)
 	testing.expect(t, .Archive in e.attributes)
@@ -405,6 +454,34 @@ test_runlist_allocated_clusters :: proc(t: ^testing.T) {
 	testing.expect(t, ok)
 	testing.expect_value(t, clusters, u64(16))
 	_, ok = runlist_allocated_clusters([]byte{0x21, 0x18})
+	testing.expect(t, !ok)
+
+	// Two runs of 2^63 clusters. The sum does not fit in u64, and a wrapped total
+	// would under-count the file.
+	huge := []byte {
+		0x18,
+		0x00,
+		0x00,
+		0x00,
+		0x00,
+		0x00,
+		0x00,
+		0x00,
+		0x80,
+		0x01,
+		0x18,
+		0x00,
+		0x00,
+		0x00,
+		0x00,
+		0x00,
+		0x00,
+		0x00,
+		0x80,
+		0x01,
+		0x00,
+	}
+	_, ok = runlist_allocated_clusters(huge)
 	testing.expect(t, !ok)
 }
 
@@ -539,7 +616,7 @@ test_count_set_bits :: proc(t: ^testing.T) {
 // ---- resident data ------------------------------------------------------------------
 
 @(test)
-test_resident_file_costs_no_clusters :: proc(t: ^testing.T) {
+test_resident_file_reports_its_length :: proc(t: ^testing.T) {
 	rec := build_record(
 		{
 			resident(.File_Name, file_name_value(make_ref(RECORD_ROOT, 5), "tiny.txt", .Win32)),
@@ -551,9 +628,9 @@ test_resident_file_costs_no_clusters :: proc(t: ^testing.T) {
 	defer mft_destroy(&m)
 	add(t, &m, rec)
 
-	// The bytes live inside the MFT record, so the file itself allocates nothing and
-	// the stats record what the directory totals will therefore miss.
-	testing.expect_value(t, m.entries[100].allocated, u64(0))
+	// The bytes sit in the file's MFT record, so the clusters belong to $MFT. The
+	// entry still carries the length, or a directory of small files shows as empty.
+	testing.expect_value(t, m.entries[100].allocated, u64(5))
 	testing.expect_value(t, m.stats.resident_files, u64(1))
 	testing.expect_value(t, m.stats.resident_bytes, u64(5))
 }
@@ -754,4 +831,101 @@ test_a_tree_of_the_whole_volume_keeps_every_record :: proc(t: ^testing.T) {
 	// 7, the loop of two and the stale file; then the two extra names.
 	testing.expect_value(t, tree.nodes_done, u64(1 + 302 + 2 + 8 + 2 + 1))
 	testing.expect_value(t, len(used_names(&tree)), 1 + 302 + 2 + 8 + 2 + 1 + 2)
+}
+
+// A run whose byte length does not fit in u64 must fail rather than spin: the
+// reader adds the bytes it got, and a product of 0 means it never moves.
+@(test)
+test_read_logical_rejects_a_run_that_yields_nothing :: proc(t: ^testing.T) {
+	// 2^52 clusters of 4096 bytes is 2^64 bytes, which wraps to 0.
+	r := Extent_Reader {
+		runs    = []Run{{vcn = 0, lcn = 1, length = 1 << 52}},
+		cluster = 4096,
+	}
+	buf := make([]byte, 16, context.temp_allocator)
+	testing.expect_value(t, read_logical(&r, 0, buf), Error.Bad_Runlist)
+}
+
+// ---- short $MFT:$BITMAP -------------------------------------------------------------
+
+@(test)
+test_short_bitmap_does_not_cover_the_table :: proc(t: ^testing.T) {
+	// One cluster of bitmap bytes, one short of the attribute's data_size.
+	short := make([]byte, 512, context.temp_allocator)
+	testing.expect(t, !bitmap_covers(short, 513, 4097 * 1024, 1024))
+
+	// data_size is covered, but 4097 records need 513 bytes of bits.
+	tiny := []byte{0xFF}
+	testing.expect(t, !bitmap_covers(tiny, 1, 4097 * 1024, 1024))
+
+	whole := make([]byte, 513, context.temp_allocator)
+	testing.expect(t, bitmap_covers(whole, 513, 4097 * 1024, 1024))
+}
+
+// $MFT:$BITMAP's run list covers one byte less than its data_size, so the tail
+// record's bit is past the buffer. The scan has to read that record anyway.
+@(test)
+test_short_bitmap_still_reads_the_tail :: proc(t: ^testing.T) {
+	cluster := 512
+	record_size := 1024
+	mft_lcn := 8
+	bitmap_lcn := 7
+	tail := 4096 // first record whose bit sits past a 512-byte bitmap
+	records := tail + 1
+	mft_bytes := records * record_size
+	mft_clusters := mft_bytes / cluster
+	// The $DATA run list below is this count, little-endian, in two bytes.
+	assert(mft_clusters == 0x2002, "mft run list length is hardcoded as 0x2002")
+	image_bytes := (mft_lcn + mft_clusters) * cluster
+
+	img := make([]byte, image_bytes)
+	defer delete(img)
+
+	boot := boot_sector(1, u64(image_bytes / 512), u64(mft_lcn))
+	copy(img, boot)
+	// Record 0 is live. Every later bit in the covered cluster stays clear, and
+	// the tail's bit is not in the cluster at all.
+	img[bitmap_lcn * cluster] = 0x01
+
+	// 2-byte length, 1-byte LCN. 8194 clusters starting at LCN 8.
+	mft_run := []byte{0x12, 0x02, 0x20, 0x08, 0x00}
+	bitmap_run := []byte{0x11, 0x01, 0x07, 0x00}
+	rec0 := build_record(
+		{
+			nonresident(.Data, u64(mft_bytes), u64(mft_bytes), mft_run),
+			nonresident(.Bitmap, u64(cluster), 513, bitmap_run),
+		},
+		record_number = 0,
+		sequence = 1,
+	)
+	copy(img[mft_lcn * cluster:], rec0)
+
+	tail_at := mft_lcn * cluster + tail * record_size
+	tail_rec := build_record(
+		{resident(.File_Name, file_name_value(make_ref(RECORD_ROOT, 1), "tail.txt", .Win32))},
+		record_number = u32(tail),
+		sequence = 1,
+	)
+	copy(img[tail_at:], tail_rec)
+
+	dir, dir_err := os.temp_directory(context.temp_allocator)
+	testing.expect(t, dir_err == nil, "no temp directory")
+	path := fmt.tprintf("%s/leita_ntfs_short_bitmap.img", dir)
+	testing.expect(t, os.write_entire_file(path, img) == nil, "could not write the image")
+	defer os.remove(path)
+
+	v, open_err := volume_open(path)
+	testing.expect_value(t, open_err, Error.None)
+	defer volume_close(&v)
+
+	m: Mft
+	// min_skip of 1 makes any gap in the bitmap a skip, so a short bitmap would
+	// leave the tail unread. workers 1 keeps the read on this thread.
+	err := read_mft_from_volume(&v, &m, Read_Options{min_skip = 1, workers = 1})
+	testing.expect_value(t, err, Error.None)
+	if err != nil {
+		return
+	}
+	defer mft_destroy(&m)
+	testing.expect_value(t, m.entries[tail].name, "tail.txt")
 }

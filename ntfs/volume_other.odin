@@ -77,7 +77,14 @@ volume_close :: proc(v: ^Volume) {
 volume_read_at :: proc(v: ^Volume, buf: []byte, offset: u64) -> Error {
 	done := 0
 	for done < len(buf) {
-		n, read_err := os.read_at(v.file, buf[done:], i64(offset) + i64(done))
+		// pread's offset is signed. A value at or above 2^63 would be negative
+		// after the cast, and a large enough `done` crosses that line even when
+		// `offset` itself does not.
+		at := offset + u64(done)
+		if at < offset || at >= u64(1) << 63 {
+			return .Read_Failed
+		}
+		n, read_err := os.read_at(v.file, buf[done:], i64(at))
 		if read_err != nil {
 			if read_err == io.Error.EOF {
 				return .Short_Read

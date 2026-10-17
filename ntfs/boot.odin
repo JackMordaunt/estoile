@@ -17,10 +17,13 @@ Boot_Sector :: struct {
 /*
 Parse the first sector of an NTFS volume. `b` must hold at least 512 bytes.
 
-Two fields use an encoding worth knowing about. Sectors-per-cluster and
-clusters-per-record are single bytes; values of 0x80 and above are negative exponents,
-so 0xF6 means 2^(256-0xF6) = 2^10 = 1024 bytes. This lets a cluster (up to 2 MiB) or a
-record be smaller or larger than the other without a wider field.
+Sectors-per-cluster and clusters-per-record are single bytes. A sectors-per-cluster
+byte above 0x80 means 2^(256-v) sectors (0xF4 is 2^12 sectors, a 2 MiB cluster).
+0x80 is not above 0x80, so it is the literal 128: 128 sectors of 512 bytes is the
+64 KiB cluster, which is what Windows writes for one. A clusters-per-record byte at
+or above 0x80 is a size in bytes, so 0xF6 is 2^10 = 1024. A shift of 32 or more does
+not fit in these fields. Shifted anyway, a count of 128 is taken mod 32 and becomes
+1, so that boot sector is rejected instead.
 */
 parse_boot_sector :: proc(b: []byte) -> (bs: Boot_Sector, err: Error) {
 	if len(b) < 512 {
@@ -34,7 +37,11 @@ parse_boot_sector :: proc(b: []byte) -> (bs: Boot_Sector, err: Error) {
 	}
 
 	bs.bytes_per_sector = u32(rd16(b, 0x0B))
-	bs.sectors_per_cluster = decode_shift_byte(b[0x0D])
+	spc, spc_ok := decode_shift_byte(b[0x0D])
+	if !spc_ok {
+		return {}, .Bad_Boot_Sector
+	}
+	bs.sectors_per_cluster = spc
 	bs.total_sectors = rd64(b, 0x28)
 	bs.mft_lcn = rd64(b, 0x30)
 	bs.mft_mirror_lcn = rd64(b, 0x38)
@@ -46,10 +53,21 @@ parse_boot_sector :: proc(b: []byte) -> (bs: Boot_Sector, err: Error) {
 	if bs.sectors_per_cluster == 0 || !is_pow2(bs.sectors_per_cluster) {
 		return {}, .Bad_Boot_Sector
 	}
-	bs.bytes_per_cluster = bs.bytes_per_sector * bs.sectors_per_cluster
+	// 512 * 2^23 is 2^32. Wrapped, that is a cluster size of 0, and the record-size
+	// checks still pass, so the multiply has to be refused on its own.
+	product, wrapped := bits.overflowing_mul(bs.bytes_per_sector, bs.sectors_per_cluster)
+	if wrapped {
+		return {}, .Bad_Boot_Sector
+	}
+	bs.bytes_per_cluster = product
 
-	bs.record_size = decode_size_byte(b[0x40], bs.bytes_per_cluster)
-	bs.index_block_size = decode_size_byte(b[0x44], bs.bytes_per_cluster)
+	record, record_ok := decode_size_byte(b[0x40], bs.bytes_per_cluster)
+	index, index_ok := decode_size_byte(b[0x44], bs.bytes_per_cluster)
+	if !record_ok || !index_ok {
+		return {}, .Bad_Boot_Sector
+	}
+	bs.record_size = record
+	bs.index_block_size = index
 
 	// A record must be a whole number of sectors so it can be read directly from the
 	// volume, and at least two fixup blocks so the update sequence array has something
@@ -62,25 +80,46 @@ parse_boot_sector :: proc(b: []byte) -> (bs: Boot_Sector, err: Error) {
 	if bs.mft_lcn == 0 || bs.total_sectors == 0 {
 		return {}, .Bad_Boot_Sector
 	}
+	// Cluster numbers run from 0. An LCN at or past the volume's cluster count names
+	// a cluster the volume does not have, and the MFT read would start off the end.
+	if bs.mft_lcn >= bs.total_sectors / u64(bs.sectors_per_cluster) {
+		return {}, .Bad_Boot_Sector
+	}
 	return bs, .None
 }
 
-// Byte values below 0x80 are literal counts; values at or above are 2^(256-v).
+// Sectors per cluster. v <= 0x80 is the literal count, so 0x80 is 128 sectors and not
+// a shift of 128. A byte above that is 2^(256-v); a shift of 32 or more does not fit
+// in the u32 and is refused rather than shifted.
 @(private)
-decode_shift_byte :: proc "contextless" (v: byte) -> u32 {
-	if v < 0x80 {
-		return u32(v)
+decode_shift_byte :: proc "contextless" (v: byte) -> (n: u32, ok: bool) {
+	if v <= 0x80 {
+		return u32(v), true
 	}
-	return u32(1) << uint(256 - int(v))
+	shift := 256 - uint(v)
+	if shift >= 32 {
+		return 0, false
+	}
+	return u32(1) << shift, true
 }
 
-// Clusters-per-X fields: positive is a cluster count, negative is a byte exponent.
+// Clusters-per-record fields. Below 0x80 the byte is a cluster count; at or above it
+// the byte is a size in bytes, 2^(256-v), so 0x80 itself is 2^128 and not a count.
+// A shift of 32 or more, or a cluster count whose byte size wraps, is refused.
 @(private)
-decode_size_byte :: proc "contextless" (v: byte, bytes_per_cluster: u32) -> u32 {
+decode_size_byte :: proc "contextless" (v: byte, bytes_per_cluster: u32) -> (n: u32, ok: bool) {
 	if v < 0x80 {
-		return u32(v) * bytes_per_cluster
+		product, wrapped := bits.overflowing_mul(u32(v), bytes_per_cluster)
+		if wrapped {
+			return 0, false
+		}
+		return product, true
 	}
-	return u32(1) << uint(256 - int(v))
+	shift := 256 - uint(v)
+	if shift >= 32 {
+		return 0, false
+	}
+	return u32(1) << shift, true
 }
 
 @(private)

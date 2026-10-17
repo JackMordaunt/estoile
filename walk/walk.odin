@@ -298,7 +298,7 @@ Worker :: struct {
 	// by name, so a name it still has keeps the decision made about it there.
 	siblings:  map[string]u32,
 	listing:   bool,
-	// Directories this worker could not open or list, and whether any of them
+	// Directories this worker could not read whole, and whether any of them
 	// refused for want of permission. Summed into the tree once the walk is done.
 	unread:    u64,
 	denied:    bool,
@@ -306,7 +306,8 @@ Worker :: struct {
 }
 
 /*
-Record that the directory at `index` could not be opened or listed, `denied` when
+Record that the directory at `index` could not be opened or listed, or that an
+entry in it could not be asked about (kind_of in read_linux.odin), `denied` when
 permission was what it lacked (EACCES, EPERM, ERROR_ACCESS_DENIED).
 
 The node stays in the tree with whatever entries were recorded before the failure,

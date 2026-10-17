@@ -124,12 +124,14 @@ read_dir :: proc(d: Dir, w: ^Worker) -> (nodes, bytes: u64, ok: bool) {
 		first, span = claimed, copied
 	}
 
-	for l, i in s.listed {
+	// Entries statx could not answer are left out, and the slots claimed for them
+	// stay unused at the end of the run (as copy_dir leaves a file gone).
+	kept: u32
+	short, denied: bool
+	for l in s.listed {
 		name := string(s.names[l.at:][:l.len])
 		e := Entry {
-			name      = name,
-			directory = l.type == .DIR,
-			symlink   = l.type == .LNK,
+			name = name,
 		}
 		// Only a regular file can be charged anything, only an entry whose type
 		// getdents left out (.UNKNOWN) needs asking what it even is, and only a
@@ -141,49 +143,57 @@ read_dir :: proc(d: Dir, w: ^Worker) -> (nodes, bytes: u64, ok: bool) {
 		// NO_AUTOMOUNT, so asking about an automount point does not mount it
 		// (AT_NO_AUTOMOUNT in statx(2)).
 		child_device, child_filesystem, child_btrfs := device, filesystem, on_btrfs
-		if l.type == .REG || l.type == .UNKNOWN || l.type == .DIR {
+		asked := l.type == .REG || l.type == .UNKNOWN || l.type == .DIR
+		st: linux.Statx
+		errno := linux.Errno.NONE
+		if asked {
 			mask := linux.Statx_Mask{.TYPE, .BLOCKS, .NLINK}
 			if l.type == .DIR {
 				mask = {.TYPE}
 			}
 			flags := linux.FD_Flags{.SYMLINK_NOFOLLOW, .NO_AUTOMOUNT}
-			st: linux.Statx
-			if linux.statx(fd, cstring(&s.names[l.at]), flags, mask, &st) == .NONE {
-				// Some filesystems leave the type out of a directory entry. Those
-				// are the only ones that have to be told apart here.
-				if l.type == .UNKNOWN {
-					e.directory = linux.S_ISDIR(st.mode)
-					e.symlink = linux.S_ISLNK(st.mode)
+			errno = stat_entry(linux.statx, fd, cstring(&s.names[l.at]), flags, mask, &st)
+		}
+		switch kind_of(l.type, errno, st.mode) {
+		case .Gone:
+			continue
+		case .Unknown:
+			short = true
+			denied ||= denied_errno(errno)
+			continue
+		case .Directory:
+			e.directory = true
+			child_device = statx_device(st)
+			if device != 0 && child_device != device {
+				e.mount, child_filesystem, child_btrfs = stops_at(
+					fd,
+					&s.names[l.at],
+					st,
+					filesystem,
+					on_btrfs,
+				)
+			}
+		case .Symlink:
+			e.symlink = true
+		case .File:
+			if asked {
+				// Blocks are counted in 512 byte units whatever the filesystem
+				// builds them from (stx_blocks in statx(2)).
+				e.disk = st.blocks * 512
+				e.links = st.nlink
+				e.id = {
+					device = statx_device(st),
+					inode  = u64(l.ino),
 				}
-				if e.directory {
-					child_device = statx_device(st)
-					if device != 0 && child_device != device {
-						e.mount, child_filesystem, child_btrfs = stops_at(
-							fd,
-							&s.names[l.at],
-							st,
-							filesystem,
-							on_btrfs,
-						)
-					}
-				} else if !e.symlink {
-					// Blocks are counted in 512 byte units whatever the
-					// filesystem builds them from.
-					e.disk = st.blocks * 512
-					e.links = st.nlink
-					e.id = {
-						device = statx_device(st),
-						inode  = u64(l.ino),
-					}
-					if pool != nil && linux.S_ISREG(st.mode) {
-						if !charge_extents(w, fd, &pool, &e) {
-							return nodes, bytes, false
-						}
+				if pool != nil && linux.S_ISREG(st.mode) {
+					if !charge_extents(w, fd, &pool, &e) {
+						return nodes, bytes, false
 					}
 				}
 			}
 		}
-		index := first + u32(i)
+		index := first + kept
+		kept += 1
 		stored := scan.name_at(span, l.at, l.len)
 		descend, charged, recorded := record_at(w, index, d.index, e, stored)
 		if !recorded {
@@ -210,7 +220,97 @@ read_dir :: proc(d: Dir, w: ^Worker) -> (nodes, bytes: u64, ok: bool) {
 		nodes += 1
 		bytes += charged
 	}
+	if short {
+		mark_unread(w, d.index, denied)
+	}
 	return nodes, bytes, true
+}
+
+/*
+What one entry is, from the type getdents gave it and, when statx was asked about
+it, the error and mode it answered with (.NONE when it was not asked).
+
+An entry statx could not answer is Unknown, and is not recorded: neither its size
+nor, where getdents left the type out, whether it is a directory to walk is known,
+and a file recorded at 0 bytes would be indistinguishable from an empty one, in the
+tree and in the baseline kept from it. Its directory is marked unread instead, so
+the total says it is short and an update reads the directory again. A mode 0644
+directory lists its names but refuses a statx of every one. An entry gone since it
+was listed (ENOENT) holds nothing now, so it is left out without the mark.
+*/
+@(private)
+Kind :: enum u8 {
+	File,
+	Directory,
+	Symlink,
+	Gone,
+	Unknown,
+}
+
+@(private)
+kind_of :: proc(type: linux.Dirent_Type, errno: linux.Errno, mode: linux.Mode) -> Kind {
+	#partial switch errno {
+	case .NONE:
+	case .ENOENT:
+		return .Gone
+	case:
+		return .Unknown
+	}
+	#partial switch type {
+	case .DIR:
+		return .Directory
+	case .LNK:
+		return .Symlink
+	case .UNKNOWN:
+		// Some filesystems leave the type out of a directory entry (DT_UNKNOWN
+		// in getdents(2)). Those are the only ones that have to be told apart
+		// here.
+		if linux.S_ISDIR(mode) {
+			return .Directory
+		}
+		if linux.S_ISLNK(mode) {
+			return .Symlink
+		}
+	}
+	return .File
+}
+
+// statx's signature, so a test can stand in for the kernel.
+@(private)
+Statx_Call :: #type proc "contextless" (
+	dir: linux.Fd,
+	name: cstring,
+	flags: linux.FD_Flags,
+	mask: linux.Statx_Mask,
+	st: ^linux.Statx,
+) -> linux.Errno
+
+// How many times statx is asked before an EINTR is taken as its answer.
+@(private)
+STATX_TRIES :: 4
+
+/*
+Ask `ask` (statx) about `name`, again when a signal cut the call short: EINTR says
+nothing about the entry, only about the call. Bounded, so an entry interrupted
+every time ends as one not known rather than a hang.
+*/
+@(private)
+stat_entry :: proc(
+	ask: Statx_Call,
+	dir: linux.Fd,
+	name: cstring,
+	flags: linux.FD_Flags,
+	mask: linux.Statx_Mask,
+	st: ^linux.Statx,
+) -> linux.Errno {
+	errno: linux.Errno
+	for _ in 0 ..< STATX_TRIES {
+		errno = ask(dir, name, flags, mask, st)
+		if errno != .EINTR {
+			break
+		}
+	}
+	return errno
 }
 
 /*

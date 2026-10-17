@@ -59,8 +59,9 @@ Node_Flag  :: enum u8 {
 	// reflinked copy or a snapshot's, on btrfs, when the walk could read extents. Its
 	// disk is only what it holds alone.
 	Shared,
-	// A directory the reader could not open or list, so whatever is under it is not
-	// in the tree. An update of this tree reads it again rather than copying it.
+	// A directory the reader could not open or list, or holding an entry it could
+	// not ask the size or type of, so some of what is under it is not in the tree.
+	// An update of this tree reads it again rather than copying it.
 	Unread,
 }
 Node_Flags :: distinct bit_set[Node_Flag;u8]
@@ -110,7 +111,7 @@ Tree :: struct {
 	// by reflinks or snapshots once for every file. Set by a walk that could not read
 	// the extents themselves, which takes root.
 	logical:    b32,
-	// Directories a reader could not open or list (Node_Flag.Unread), and whether
+	// Directories a reader could not read whole (Node_Flag.Unread), and whether
 	// any of them refused for want of permission rather than for another reason.
 	// Added by a walk once it has finished.
 	unread:     u64,
@@ -394,7 +395,7 @@ mark_logical :: proc(t: ^Tree) {
 	sync.atomic_store(&t.logical, true)
 }
 
-// Count `count` more directories the reader could not open or list, `denied` if
+// Count `count` more directories the reader could not read whole, `denied` if
 // any of them refused for want of permission.
 add_unread :: proc(t: ^Tree, count: u64, denied: bool) {
 	if count == 0 {
@@ -406,7 +407,7 @@ add_unread :: proc(t: ^Tree, count: u64, denied: bool) {
 	}
 }
 
-// How many directories the reader could not open or list, and whether permission
+// How many directories the reader could not read whole, and whether permission
 // was what any of them lacked.
 unread :: proc(t: ^Tree) -> (count: u64, denied: bool) {
 	return sync.atomic_load(&t.unread), bool(sync.atomic_load(&t.denied))

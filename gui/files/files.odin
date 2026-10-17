@@ -33,6 +33,7 @@ Error :: enum u8 {
 	Bad_Name,
 	Not_Directory, // asked to delete a tree at something that is not a directory
 	Partly, // some of a tree could not be deleted, so the tree is still there
+	Mount_Point, // asked to delete a tree another filesystem is mounted at
 	Unsupported,
 	Other,
 }
@@ -57,6 +58,8 @@ describe :: proc(e: Error) -> string {
 		return "it is not a directory"
 	case .Partly:
 		return "some of it could not be deleted"
+	case .Mount_Point:
+		return "another filesystem is mounted there"
 	case .Unsupported:
 		return "this system cannot do that"
 	case .Other:
@@ -156,11 +159,16 @@ proved can be made again, and it is careful in the ways deletion has to be:
   - path must be a directory itself, not a link to one: a link is refused, so
     deleting never reaches through it to what it points at;
   - inside, a link is deleted as a link, never followed;
+  - it never deletes through a mount: a tree that is itself mounted there is
+    refused with Mount_Point, and another disk or a bind of somewhere else
+    mounted inside it is counted as left and not entered;
   - a directory is made writable by its owner before it is emptied, since some
     caches (Go's module cache) are made read-only, and given its mode back if it
     could not be deleted after all;
   - an entry that cannot be deleted is counted and passed over, and the rest
     still go.
+
+How it walks the tree is the platform's: delete_unix.odin and delete_windows.odin.
 */
 delete_tree :: proc(path: string) -> (failed: int, freed: u64, err: Error) {
 	info, serr := os.stat_do_not_follow_links(path, context.temp_allocator)
@@ -170,62 +178,11 @@ delete_tree :: proc(path: string) -> (failed: int, freed: u64, err: Error) {
 	case info.type != .Directory, is_link(path):
 		return 0, 0, .Not_Directory
 	}
-	failed, freed = remove_tree(path)
-	return failed, freed, .Partly if failed > 0 else .None
-}
-
-when ODIN_OS != .Windows {
-	// is_link is false wherever lstat has already said whether path is a link.
-	// Windows asks for itself (platform_windows.odin).
-	@(private)
-	is_link :: proc(path: string) -> bool {
-		return false
+	failed, freed, err = remove_tree(path)
+	if err == .None && failed > 0 {
+		err = .Partly
 	}
-}
-
-/*
-remove_tree deletes the directory at path and everything in it: how many entries it could not delete, as delete_tree counts them, and the bytes
-the ones it did gave back. A directory that stays is given back the mode it had, so
-a failed delete does not leave a read-only cache writable.
-*/
-@(private)
-remove_tree :: proc(path: string) -> (failed: int, freed: u64) {
-	runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
-	info, serr := os.stat_do_not_follow_links(path, context.temp_allocator)
-	if serr != nil {
-		return 1, 0
-	}
-	writable := info.mode + {.Read_User, .Write_User, .Execute_User}
-	opened := writable != info.mode && os.change_mode(path, writable) == nil
-	defer if opened && os.exists(path) {
-		_ = os.change_mode(path, info.mode)
-	}
-	entries, err := os.read_all_directory_by_path(path, context.temp_allocator)
-	if err != nil {
-		return 1, 0
-	}
-	for e in entries {
-		// The listing does not follow links, so a link is a link here.
-		if e.type == .Directory {
-			f, b := remove_tree(e.fullpath)
-			failed, freed = failed + f, freed + b
-			continue
-		}
-		bytes := held_alone(e.fullpath)
-		if os.remove(e.fullpath) == nil {
-			freed += bytes
-		} else {
-			failed += 1
-		}
-	}
-	if failed > 0 {
-		// Kept because it holds what is counted already.
-		return
-	}
-	if os.remove(path) != nil {
-		return 1, freed
-	}
-	return 0, freed
+	return
 }
 
 // rename gives the entry at path the new name in the same folder, refusing with

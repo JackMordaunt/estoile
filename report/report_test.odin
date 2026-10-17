@@ -430,7 +430,7 @@ R_PROJ_NODE_MODULES_XJS :: R_PROJ + scan.SEPARATOR + "node_modules" + scan.SEPAR
 RECLAIM_NODE_MODULES :: "/r/proj/node_modules"
 
 @(private = "file")
-small_tree :: proc(t: ^testing.T, tree: ^scan.Tree, roll: ^survey.Rollup) {
+small_tree :: proc(t: ^testing.T, tree: ^scan.Tree, roll: ^survey.Rollup, mounted := false) {
 	testing.expect(t, scan.tree_init(tree) == nil)
 	testing.expect(t, scan.reserve(tree, 7) == nil)
 	place :: proc(tree: ^scan.Tree, i, parent: u32, name: string, disk: u64, dir: bool) {
@@ -444,6 +444,10 @@ small_tree :: proc(t: ^testing.T, tree: ^scan.Tree, roll: ^survey.Rollup) {
 	place(tree, 1, 0, "proj", 0, true)
 	place(tree, 2, 1, "package.json", 10, false)
 	place(tree, 3, 1, "node_modules", 0, true)
+	if mounted {
+		// As the walk records another filesystem mounted there.
+		scan.node_mark(scan.node(tree, 3), {.Mount})
+	}
 	place(tree, 4, 3, "x.js", 100, false)
 	place(tree, 5, 0, "film.mkv", FIVE_GIB, false)
 	place(tree, 6, 0, "notes.txt", 0, false)
@@ -518,6 +522,26 @@ build_describes_the_scan :: proc(t: ^testing.T) {
 		testing.expect_value(t, groups[0].category, reclaim.Category.Dependencies)
 		testing.expect_value(t, groups[0].items[0].path, RECLAIM_NODE_MODULES)
 		testing.expect_value(t, groups[0].bytes, 100)
+	}
+}
+
+// A disk mounted at node_modules beside package.json is not Reclaim's to offer:
+// what is there belongs to another volume.
+@(test)
+a_mount_point_is_never_a_candidate :: proc(t: ^testing.T) {
+	for mounted in ([]bool{false, true}) {
+		tree: scan.Tree
+		roll: survey.Rollup
+		small_tree(t, &tree, &roll, mounted)
+		defer scan.tree_destroy(&tree)
+		defer survey.rollup_destroy(&roll)
+
+		r := build(&tree, &roll, {engine = .Walk}, {reclaim = true, user = {"/nowhere", ""}})
+		defer destroy(&r)
+		groups, asked := r.reclaim.?
+		testing.expect(t, asked)
+		// Unmounted, the same folder is offered, so only the mount keeps it out.
+		testing.expect_value(t, len(groups), 0 if mounted else 1)
 	}
 }
 

@@ -11,6 +11,8 @@ import "core:sys/linux"
 import "core:sys/posix"
 import "core:time"
 
+import "../../scan"
+
 SEPARATOR  :: "/"
 SEPARATORS :: "/"
 
@@ -194,4 +196,91 @@ documents :: proc(allocator := context.allocator) -> string {
 	}
 	path, _ := filepath.join({home, "Documents"}, allocator)
 	return path
+}
+
+// look is what the entry name in the directory dir is, not following a link nor
+// mounting an automount point to ask (AT_NO_AUTOMOUNT in statx(2)).
+@(private)
+look :: proc(dir: posix.FD, name: cstring) -> (Look, posix.Errno) {
+	return statx_look(linux.Fd(dir), name, {.SYMLINK_NOFOLLOW, .NO_AUTOMOUNT})
+}
+
+// look_self is what the directory open as fd is.
+@(private)
+look_self :: proc(fd: posix.FD) -> (Look, posix.Errno) {
+	return statx_look(linux.Fd(fd), "", {.EMPTY_PATH})
+}
+
+/*
+statx_look asks statx, which alone says which mount an entry is reached through
+and whether one is mounted on it: a bind of a folder on the same filesystem keeps
+the device, so only the mount id tells it apart. Linux 5.8 is the first to say
+either; before it, the mount table must (mount_points).
+*/
+@(private = "file")
+statx_look :: proc(
+	dir: linux.Fd,
+	name: cstring,
+	flags: linux.FD_Flags,
+) -> (
+	e: Look,
+	err: posix.Errno,
+) {
+	st: linux.Statx
+	mask := linux.Statx_Mask{.TYPE, .MODE, .NLINK, .INO, .BLOCKS, .MNT_ID}
+	if errno := linux.statx(dir, name, flags, mask, &st); errno != .NONE {
+		return {}, posix.Errno(i32(errno))
+	}
+	return Look {
+			directory = linux.S_ISDIR(st.mode),
+			regular = linux.S_ISREG(st.mode),
+			device = device_of(st),
+			inode = u64(st.ino),
+			mount = st.mnt_id if .MNT_ID in st.mask else 0,
+			mount_root = st.attributes & {.MOUNT_ROOT, .AUTOMOUNT} != {},
+			links = u64(st.nlink),
+			disk = st.blocks * 512,
+			mode = transmute(posix.mode_t)(transmute(u32)st.mode & 0o7777),
+		},
+		.NONE
+}
+
+// device_of folds statx's major and minor into one number, as walk's statx_device
+// does; a shift is not worth importing walk for.
+@(private = "file")
+device_of :: proc(st: linux.Statx) -> u64 {
+	return u64(st.dev_major) << 32 | u64(st.dev_minor)
+}
+
+/*
+mount_points is every mount point the mount table has at or under path, by the
+device and inode of what is mounted there, which is what an entry on it is seen as.
+statx's mount id already tells a bind apart where the kernel gives one, from Linux
+5.8; the table is what tells one on a kernel before it.
+*/
+@(private)
+mount_points :: proc(path: string) -> map[[2]u64]struct{} {
+	points := make(map[[2]u64]struct{}, context.temp_allocator)
+	buf: [4096]u8 // PATH_MAX on Linux
+	real := posix.realpath(
+		strings.clone_to_cstring(path, context.temp_allocator),
+		raw_data(buf[:]),
+	)
+	if real == nil {
+		return points
+	}
+	for point in scan.mounts_under(string(real), context.temp_allocator) {
+		if len(point) >= len(buf) {
+			continue
+		}
+		// realpath is done with buf, so it holds each point in turn, NUL ended.
+		copy(buf[:], point)
+		buf[len(point)] = 0
+		st: linux.Statx
+		// Followed, to what is mounted there; asking must not mount an automount point.
+		if linux.statx(linux.AT_FDCWD, cstring(&buf[0]), {.NO_AUTOMOUNT}, {.INO}, &st) == .NONE {
+			points[{device_of(st), u64(st.ino)}] = {}
+		}
+	}
+	return points
 }

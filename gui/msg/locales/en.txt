@@ -343,6 +343,7 @@ file_not_recycled = the Recycle Bin refused it; nothing was deleted
 file_bad_name = that is not a name a file can have
 file_not_directory = it is not a directory
 file_partly = some of it could not be deleted
+file_mount_point = another filesystem is mounted there
 file_unsupported = this system cannot do that
 file_other = the system refused
 name_empty = a name cannot be empty

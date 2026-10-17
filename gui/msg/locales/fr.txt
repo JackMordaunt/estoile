@@ -321,6 +321,7 @@ file_not_recycled = la Corbeille l’a refusé ; rien n’a été supprimé
 file_bad_name = ce nom n’est pas valide pour un fichier
 file_not_directory = ce n’est pas un dossier
 file_partly = une partie n’a pas pu être supprimée
+file_mount_point = un autre système de fichiers y est monté
 file_unsupported = ce système ne permet pas cette opération
 file_other = le système a refusé
 name_empty = un nom ne peut pas être vide

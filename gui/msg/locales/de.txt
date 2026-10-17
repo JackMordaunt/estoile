@@ -299,6 +299,7 @@ file_not_recycled = der Papierkorb hat es abgelehnt; nichts wurde gelöscht
 file_bad_name = dieser Name ist für eine Datei nicht zulässig
 file_not_directory = es ist kein Ordner
 file_partly = ein Teil konnte nicht gelöscht werden
+file_mount_point = dort ist ein anderes Dateisystem eingehängt
 file_unsupported = dieses System unterstützt das nicht
 file_other = das System hat den Vorgang abgelehnt
 name_empty = ein Name darf nicht leer sein

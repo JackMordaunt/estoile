@@ -174,6 +174,9 @@ SYSTEM := [?]string {
 Source :: struct {
 	data:      rawptr,
 	name:      proc(data: rawptr, node: u32) -> string,
+	// directory is whether node is a directory of the volume scanned: false for
+	// a mount point, so another disk or a bind of somewhere else mounted at
+	// node_modules is never a candidate, nor looked in.
 	directory: proc(data: rawptr, node: u32) -> bool,
 	bytes:     proc(data: rawptr, node: u32) -> u64,
 	children:  proc(data: rawptr, node: u32, into: ^[dynamic]u32),

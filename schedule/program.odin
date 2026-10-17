@@ -17,8 +17,11 @@ start again.
 stable_program is the program path an entry records for the leita started as
 arg0 (os.args[0]), whose executable the system resolved to exe
 (os.get_executable_path), with the PATH that found it. The rule: an executable
-inside an application bundle, under Contents/MacOS, keeps that path, since the
-bundle is how it is installed and moved; an arg0 with a directory in it is made
+inside an application bundle, under .app/Contents/, keeps that path, since the
+bundle is how it is installed and moved: Leita.app's window in Contents/MacOS,
+and its command line in Contents/Helpers even when started through a link on
+PATH, since Odin's os.get_executable_path on macOS (core/os/path_darwin.odin)
+is proc_pidpath, the path of the file the process runs, links resolved; an arg0 with a directory in it is made
 absolute against cwd and cleaned, its links kept; a bare name is looked for on
 each folder of PATH, and the first that is this same executable is kept, links
 too, since a second install of the same name is a different file and must not
@@ -28,7 +31,7 @@ stable_program :: proc(
 	arg0, exe, path_list, cwd: string,
 	allocator := context.allocator,
 ) -> string {
-	if strings.contains(exe, "/Contents/MacOS/") {
+	if strings.contains(exe, ".app/Contents/") {
 		return strings.clone(exe, allocator)
 	}
 	if arg0 == "" {

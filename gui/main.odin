@@ -64,6 +64,24 @@ launch :: proc(args: []string) -> Launch {
 	return .Terminal
 }
 
+/*
+without_psn is args without a -psn_<n>_<m> argument, the process serial number
+LaunchServices has given an app opened from Finder: older macOS always did, and
+an app may still be handed one. It is not the person's: kept, it would be a
+flag, and a flag makes Leita the command line, which would refuse it instead of
+opening the window. The rest keep their order, in args' own storage.
+*/
+without_psn :: proc(args: []string) -> []string {
+	n := 0
+	for a in args {
+		if !strings.has_prefix(a, "-psn_") {
+			args[n] = a
+			n += 1
+		}
+	}
+	return args[:n]
+}
+
 main :: proc() {
 	when ODIN_DEBUG {
 		da: debug.Allocator
@@ -74,7 +92,7 @@ main :: proc() {
 	}
 	context.assertion_failure_proc = trace.assertion_failure_proc
 
-	args := os.args[1:]
+	args := without_psn(os.args[1:])
 	if launch(args) == .Terminal {
 		code := cli.run(args)
 		free_all(context.temp_allocator)

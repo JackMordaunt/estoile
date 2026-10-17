@@ -235,7 +235,7 @@ cut_path :: proc(gtx: ^ui.Ctx, path: string, room: f32) -> string {
 	if !ui.is_finite(room) || fits(gtx, path, st, room) {
 		return path
 	}
-	at := strings.last_index_byte(path, '/')
+	at := strings.last_index_any(path, SEPARATORS)
 	if at <= 0 {
 		return middle_cut(gtx, path, st, room)
 	}
@@ -412,13 +412,19 @@ reclaim_dialogs :: proc(gtx: ^ui.Ctx, m: ^Model) {
 	}
 }
 
+// SEPARATORS are what separate a candidate's names: Reclaim joins them with the
+// scan's separator, \ on Windows, and a path given on the command line may
+// carry / there too.
+@(private)
+SEPARATORS :: `\/` when ODIN_OS == .Windows else "/"
+
 // relative_path is path from under here, the directory shown, or path whole.
 @(private)
 relative_path :: proc(path, here: string) -> string {
 	if here != "" &&
 	   strings.has_prefix(path, here) &&
 	   len(path) > len(here) + 1 &&
-	   path[len(here)] == '/' {
+	   strings.index_byte(SEPARATORS, path[len(here)]) >= 0 {
 		return path[len(here) + 1:]
 	}
 	return path

@@ -1544,6 +1544,13 @@ projects :: proc(t: ^testing.T, name: string) -> string {
 	return root
 }
 
+// The candidates projects makes, as the Reclaim list names them: joined on the
+// scan's separator.
+@(private = "file")
+WEB_NODE_MODULES :: "web" + scan.SEPARATOR + "node_modules"
+@(private = "file")
+RUST_TARGET :: "rust" + scan.SEPARATOR + "target"
+
 // confirm clicks a button in the window, then the one in the dialog it opens.
 @(private = "file")
 confirm :: proc(t: ^testing.T, r: ^Rig, button, answer: string) {
@@ -1568,16 +1575,16 @@ reclaim_offers_only_what_rebuilds_and_deletes_what_is_chosen :: proc(t: ^testing
 
 	testing.expect(t, ui.probe_click(&r.p, "Reclaim"))
 	press_and_hand_on(&r)
-	testing.expect(t, settle(&r, "web/node_modules"), "node_modules beside package.json")
-	testing.expect(t, settle(&r, "rust/target"), "target beside Cargo.toml")
-	testing.expect(t, !ui.probe_tagged(&r.p, "plain/build"), "a build folder of no project")
+	testing.expect(t, settle(&r, WEB_NODE_MODULES), "node_modules beside package.json")
+	testing.expect(t, settle(&r, RUST_TARGET), "target beside Cargo.toml")
+	testing.expect(t, !ui.probe_tagged(&r.p, "plain" + scan.SEPARATOR + "build"), "a build folder of no project")
 	testing.expect(t, !ui.probe_tagged(&r.p, "Sunburst chart"), "the chart is put away")
 	// target was touched today, so only node_modules starts chosen.
 	testing.expect(t, settle(&r, "65.5 kB in 1 folder chosen"), "the recent one starts unchosen")
 
 	confirm(t, &r, "Clean up", "Delete")
 	testing.expect(t, settle(&r, "Deleted 1 folder and freed 65.5 kB"), "the notice says so")
-	testing.expect(t, settle(&r, "web/node_modules", present = false), "it leaves the list")
+	testing.expect(t, settle(&r, WEB_NODE_MODULES, present = false), "it leaves the list")
 	testing.expect(t, !os.exists(fmt.tprintf("%s/web/node_modules", root)), "and the disk")
 	testing.expect(t, os.exists(fmt.tprintf("%s/web/package.json", root)), "its project stays")
 	testing.expect(t, os.exists(fmt.tprintf("%s/rust/target/app", root)), "the unchosen stays")
@@ -1585,7 +1592,7 @@ reclaim_offers_only_what_rebuilds_and_deletes_what_is_chosen :: proc(t: ^testing
 
 	// Choosing target by hand deletes it too.
 	testing.expect(t, settle(&r, "0 B in 0 folders chosen"))
-	testing.expect(t, ui.probe_click(&r.p, "rust/target"))
+	testing.expect(t, ui.probe_click(&r.p, RUST_TARGET))
 	press_and_hand_on(&r)
 	testing.expect(t, settle(&r, "135.2 kB in 1 folder chosen"))
 	confirm(t, &r, "Clean up", "Delete")
@@ -1635,7 +1642,7 @@ reclaim_counts_a_partial_delete_as_what_went :: proc(t: ^testing.T) {
 	)
 	testing.expect(t, !os.exists(fmt.tprintf("%s/node_modules/lib", web)), "its insides went")
 	testing.expect(t, os.exists(fmt.tprintf("%s/node_modules", web)), "the folder did not")
-	testing.expect(t, settle(&r, "web/node_modules"), "so it stays in the list")
+	testing.expect(t, settle(&r, WEB_NODE_MODULES), "so it stays in the list")
 }
 
 @(test)
@@ -2146,7 +2153,7 @@ export_writes_a_report_of_each_format :: proc(t: ^testing.T) {
 				testing.expect_value(
 					t,
 					item["path"].(json.String),
-					fmt.tprintf("%s/app/node_modules", root),
+					under(root, "app", "node_modules"),
 				)
 			}
 		case .Html:

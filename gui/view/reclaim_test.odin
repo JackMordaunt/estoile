@@ -137,3 +137,18 @@ a_new_scan_closes_the_delete_confirmations :: proc(t: ^testing.T) {
 	testing.expect(t, sent(p, command.Clean) == nil, "nothing is deleted")
 	testing.expect(t, sent(p, command.Empty_Trash) == nil, "nothing is emptied")
 }
+
+// A candidate is named from under the folder shown, on the separator the scan
+// joined it with.
+@(test)
+a_candidate_is_named_from_the_folder_shown :: proc(t: ^testing.T) {
+	testing.expect_value(t, relative_path("/r/web/node_modules", "/r"), "web/node_modules")
+	testing.expect_value(t, relative_path("/rx/web", "/r"), "/rx/web")
+	when ODIN_OS == .Windows {
+		testing.expect_value(
+			t,
+			relative_path(`C:\r\web\node_modules`, `C:\r`),
+			`web\node_modules`,
+		)
+	}
+}

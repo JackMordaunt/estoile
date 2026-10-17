@@ -382,16 +382,16 @@ an_alert_is_raised_once_until_it_goes_and_comes_back :: proc(t: ^testing.T) {
 	b: Bench
 	bench_open(t, &b)
 	defer os.remove_all(b.dir)
-	// 1% used fires on the disks these tests run on, this machine's and CI's
-	// runners', which hold far more than that.
-	_, _ = run_monitor(&b, "add", b.place, "--warn-used", "1")
+	// Less than 1000 PB free fires on any disk a test runs on, where a percent
+	// used does not: a fresh tmpfs is under 1% used.
+	_, _ = run_monitor(&b, "add", b.place, "--min-free", "1000PB")
 	_, _ = run_monitor(&b, "on")
 
 	_, out := run_monitor(&b, "run")
-	testing.expect(t, strings.contains(out, "used, past the warning at 1%."), out)
+	testing.expect(t, strings.contains(out, "free, under the 1000.0 PB asked for."), out)
 	testing.expect_value(t, len(b.shown), 1)
 	if len(b.shown) == 1 {
-		testing.expect(t, strings.contains(b.shown[0], "past the warning at 1%"), b.shown[0])
+		testing.expect(t, strings.contains(b.shown[0], "under the 1000.0 PB"), b.shown[0])
 	}
 	_, out = run_monitor(&b, "run", "--all")
 	testing.expect(t, !strings.contains(out, "alert:"), out)
@@ -399,13 +399,13 @@ an_alert_is_raised_once_until_it_goes_and_comes_back :: proc(t: ^testing.T) {
 
 	_, _ = run_monitor(&b, "add", b.place) // no limits now
 	_, _ = run_monitor(&b, "run", "--all")
-	_, _ = run_monitor(&b, "add", b.place, "--warn-used", "1")
+	_, _ = run_monitor(&b, "add", b.place, "--min-free", "1000PB")
 	_, out = run_monitor(&b, "run", "--all")
 	testing.expect(t, strings.contains(out, "alert:"), out)
 	testing.expect_value(t, len(b.shown), 2)
 
 	_, out = run_monitor(&b, "list")
-	testing.expect(t, strings.contains(out, "alerts on 1% used"), out)
+	testing.expect(t, strings.contains(out, "alerts on under 1000.0 PB free"), out)
 	testing.expect_value(t, strings.count(out, "alert: The disk under"), 2)
 
 	testing.expect(t, os.remove_all(b.place) == nil)

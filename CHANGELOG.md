@@ -22,6 +22,7 @@ Each release is one section.
 - `--warn-used`, `--fail-used` and `--min-free` make leita exit with a code a script can act on.
 - `LEITA_SYNTHETIC` scans a made-up disk, so a demo shows no one's real files.
 - On Windows, an elevated scan reads the Master File Table.
+- On macOS 11 or later, Leita comes as Leita.app in a disk image, signed and notarised, with the `leita` command inside it.
 
 **Changed**
 

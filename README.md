@@ -141,6 +141,15 @@ the answer.
 Open **Leita** and pick a drive or folder. To scan a whole drive, run it as
 an administrator.
 
+On a Mac, Leita needs macOS 11 (Big Sur) or later, on Apple silicon or Intel.
+Open `leita-<version>-darwin-universal.dmg` from the release and drag
+**Leita** onto **Applications**, then open it from Applications. The app is
+signed and notarised by Apple, so the first launch opens it without a trip to
+System Settings; macOS then asks before Leita reads your Desktop, Documents,
+Downloads or another disk. To scan everything, give Leita **Full Disk
+Access** under Privacy & Security, in System Settings (System Preferences
+before macOS 13).
+
 Prefer the terminal? The `leita` command does the same, and writes reports
 too, under a licence. `le` is the same command, shorter:
 
@@ -148,12 +157,15 @@ too, under a licence. `le` is the same command, shorter:
 leita D: --report usage.pdf
 ```
 
-`leita -h` lists every option. Leita, the app, takes the same arguments, so
-a Mac with only the app can write a report from the terminal:
+`leita -h` lists every option. On a Mac, the command comes inside the app,
+at `Leita.app/Contents/Helpers/leita`; link it onto your PATH once:
 
 ```sh
-Leita.app/Contents/MacOS/Leita ~ --report usage.pdf
+sudo mkdir -p /usr/local/bin && sudo ln -sf /Applications/Leita.app/Contents/Helpers/leita /usr/local/bin/leita
 ```
+
+Leita, the app, takes the same arguments too:
+`/Applications/Leita.app/Contents/MacOS/Leita ~ --report usage.pdf`.
 
 ## Scripts and monitoring
 
@@ -210,6 +222,7 @@ needs cmake for that, from Homebrew, and nothing from Homebrew at run time.
 
 ```sh
 just build release   # build/release/leita and build/release/app/Leita
+just bundle          # on a Mac, build/release/Leita.app around them, unsigned
 just install         # the release command line on PATH, as leita and as le
 just run             # a debug build of the window, opened on the home directory
 just test

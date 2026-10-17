@@ -87,6 +87,8 @@ Name_Fault :: enum u8 {
 	Slash,
 	Nul,
 	Reserved, // one of \ : * ? " < > | on Windows
+	Device, // a name Windows keeps for a device (CON, NUL, COM1), with or without an extension
+	Trailing, // a space or dot at the end, which Windows drops from the name it stores
 }
 
 // name_fault is why name cannot be a file's new name, or None if it can.
@@ -102,11 +104,43 @@ name_fault :: proc(name: string) -> Name_Fault {
 		return .Nul
 	}
 	when ODIN_OS == .Windows {
-		if strings.contains_any(name, `\:*?"<>|`) {
-			return .Reserved
-		}
+		return windows_name_fault(name)
 	}
 	return .None
+}
+
+// windows_name_fault is why Windows would not keep name as it is, or None. It
+// is not Windows-only code so that every host tests it.
+@(private)
+windows_name_fault :: proc(name: string) -> Name_Fault {
+	switch {
+	case strings.contains_any(name, `\:*?"<>|`):
+		return .Reserved
+	case is_device_name(name):
+		return .Device
+	case strings.has_suffix(name, " ") || strings.has_suffix(name, "."):
+		return .Trailing
+	}
+	return .None
+}
+
+// is_device_name says whether name is CON, PRN, AUX, NUL, COM1 to COM9 or LPT1 to
+// LPT9, which Microsoft's "Naming Files, Paths, and Namespaces" lists as reserved
+// and says an extension (NUL.tar.gz) does not make a different name. Case is
+// folded, and spaces before the first dot are ignored, as a cautious reading.
+@(private)
+is_device_name :: proc(name: string) -> bool {
+	stem, _, _ := strings.partition(name, ".")
+	stem = strings.trim_right(stem, " ")
+	for device in ([?]string{"CON", "PRN", "AUX", "NUL"}) {
+		if strings.equal_fold(stem, device) {
+			return true
+		}
+	}
+	if len(stem) == 4 && stem[3] >= '1' && stem[3] <= '9' {
+		return strings.equal_fold(stem[:3], "COM") || strings.equal_fold(stem[:3], "LPT")
+	}
+	return false
 }
 
 /*

@@ -276,6 +276,8 @@ Msg :: enum u16 {
 	Name_Slash,
 	Name_Nul,
 	Name_Reserved,
+	Name_Device,
+	Name_Trailing,
 	Cannot_Scan,
 	Nothing_To_Scan,
 	Reader_Failed,

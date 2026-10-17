@@ -93,6 +93,8 @@ NAME_FAULTS := [files.Name_Fault]msg.Msg {
 	.Slash    = .Name_Slash,
 	.Nul      = .Name_Nul,
 	.Reserved = .Name_Reserved,
+	.Device   = .Name_Device,
+	.Trailing = .Name_Trailing,
 }
 
 // LICENCE_ERRORS say why a licence was not taken, each naming the product as

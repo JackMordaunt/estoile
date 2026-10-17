@@ -5,6 +5,7 @@ import "core:testing"
 
 import "jm:ui"
 import "jm:ui/ops"
+import "jm:ui/primer"
 import "jm:ui/render"
 
 import "../command"
@@ -66,4 +67,19 @@ a_path_too_long_to_send_is_refused_in_the_field :: proc(t: ^testing.T) {
 	testing.expect_value(t, command.text_of(&scan.path), "/top")
 	testing.expect(t, !r.m.path_long, "and the warning goes")
 
+}
+
+// A frame leaves the theme it drew in behind it unset: primer's scheme is
+// thread-local, tests share threads, and the Model that holds the scheme is the
+// test's own stack, so a scheme left installed is read dead by the next test on
+// that thread (ASan: stack-use-after-return in primer.color, 2026-10-17).
+@(test)
+a_frame_leaves_no_scheme_behind :: proc(t: ^testing.T) {
+	r: Location_Rig
+	location_open(&r)
+	defer location_close(&r)
+	r.m.dark = true
+	ui.probe_frame(&r.h.p)
+	testing.expect(t, primer.scheme() != &r.m.scheme, "the scheme is not the Model's")
+	testing.expect_value(t, primer.theme(), primer.Theme.Light)
 }

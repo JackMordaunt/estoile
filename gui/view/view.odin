@@ -318,6 +318,9 @@ view :: proc(gtx: ^ui.Ctx, user: rawptr) {
 	theme: primer.Theme = m.dark ? .Dark : .Light
 	m.scheme = primer.theme_scheme(theme)
 	primer.use(&m.scheme, theme)
+	// primer's scheme is thread-local and m.scheme is the Model's: cleared on return,
+	// so no thread reads a Model that has since gone (a test's, on the stack).
+	defer primer.use(nil)
 	primer.use_fonts(FONTS)
 	// The frame's language, cleared on return: words must not outlive the Model.
 	words = m.strings

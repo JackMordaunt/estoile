@@ -22,6 +22,7 @@ export_frame :: proc(gtx: ^ui.Ctx, user: rawptr) {
 	c := (^Export_Case)(user)
 	scheme := primer.theme_scheme(.Light)
 	primer.use(&scheme, .Light)
+	defer primer.use(nil) // scheme is this frame's own
 	primer.use_fonts(FONTS)
 	if ui.row(gtx, gap = 8) {
 		settings_menu(gtx, &c.m, &c.prog)

@@ -16,6 +16,7 @@ about_frame :: proc(gtx: ^ui.Ctx, user: rawptr) {
 	m := (^Model)(user)
 	scheme := primer.theme_scheme(.Light)
 	primer.use(&scheme, .Light)
+	defer primer.use(nil) // scheme is this frame's own
 	primer.use_fonts(FONTS)
 	if ui.row(gtx, gap = 8) {
 		settings_menu(gtx, m, nil)

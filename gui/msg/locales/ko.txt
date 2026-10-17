@@ -156,6 +156,7 @@ reclaim_all = {0} 전체
 empty_trash = 휴지통 비우기
 delete_title = 폴더 {0}개를 영구적으로 삭제할까요?
 delete_body = {0}의 공간이 확보됩니다. 휴지통으로 이동하지 않습니다. 각 항목은 다음에 프로젝트를 빌드하거나 설치할 때, 또는 도구를 실행할 때 자동으로 다시 생성됩니다.
+delete_more = 그 외 폴더 {0}개
 delete = 삭제
 empty_title = 휴지통을 비울까요?
 empty_body = 휴지통에 있는 {0} 분량의 항목이 영구적으로 삭제됩니다.

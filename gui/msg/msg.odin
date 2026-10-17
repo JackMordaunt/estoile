@@ -155,6 +155,7 @@ Msg :: enum u16 {
 	Empty_Trash,
 	Delete_Title,
 	Delete_Body,
+	Delete_More,
 	Delete,
 	Empty_Title,
 	Empty_Body,

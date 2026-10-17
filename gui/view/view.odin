@@ -333,6 +333,10 @@ view :: proc(gtx: ^ui.Ctx, user: rawptr) {
 		m.side = {}
 		m.menu_open, m.trash_open, m.rename_open = false, false, false
 		m.export_open = false
+		// The delete dialogs too: their Confirm would act on the new scan's
+		// default selection, which the person has not seen.
+		m.clean_open, m.empty_open = false, false
+		m.trash_node, m.trash_bytes = 0, 0
 		clear(&m.reclaim_pick)
 		forget_history(m)
 	}

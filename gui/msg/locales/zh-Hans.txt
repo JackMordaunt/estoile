@@ -158,6 +158,7 @@ reclaim_all = 全部{0}
 empty_trash = 清空回收站
 delete_title = 永久删除 {0} 个文件夹？
 delete_body = 这将释放 {0}。所有内容都不会移到回收站：下次构建或安装项目、或下次运行相应工具时，它们会自动重新生成。
+delete_more = 以及另外 {0} 个文件夹
 delete = 删除
 empty_title = 清空回收站？
 empty_body = 回收站中的 {0} 将被永久删除。

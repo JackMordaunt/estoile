@@ -199,6 +199,9 @@ delete_title.one = Delete {0} folder for good?
 delete_title = Delete {0} folders for good?
 # {0} a size
 delete_body = This frees {0}. Nothing is moved to the Trash: each comes back by itself when the project is next built or installed, or the tool next runs.
+# {0} how many more folders than the list shows
+delete_more.one = and {0} more folder
+delete_more = and {0} more folders
 delete = Delete
 empty_title = Empty the Trash?
 empty_body = {0} in the Trash will be deleted for good.

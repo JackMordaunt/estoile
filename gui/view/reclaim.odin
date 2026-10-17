@@ -294,6 +294,88 @@ chosen_total :: proc(m: ^Model, r: ^query.Reclaim_Result) -> (count: int, bytes:
 	return
 }
 
+// CLEAN_LISTED is how many paths the Clean up confirmation names, the rest
+// counted; the body scrolls, so this keeps the frame's work bounded, not the
+// list short.
+CLEAN_LISTED :: 100
+
+// CLEAN_ROOM is the width a path has in the confirmation: the dialog's, less the
+// padding of its body and the scroll bar.
+CLEAN_ROOM :: f32(480 - 2 * 16 - 12)
+
+// clean_dialog asks before the chosen candidates are deleted for good, naming
+// each by its path: a count and a size alone say nothing of what is about to go.
+@(private)
+clean_dialog :: proc(gtx: ^ui.Ctx, m: ^Model, r: ^query.Reclaim_Result) {
+	count, bytes := chosen_total(m, r)
+	cancel, confirm := false, false
+	buttons := [2]primer.Dialog_Button {
+		{content = tr(.Cancel), auto_focus = true, clicked = &cancel},
+		{content = tr(.Delete), type = .Danger, clicked = &confirm},
+	}
+	if primer.dialog(
+		gtx,
+		&m.clean_open,
+		trf(gtx, .Delete_Title, count),
+		footer = buttons[:],
+		width = .Large,
+	) {
+		primer.text(gtx, trf(gtx, .Delete_Body, human.bytes(bytes)))
+		listed := 0
+		for g in r.groups {
+			if g.trash {
+				continue
+			}
+			for it in g.items {
+				if !is_chosen(m, it) || listed == CLEAN_LISTED {
+					continue
+				}
+				path := cut_path(gtx, it.path, CLEAN_ROOM)
+				primer.text(gtx, path, .Small, color = primer.color(.Fg_Color_Muted))
+				listed += 1
+			}
+		}
+		if count > listed {
+			primer.text(gtx, trf(gtx, .Delete_More, count - listed), .Small)
+		}
+	}
+	if cancel {
+		m.clean_open = false
+	}
+	if confirm {
+		m.clean_open = false
+		clean_chosen(gtx, m, r)
+	}
+}
+
+// clean_chosen sends the chosen candidates to be deleted, in the batches a Clean
+// can carry.
+@(private)
+clean_chosen :: proc(gtx: ^ui.Ctx, m: ^Model, r: ^query.Reclaim_Result) {
+	batch := command.Clean {
+		generation = m.generation,
+	}
+	for g in r.groups {
+		if g.trash {
+			continue
+		}
+		for it in g.items {
+			if !is_chosen(m, it) {
+				continue
+			}
+			batch.nodes[batch.count] = it.node
+			batch.count += 1
+			if batch.count == len(batch.nodes) {
+				ui.command(gtx, command.Command(batch))
+				batch.count = 0
+			}
+		}
+	}
+	if batch.count > 0 {
+		ui.command(gtx, command.Command(batch))
+	}
+}
+
 // reclaim_dialogs ask before anything is deleted, saying it is for good. They are
 // drawn with the window's other dialogs, over everything, not in the panel.
 @(private)
@@ -310,40 +392,7 @@ reclaim_dialogs :: proc(gtx: ^ui.Ctx, m: ^Model) {
 	if r == nil || r.generation != m.generation || !r.ready {
 		return
 	}
-	count, bytes := chosen_total(m, r)
-	answer := primer.confirmation_dialog(
-		gtx,
-		&m.clean_open,
-		trf(gtx, .Delete_Title, count),
-		trf(gtx, .Delete_Body, human.bytes(bytes)),
-		confirm_content = tr(.Delete),
-		confirm_type = .Danger,
-	)
-	if answer == .Confirm {
-		// In batches a Clean can carry.
-		batch := command.Clean {
-			generation = m.generation,
-		}
-		for g in r.groups {
-			if g.trash {
-				continue
-			}
-			for it in g.items {
-				if !is_chosen(m, it) {
-					continue
-				}
-				batch.nodes[batch.count] = it.node
-				batch.count += 1
-				if batch.count == len(batch.nodes) {
-					ui.command(gtx, command.Command(batch))
-					batch.count = 0
-				}
-			}
-		}
-		if batch.count > 0 {
-			ui.command(gtx, command.Command(batch))
-		}
-	}
+	clean_dialog(gtx, m, r)
 
 	trash := primer.confirmation_dialog(
 		gtx,

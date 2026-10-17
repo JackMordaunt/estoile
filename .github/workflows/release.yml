@@ -280,7 +280,10 @@ jobs:
             chmod +x "$out"
             archs=$(lipo -archs "$out")
             echo "$out: $archs"
-            case " $archs " in *" x86_64 "*" arm64 "*|*" arm64 "*" x86_64 "*) ;; *) echo "::error::$out is $archs"; exit 1 ;; esac
+            # lipo prints the slices space-separated; each is looked for on
+            # its own, since one pattern cannot share the space between them.
+            case " $archs " in *" x86_64 "*) ;; *) echo "::error::$out is $archs"; exit 1 ;; esac
+            case " $archs " in *" arm64 "*) ;; *) echo "::error::$out is $archs"; exit 1 ;; esac
           done
           dist/leita-darwin-universal --version
           root="leita-$LEITA_VERSION-darwin-universal"

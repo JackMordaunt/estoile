@@ -20,8 +20,9 @@ arg0 (os.args[0]), whose executable the system resolved to exe
 inside an application bundle, under Contents/MacOS, keeps that path, since the
 bundle is how it is installed and moved; an arg0 with a directory in it is made
 absolute against cwd and cleaned, its links kept; a bare name is looked for on
-each folder of PATH, the first that has it kept, links too; and arg0 nowhere
-falls back to exe.
+each folder of PATH, and the first that is this same executable is kept, links
+too, since a second install of the same name is a different file and must not
+be the one an entry runs; and a bare name found nowhere falls back to exe.
 */
 stable_program :: proc(
 	arg0, exe, path_list, cwd: string,
@@ -48,12 +49,33 @@ stable_program :: proc(
 		}
 		for name in program_names(arg0) {
 			path, _ := filepath.join({folder, name}, context.temp_allocator)
-			if os.exists(path) {
+			if same_executable(path, exe) {
 				return strings.clone(path, allocator)
 			}
 		}
 	}
 	return strings.clone(exe, allocator)
+}
+
+// same_executable reports whether the file at path is the one at exe.
+// os.stat follows links, so a PATH entry is kept when it is the running
+// program and skipped when it is another install of the same name. Windows
+// folds case: the two strings are one path.
+@(private)
+same_executable :: proc(path, exe: string) -> bool {
+	found, found_err := os.stat(path, context.temp_allocator)
+	if found_err != nil {
+		return false
+	}
+	running, running_err := os.stat(exe, context.temp_allocator)
+	if running_err != nil {
+		return false
+	}
+	when ODIN_OS == .Windows {
+		return strings.equal_fold(found.fullpath, running.fullpath)
+	} else {
+		return found.fullpath == running.fullpath
+	}
 }
 
 // program_names are the file names a bare program name may stand for on PATH:

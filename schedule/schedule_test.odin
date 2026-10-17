@@ -247,7 +247,8 @@ a_launchd_agent_runs_hourly_in_the_background :: proc(t: ^testing.T) {
 The program an entry records is the path leita was started by, its links kept:
 a bare name through PATH, a relative path through cwd, an absolute one as is;
 one inside an application bundle is the bundle's, and one found nowhere the
-resolved executable.
+resolved executable. A bare name is kept only when it is that executable, so
+another install earlier on PATH is skipped.
 */
 @(test)
 the_program_recorded_is_the_path_leita_was_started_by :: proc(t: ^testing.T) {
@@ -256,8 +257,10 @@ the_program_recorded_is_the_path_leita_was_started_by :: proc(t: ^testing.T) {
 	defer os.remove_all(dir)
 	bin, _ := filepath.join({dir, "bin"}, context.temp_allocator)
 	cellar, _ := filepath.join({dir, "Cellar", "leita", "1.0", "bin"}, context.temp_allocator)
+	other, _ := filepath.join({dir, "other"}, context.temp_allocator)
 	testing.expect(t, os.make_directory_all(bin) == nil)
 	testing.expect(t, os.make_directory_all(cellar) == nil)
+	testing.expect(t, os.make_directory_all(other) == nil)
 	real, _ := filepath.join({cellar, "leita"}, context.temp_allocator)
 	testing.expect(t, os.write_entire_file(real, transmute([]byte)string("#!/bin/sh\n")) == nil)
 	link, _ := filepath.join({bin, "leita"}, context.temp_allocator)
@@ -266,13 +269,24 @@ the_program_recorded_is_the_path_leita_was_started_by :: proc(t: ^testing.T) {
 	} else {
 		testing.expect(t, os.symlink(real, link) == nil)
 	}
+	// A different file, earlier on PATH than the link: a second install.
+	decoy, _ := filepath.join({other, "leita"}, context.temp_allocator)
+	testing.expect(t, os.write_entire_file(decoy, transmute([]byte)string("other\n")) == nil)
 	empty, _ := filepath.join({dir, "empty"}, context.temp_allocator)
 	testing.expect(t, os.make_directory_all(empty) == nil)
 	sep := [1]byte{filepath.LIST_SEPARATOR}
-	path := strings.join({empty, bin}, string(sep[:]), context.temp_allocator)
+	path := strings.join({other, empty, bin}, string(sep[:]), context.temp_allocator)
 
 	a := context.temp_allocator
-	testing.expect_value(t, stable_program("leita", real, path, dir, a), link)
+	when ODIN_OS == .Windows {
+		// Neither file on PATH is the executable named as exe, so both are skipped.
+		testing.expect_value(t, stable_program("leita", real, path, dir, a), real)
+		// The same file written in another case is this program, and is kept.
+		folded := strings.to_upper(link, a)
+		testing.expect_value(t, stable_program("leita", folded, bin, dir, a), link)
+	} else {
+		testing.expect_value(t, stable_program("leita", real, path, dir, a), link)
+	}
 	testing.expect_value(t, stable_program("leita", real, empty, dir, a), real)
 	testing.expect_value(t, stable_program("", real, path, dir, a), real)
 	testing.expect_value(t, stable_program(link, real, "", dir, a), link)
@@ -282,13 +296,46 @@ the_program_recorded_is_the_path_leita_was_started_by :: proc(t: ^testing.T) {
 	app := "/Applications/Leita.app/Contents/MacOS/Leita"
 	testing.expect_value(t, stable_program("leita", app, path, dir, a), app)
 
+	// this_program reads the process PATH. Two fixtures stand in for it, so a
+	// leita installed on the machine cannot decide the result: an earlier
+	// program that is not this binary, then one that is. The file is named as
+	// this process was started, leita when just test builds build/test/leita.
+	exe, exe_err := os.get_executable_path(a)
+	testing.expect(t, exe_err == nil)
+	name := filepath.base(os.args[0])
+	earlier, _ := filepath.join({dir, "earlier"}, a)
+	later, _ := filepath.join({dir, "later"}, a)
+	testing.expect(t, os.make_directory_all(earlier) == nil)
+	testing.expect(t, os.make_directory_all(later) == nil)
+	wrong, _ := filepath.join({earlier, name}, a)
+	right, _ := filepath.join({later, name}, a)
+	testing.expect(t, os.write_entire_file(wrong, transmute([]byte)string("not this leita\n")) == nil)
+	when ODIN_OS == .Windows {
+		// os.symlink is unsupported. A copy is a different file, so a bare name
+		// falls back to exe; the earlier install must still be skipped.
+		data, read_err := os.read_entire_file(exe, a)
+		testing.expect(t, read_err == nil)
+		testing.expect(t, os.write_entire_file(right, data) == nil)
+	} else {
+		testing.expect(t, os.symlink(exe, right) == nil)
+	}
+	was := strings.clone(os.get_env("PATH", a), a)
+	testing.expect(
+		t,
+		os.set_env("PATH", strings.join({earlier, later}, string(sep[:]), a)) == nil,
+	)
+	defer os.set_env("PATH", was)
+
 	mine := this_program(a)
-	testing.expect(t, mine != "", "this process has a program path")
+	testing.expect(t, mine != wrong, "an earlier install is not this program")
 	testing.expect(t, os.exists(mine), mine)
-	when ODIN_OS != .Windows {
-		exe, _ := os.get_executable_path(a)
-		info, _ := os.stat(mine, a)
-		resolved, _ := os.stat(exe, a)
+	info, info_err := os.stat(mine, a)
+	resolved, resolved_err := os.stat(exe, a)
+	testing.expect(t, info_err == nil && resolved_err == nil)
+	when ODIN_OS == .Windows {
+		testing.expect(t, strings.equal_fold(info.fullpath, resolved.fullpath))
+	} else {
+		testing.expect_value(t, mine, right)
 		testing.expect_value(t, info.fullpath, resolved.fullpath)
 	}
 }

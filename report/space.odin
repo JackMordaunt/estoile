@@ -13,12 +13,18 @@ mounted on. The command line's scan and the monitor's ask it the same way.
 */
 space_of :: proc(f: ^survey.Fill) -> Maybe(Space) {
 	#partial switch f.engine {
-	case .Mft:
-		return mft_space(&f.table)
 	case .Synthetic:
 		cfg, _ := synth.from_env()
 		total, free := synth.space(cfg.day)
 		return Space{total, free}
+	case .Mft:
+		if space, ok := mft_space(&f.table).?; ok {
+			return space
+		}
+		// An update from a baseline reads no table, and without this a monitor
+		// on an elevated Windows run heard of its disk once, on the whole read.
+		// The volume answers as it does for a walk.
+		fallthrough
 	case .Walk:
 		if total, free, ok := scan.space(scan.location(f.target, context.temp_allocator)); ok {
 			return Space{total, free}

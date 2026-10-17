@@ -191,12 +191,11 @@ on_hands_the_monitor_to_the_scheduler_and_off_takes_it_back :: proc(t: ^testing.
 		join(b.c.host.units, "leita-monitor.service"),
 		context.temp_allocator,
 	)
+	// Spelt as systemd reads a word: a Windows temp folder's backslashes come
+	// escaped and the path quoted.
 	first := b.c.argv[0]
-	testing.expect(
-		t,
-		strings.contains(string(service), fmt.tprintf("ExecStart=%s monitor run\n", first)),
-		string(service),
-	)
+	exec := fmt.tprintf("ExecStart=%s monitor run\n", schedule.systemd_quote(first))
+	testing.expect(t, strings.contains(string(service), exec), string(service))
 	_, out = run_monitor(&b, "list")
 	testing.expect(t, strings.has_prefix(out, "monitoring is on, through the systemd"), out)
 

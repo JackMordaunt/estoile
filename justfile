@@ -121,6 +121,10 @@ gui mode="debug": deps
     esac
     mkdir -p build/{{mode}}/app
     {{odin}} build gui $opt {{flags}} {{sdl3_link}} -out:build/{{mode}}/app/{{gui}}{{exe}}
+    if [ "{{os()}}" = windows ]; then
+        cp "$({{odin}} root)/vendor/sdl3/SDL3.dll" build/{{mode}}/app/
+        cp "{{jm}}/ui/accesskit/lib/accesskit.dll" build/{{mode}}/app/ 2>/dev/null || true
+    fi
 
 # A first argument of release builds and runs the release build.
 #

@@ -50,6 +50,7 @@ import "../view"
 @(private = "file")
 Rig :: struct {
 	shared:   bool, // holds scan_env shared, as every rig does but the one that set it
+	own_data: string, // the data folder rig_open made for a test that gave none
 	h:        Host,
 	m:        view.Model,
 	// The probe, as p, with a renderer and the window's fonts beside it, so a
@@ -75,10 +76,15 @@ rig_open :: proc(
 		env_share()
 		r.shared = true
 	}
+	keep := kept
+	if keep == "" {
+		r.own_data = rig_data()
+		keep = fmt.tprintf("%s/history.db", r.own_data)
+	}
 	init(
 		&r.h,
 		path,
-		kept = kept,
+		kept = keep,
 		reports = reports,
 		licence_key = licence_key,
 		activate_url = activate_url,
@@ -96,6 +102,31 @@ rig_open :: proc(
 	}
 	render.headless_init(&r.hl, view.view, &r.m, {1100, 700}, fonts)
 	hand_on(r)
+	await_licence(r)
+}
+
+/*
+await_licence drains the host's answers into the probe, as settle does, until
+the window holds whether the paid features are unlocked. Until it does, the
+window takes them as locked (view.unlocked), so a test that reached for Export
+or the licence dialog before the answer, on a loaded machine, met the licence
+notice instead of what it asked for.
+*/
+@(private = "file")
+await_licence :: proc(r: ^Rig) {
+	key := ui.key_of(query.Licence{})
+	deadline := time.tick_now()._nsec + i64(30 * time.Second)
+	for time.tick_now()._nsec < deadline {
+		if shape, ok := r.p.layout.shapes[key]; ok && shape.status == .Ready {
+			return
+		}
+		if ui.inbox_pending(&r.h.inbox) {
+			ui.inbox_drain(&r.h.inbox, &r.p.layout)
+			ui.probe_frame(&r.p)
+			hand_on(r)
+		}
+		time.sleep(time.Millisecond)
+	}
 }
 
 @(private = "file")
@@ -107,6 +138,35 @@ rig_close :: proc(r: ^Rig) {
 	if r.shared {
 		env_unshare()
 	}
+	if r.own_data != "" {
+		os.remove_all(r.own_data)
+		delete(r.own_data, runtime.heap_allocator())
+	}
+}
+
+/*
+rig_data is a fresh data folder for a rig its test gives none. Without one the
+trial is over (licence.first_use: nowhere to keep when it began), and the
+trial-ended notice moves everything under it, so a test measuring the window
+would measure the notice. A test of the trial's end gives its own. The folder
+is named for this process and a count, not the rig's path, which may be "/" or
+not there at all.
+*/
+@(private = "file")
+rig_data :: proc() -> string {
+	@(static) made: int
+	n := sync.atomic_add(&made, 1)
+	tmp, _ := os.temp_directory(context.temp_allocator)
+	dir := fmt.aprintf(
+		"%s/leita_gui_rig_%d_%d",
+		tmp,
+		os.get_pid(),
+		n,
+		allocator = runtime.heap_allocator(),
+	)
+	os.remove_all(dir)
+	_ = os.make_directory(dir)
+	return dir
 }
 
 /*
@@ -162,6 +222,26 @@ settle :: proc(r: ^Rig, name: string, present := true) -> bool {
 			if ui.probe_tagged(&r.p, name) == present {
 				return true
 			}
+		}
+		time.sleep(time.Millisecond)
+	}
+	return false
+}
+
+// await_rescan drains the host's answers, as settle does, until the window holds
+// a scan newer than first, and says whether it did in settle's time: what a test
+// reads of the desk's scan after that is the new scan's, not one half begun.
+@(private = "file")
+await_rescan :: proc(r: ^Rig, first: u32) -> bool {
+	deadline := time.tick_now()._nsec + i64(30 * time.Second)
+	for time.tick_now()._nsec < deadline {
+		if r.m.generation > first {
+			return true
+		}
+		if ui.inbox_pending(&r.h.inbox) {
+			ui.inbox_drain(&r.h.inbox, &r.p.layout)
+			ui.probe_frame(&r.p)
+			hand_on(r)
 		}
 		time.sleep(time.Millisecond)
 	}
@@ -349,8 +429,12 @@ a_path_longer_than_a_command_carries_is_refused :: proc(t: ^testing.T) {
 		path = command.text_make(long),
 	}
 	testing.expect(t, scan_command.path.cut, "the command was cut")
+	first := r.m.generation
 	stream.port_send(r.h.cmd_port, command.Command(scan_command))
 	hand_on(&r)
+	// The first scan's failure is still said, so the second is waited for by its
+	// number: until then the desk may be swapping in the scan the test reads.
+	testing.expect(t, await_rescan(&r, first), "the command scans again")
 	testing.expect(t, settle(&r, "that path is too long to scan"))
 	testing.expect(t, r.h.desk.scan.state == .Failed)
 }

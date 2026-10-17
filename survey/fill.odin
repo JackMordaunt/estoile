@@ -132,7 +132,13 @@ The root is named inside the projection rather than afterwards: the table calls 
 @(private)
 fill_mft :: proc(f: ^Fill) {
 	p: ntfs.Projection
-	p.root_name = scan.top(f.target)
+	// The whole volume names its root after the mount; a subtree the record was
+	// found for names it after the whole path, the same leading segment a walk
+	// of the same subtree would give it.
+	root_name := scan.location(f.target, context.allocator)
+	defer delete(root_name)
+	p.root_name = root_name
+	p.root_record = f.target.record.? or_else 0
 	defer ntfs.projection_destroy(&p)
 
 	if f.watched {

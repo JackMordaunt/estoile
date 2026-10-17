@@ -1,0 +1,404 @@
+# Builds leita's release on a pushed v* tag: the command line and the window
+# for linux/amd64, linux/arm64, windows/amd64 and a universal macOS, each
+# carrying the version from the tag and the licence key from the
+# LEITA_LICENCE_KEY secret, and publishes them as a GitHub Release.
+#
+# Every run that is not a tag is a dry run: it builds and assembles the same
+# files and uploads them to the run as the artifact release-<version>, and
+# creates no release. A push to a ci/release-<name> branch makes one, since
+# workflow_dispatch only reaches a workflow once it is on the default branch;
+# after that, `gh workflow run release.yml --ref <branch>` makes one too, and
+# dispatching on a tag with dry_run unticked publishes that tag.
+#
+# What a release holds, for version v1.2.0:
+#   leita-v1.2.0-linux-amd64.tar.zst     both binaries, the window in app/,
+#   leita-v1.2.0-linux-arm64.tar.zst     for a person to download; app/ since
+#   leita-v1.2.0-windows-amd64.zip       macOS and Windows fold case, so
+#   leita-v1.2.0-darwin-universal.zip    leita and Leita cannot share a
+#                                        directory. Windows's carries the
+#                                        window's SDL3.dll and accesskit.dll.
+#   leita-<os>-<arch>[.exe]              each binary alone under a name no
+#   leita-window-<os>-<arch>[.exe]       release changes, which is what
+#                                        jm:selfupdate fetches from
+#                                        releases/latest/download (card 547),
+#   <binary>.zst, <binary>.<sha256>.patch
+#                                        and beside each, as brainfold
+#                                        publishes, its zstd-compressed form
+#                                        and a patch to it from each of the
+#                                        last PATCH_FROM releases
+#   sha256sums.txt, version.txt          over all of the above, the file a
+#                                        signature will cover
+#
+# A tag with a pre-release suffix (v1.0.0-rc1) is published as a draft
+# pre-release, for a person to look over and publish; any other tag is
+# published at once. Signing is left to the cards that own it: the
+# executables (Windows, card 541; the macOS .app, card 542) and
+# sha256sums.txt.sig (jm:selfupdate, card 547). Linux packages and a window
+# that runs without the system's SDL3 and libcurl are card 543.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+    branches: ["ci/release-*"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Upload the assets to the run and create no release (a branch is always a dry run)
+        type: boolean
+        default: true
+
+# A second run for the same ref waits rather than cancelling the first,
+# which may be halfway through publishing.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # Decides once what every later job reads: the version, whether this is a
+  # dry run, whether the tag is a pre-release. A run that would publish
+  # stops here, before four builds, when the licence key is missing.
+  plan:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      dry_run: ${{ steps.plan.outputs.dry_run }}
+      prerelease: ${{ steps.plan.outputs.prerelease }}
+      test_key: ${{ steps.plan.outputs.test_key }}
+    steps:
+      # The justfile alone, for the test key a release must not carry.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          sparse-checkout: justfile
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - id: plan
+        env:
+          # Empty on a push, so a pushed tag is never a dry run.
+          DISPATCH_DRY_RUN: ${{ inputs.dry_run }}
+          LEITA_LICENCE_KEY: ${{ secrets.LEITA_LICENCE_KEY }}
+        run: |
+          set -euo pipefail
+          dry_run=true
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$DISPATCH_DRY_RUN" != true ]; then dry_run=false; fi
+          # The tag as git describe would name it locally, or a bare commit
+          # as the justfile names one: g and its hash, so Odin never reads
+          # the define as a number. Only letters, digits, dots, dashes and
+          # underscores, since it lands in -define: and in file names.
+          if [ "$GITHUB_REF_TYPE" = tag ]; then version=$GITHUB_REF_NAME; else version="g${GITHUB_SHA::9}"; fi
+          if ! [[ $version =~ ^[A-Za-z][0-9A-Za-z._-]*$ ]]; then
+            echo "::error::$version cannot name a release: a letter, then letters, digits, dots, dashes or underscores"
+            exit 1
+          fi
+          if [ "$dry_run" = false ] && ! [[ $version =~ ^v[0-9] ]]; then
+            echo "::error::a release is published from a v<number> tag, not $version"
+            exit 1
+          fi
+          prerelease=false
+          if [[ $version == *-* ]]; then prerelease=true; fi
+          test_key=$(sed -n 's/^test_licence_key *:= *"\([0-9a-fA-F]*\)".*/\1/p' justfile)
+          [ -n "$test_key" ] || { echo "::error::no test_licence_key in the justfile"; exit 1; }
+          # A release built without the real key takes no licence, and one
+          # built with the test key takes the licence anyone can read in the
+          # justfile: neither may ship. A dry run without the secret builds
+          # with the test key, and says so, below.
+          if [ "$dry_run" = false ]; then
+            if ! [[ $LEITA_LICENCE_KEY =~ ^[0-9a-fA-F]{64}$ ]]; then
+              echo "::error::the LEITA_LICENCE_KEY secret must hold the licence public key, 64 hex characters"
+              exit 1
+            fi
+            if [ "${LEITA_LICENCE_KEY,,}" = "${test_key,,}" ]; then
+              echo "::error::the LEITA_LICENCE_KEY secret holds the justfile's test key"
+              exit 1
+            fi
+          fi
+          {
+            echo "version=$version"
+            echo "dry_run=$dry_run"
+            echo "prerelease=$prerelease"
+            echo "test_key=$test_key"
+          } >> "$GITHUB_OUTPUT"
+          echo "version $version, dry run $dry_run, pre-release $prerelease"
+
+  # Each target on a runner of its own architecture. Odin can cross-compile,
+  # but the window links native libraries built per target, and Linux on
+  # arm64 would need an arm64 sysroot holding libc, libcurl and SDL3; a
+  # native runner builds every library with the recipes test.yml uses.
+  # macOS is built on both architectures and joined by the universal job.
+  # The runner images are named, not -latest, so a release builds against
+  # the same systems until this file says otherwise.
+  build:
+    needs: plan
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: linux-amd64
+            artifact: dist-linux-amd64
+          - os: ubuntu-24.04-arm
+            target: linux-arm64
+            artifact: dist-linux-arm64
+          - os: windows-2025
+            target: windows-amd64
+            artifact: dist-windows-amd64
+            exe: .exe
+          - os: macos-26
+            target: darwin-arm64
+            artifact: darwin-arm64
+          - os: macos-26-intel
+            target: darwin-amd64
+            artifact: darwin-amd64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    env:
+      LEITA_VERSION: ${{ needs.plan.outputs.version }}
+      # Prefixed, since make and cargo, which the setup action runs, read
+      # TARGET from the environment themselves.
+      LEITA_TARGET: ${{ matrix.target }}
+      LEITA_EXE: ${{ matrix.exe }}
+    steps:
+      # As test.yml: the bytes built are the bytes committed.
+      - name: keep line endings as committed (windows)
+        if: runner.os == 'Windows'
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          submodules: true
+          persist-credentials: false
+      # Built fresh, never from the cache: see the action's cache input.
+      - uses: ./.github/actions/setup
+        with:
+          cache: "false"
+
+      # The justfile embeds LEITA_VERSION and the key. Each binary is then
+      # searched for the key it was given, which the licence package keeps
+      # as its hex text, and a release's for the test key, so nothing the
+      # plan job missed reaches a release.
+      - name: build
+        env:
+          LEITA_LICENCE_KEY: ${{ secrets.LEITA_LICENCE_KEY }}
+          DRY_RUN: ${{ needs.plan.outputs.dry_run }}
+        run: |
+          set -euo pipefail
+          test_key=$(just --evaluate test_licence_key)
+          if [ -z "$LEITA_LICENCE_KEY" ]; then
+            if [ "$DRY_RUN" != true ]; then echo "::error::no LEITA_LICENCE_KEY for a release"; exit 1; fi
+            echo "::warning::LEITA_LICENCE_KEY is unset: this dry run carries the justfile's test key and must never ship"
+            LEITA_LICENCE_KEY=$test_key
+          fi
+          export LEITA_LICENCE_KEY
+          just build release
+          for bin in "build/release/leita$LEITA_EXE" "build/release/app/Leita$LEITA_EXE"; do
+            grep -aqiF "$LEITA_LICENCE_KEY" "$bin" || { echo "::error::$bin does not carry the licence key"; exit 1; }
+            if [ "$DRY_RUN" != true ] && grep -aqiF "$test_key" "$bin"; then
+              echo "::error::$bin carries the test key"
+              exit 1
+            fi
+          done
+          line=$("build/release/leita$LEITA_EXE" --version)
+          echo "$line"
+          case "$line" in
+            "leita $LEITA_VERSION "*) ;;
+            *) echo "::error::--version names another version than $LEITA_VERSION"; exit 1 ;;
+          esac
+          if [ "$RUNNER_OS" = Linux ]; then ldd "build/release/app/Leita"; fi
+          if [ "$RUNNER_OS" = macOS ]; then otool -L "build/release/app/Leita"; fi
+
+      # Each binary under its update name, and on Linux and Windows the
+      # archive a person downloads. macOS's go to the universal job as they
+      # are. cp fails on a missing DLL, which the justfile's gui recipe
+      # would let pass.
+      - name: package
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp "build/release/leita$LEITA_EXE" "dist/leita-$LEITA_TARGET$LEITA_EXE"
+          cp "build/release/app/Leita$LEITA_EXE" "dist/leita-window-$LEITA_TARGET$LEITA_EXE"
+          case "$LEITA_TARGET" in darwin-*) cp LICENSE.md dist/; exit 0 ;; esac
+          root="leita-$LEITA_VERSION-$LEITA_TARGET"
+          mkdir -p "pack/$root/app"
+          cp "build/release/leita$LEITA_EXE" LICENSE.md "pack/$root/"
+          cp "build/release/app/Leita$LEITA_EXE" "pack/$root/app/"
+          if [ "$RUNNER_OS" = Windows ]; then
+            cp build/release/app/SDL3.dll build/release/app/accesskit.dll "pack/$root/app/"
+            (cd pack && 7z a -tzip -bso0 -bsp0 "../dist/$root.zip" "$root")
+          else
+            command -v zstd >/dev/null || sudo apt-get install -y --no-install-recommends zstd
+            tar -C pack --owner=0 --group=0 --numeric-owner -cf - "$root" | zstd -q -19 -T0 -o "dist/$root.tar.zst"
+          fi
+          ls -l dist
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist
+          if-no-files-found: error
+
+      # jm's mkpatch, built once for the assemble job, which has no Odin of
+      # its own; it links the zstd archive jm's recipe builds.
+      - name: mkpatch
+        if: matrix.target == 'linux-amd64'
+        run: |
+          (cd jm && just zstd)
+          odin build jm/tools/mkpatch -o:speed -vet -strict-style -collection:jm="$PWD/jm" -out:build/release/mkpatch
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: matrix.target == 'linux-amd64'
+        with:
+          name: mkpatch
+          path: build/release/mkpatch
+          if-no-files-found: error
+
+  # One macOS binary for both architectures, joined with lipo: each slice
+  # is a whole linked executable with the static SDL3 already inside, and
+  # keeps the ad-hoc signature its linker gave it. A plain binary for now;
+  # the .app bundle, signed and notarised, is card 542. Run on arm64, where
+  # the arm64 slice runs; the build job ran the x86_64 one natively.
+  universal:
+    needs: [plan, build]
+    runs-on: macos-26
+    env:
+      LEITA_VERSION: ${{ needs.plan.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: darwin-*
+          path: bin
+          merge-multiple: true
+      - name: lipo
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          for name in leita leita-window; do
+            out="dist/$name-darwin-universal"
+            lipo -create -output "$out" "bin/$name-darwin-arm64" "bin/$name-darwin-amd64"
+            chmod +x "$out"
+            archs=$(lipo -archs "$out")
+            echo "$out: $archs"
+            case " $archs " in *" x86_64 "*" arm64 "*|*" arm64 "*" x86_64 "*) ;; *) echo "::error::$out is $archs"; exit 1 ;; esac
+          done
+          dist/leita-darwin-universal --version
+          root="leita-$LEITA_VERSION-darwin-universal"
+          mkdir -p "pack/$root/app"
+          cp dist/leita-darwin-universal "pack/$root/leita"
+          cp dist/leita-window-darwin-universal "pack/$root/app/Leita"
+          cp bin/LICENSE.md "pack/$root/"
+          (cd pack && zip -qry "../dist/$root.zip" "$root")
+          ls -l dist
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: dist-darwin-universal
+          path: dist
+          if-no-files-found: error
+
+  # Everything a release holds, uploaded to the run as one artifact: a dry
+  # run's result, and what the release job publishes. Read-only: earlier
+  # releases are read, nothing is written.
+  assemble:
+    needs: [plan, build, universal]
+    runs-on: ubuntu-24.04
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+      # How many earlier releases a tag publishes patches from. Pre-releases
+      # count too, once published: a machine on an rc updates by patch like
+      # any other. Drafts are not listed, since nobody runs one.
+      PATCH_FROM: "3"
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: dist-*
+          path: assets
+          merge-multiple: true
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: mkpatch
+          path: tools
+      # Beside each update binary, mkpatch writes its zstd-compressed form
+      # and a patch to it from the same binary in each of the last
+      # PATCH_FROM releases, named <binary>.<old sha256>.patch so a binary
+      # finds the one for itself by its own hash; it skips a patch that
+      # would not beat the compressed binary. The old builds are the
+      # published files, since a rebuild is not the same bytes. The
+      # archives get neither: they are compressed already, and nothing
+      # updates from them. A first release ships the compressed binaries
+      # alone.
+      - name: compressed binaries and patches
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          chmod +x tools/mkpatch
+          binaries=()
+          for f in assets/leita-*; do
+            name=${f#assets/}
+            case "$name" in "leita-$VERSION-"*) ;; *) binaries+=("$name") ;; esac
+          done
+          mapfile -t tags < <(gh release list -R "$GITHUB_REPOSITORY" --limit 50 --exclude-drafts --json tagName --jq '.[].tagName' | grep -vx "$GITHUB_REF_NAME" | head -n "$PATCH_FROM")
+          echo "patches from: ${tags[*]:-none}"
+          patterns=()
+          for name in "${binaries[@]}"; do patterns+=(-p "$name"); done
+          for tag in "${tags[@]}"; do
+            mkdir -p "old/$tag"
+            gh release download "$tag" -R "$GITHUB_REPOSITORY" -D "old/$tag" "${patterns[@]}" || true
+          done
+          for name in "${binaries[@]}"; do
+            olds=()
+            for tag in "${tags[@]}"; do if [ -f "old/$tag/$name" ]; then olds+=(-old "old/$tag/$name"); fi; done
+            tools/mkpatch -new "assets/$name" -out assets "${olds[@]}"
+          done
+      - name: sha256sums
+        working-directory: assets
+        run: |
+          set -euo pipefail
+          sha256sum leita-* > sha256sums.txt
+          echo "$VERSION" > version.txt
+          cat sha256sums.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-${{ needs.plan.outputs.version }}
+          path: assets
+          if-no-files-found: error
+
+  # The only job that writes: it creates the release from the assembled
+  # artifact with the runner's own gh, no third-party uploader. It checks
+  # the key once more itself, so no path to it skips that check.
+  release:
+    needs: [plan, assemble]
+    if: needs.plan.outputs.dry_run == 'false'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+    steps:
+      - name: licence key
+        env:
+          LEITA_LICENCE_KEY: ${{ secrets.LEITA_LICENCE_KEY }}
+          TEST_KEY: ${{ needs.plan.outputs.test_key }}
+        run: |
+          set -euo pipefail
+          # An empty TEST_KEY would make the second test pass anything.
+          [ -n "$TEST_KEY" ] || { echo "::error::the plan job named no test key"; exit 1; }
+          if ! [[ $LEITA_LICENCE_KEY =~ ^[0-9a-fA-F]{64}$ ]] || [ "${LEITA_LICENCE_KEY,,}" = "${TEST_KEY,,}" ]; then
+            echo "::error::the LEITA_LICENCE_KEY secret is unset, malformed or the test key; nothing is published"
+            exit 1
+          fi
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-${{ needs.plan.outputs.version }}
+          path: assets
+      - name: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRERELEASE: ${{ needs.plan.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          flags=()
+          if [ "$PRERELEASE" = true ]; then flags=(--draft --prerelease); fi
+          gh release create "$VERSION" assets/* -R "$GITHUB_REPOSITORY" --verify-tag \
+            --title "Leita $VERSION" --generate-notes "${flags[@]}"

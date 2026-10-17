@@ -3,27 +3,10 @@
 # platforms before it lands: `git push github HEAD:ci/<name>`), and every
 # pull request.
 #
-# leita's native libraries all come from the jm submodule
-# (https://mordaunt.dev/code/jm): SQLite for both binaries' scans, and, for
-# the window alone, Blend2D to draw, kb_text_shape to shape text, AccessKit
-# for screen readers and, on macOS, a static SDL3; vendor:sdl3's binding
-# ships inside the Odin toolchain itself. Odin is built from
-# the commit leita is developed with, not a release: the commit is tagged
-# brainfold-pin-<short sha> in github.com/JackMordaunt/Odin (setup-odin
-# clones a branch or tag, never a bare commit) and named by ODIN_PIN, with
-# ODIN_LLVM matching the local LLVM major. Moving to a newer Odin is: tag the
-# new commit in the fork, and change ODIN_PIN.
-#
-# jm's own per-OS recipes for sqlite, blend2d and kb_text_shape mix bash and
-# PowerShell syntax under a bare [windows] tag, but nothing here sets
-# `set windows-powershell`, so `just`'s default shell on Windows is sh (Git
-# Bash's), which cannot run the PowerShell-flavoured ones. jm's own CI
-# (test.yml) and brainfold's and review's release.yml all work around this
-# by never calling those recipes on Windows: the defines and pinned
-# revisions are read out of jm/justfile as text and given to cl and cmake
-# directly. This workflow does the same. jm:ui/accesskit's own recipe is
-# plain bash with a case over uname, Windows included, so `just accesskit`
-# runs unchanged on every OS.
+# The toolchain and the native libraries come from the setup action
+# (.github/actions/setup), which release.yml builds with too, so what is
+# tested is what ships; its header says where Odin and each library come
+# from, and how to move the Odin pin.
 name: test
 
 on:
@@ -38,14 +21,6 @@ concurrency:
 
 permissions:
   contents: read
-
-env:
-  ODIN_REPO: https://github.com/JackMordaunt/Odin
-  ODIN_PIN: brainfold-pin-984eb69e0
-  ODIN_LLVM: "22"
-  # The release vendor:sdl3 in ODIN_PIN is bound against, for the Linux
-  # build below; jm's sdl3_rev pins the same release's commit for macOS.
-  SDL3_TAG: release-3.4.2
 
 jobs:
   test:
@@ -69,144 +44,8 @@ jobs:
         with:
           submodules: true
           persist-credentials: false
-      - name: jm submodule commit
-        id: jm
-        run: echo "sha=$(git -C jm rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-      # Before Odin: build.bat compiles it with MSVC, and blend2d below is
-      # built with clang-cl from the same developer prompt.
-      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
-        if: runner.os == 'Windows'
-      - uses: laytan/setup-odin@8536d8fa450ec6f1bd9ddc84bbaaf16296c0051d # v2.12.2
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          repository: ${{ env.ODIN_REPO }}
-          branch: ${{ env.ODIN_PIN }}
-          release: ""
-          llvm-version: ${{ env.ODIN_LLVM }}
-          build-type: release
-      - uses: extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b # v3
-        with:
-          just-version: "1.58.0"
-
-      # report/pdf falls back through a list of system fonts, failing its
-      # test outright if it finds none; Ubuntu ships none of them, so
-      # fonts-liberation is installed and symlinked where pdf/system.odin
-      # looks, the same fix jm's own test.yml uses. btrfs-progs makes and reads
-      # the image btrfs-test below runs on. cmake and ninja build
-      # Blend2D and SDL3 from source below. libcurl4-openssl-dev
-      # is jm:http's link dependency, pulled in by gui/app through
-      # jm:http/loopback even though loopback itself never opens a socket.
-      - name: packages (linux)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends cmake ninja-build fonts-liberation libcurl4-openssl-dev btrfs-progs
-          sudo mkdir -p /usr/share/fonts/liberation
-          sudo ln -sf /usr/share/fonts/truetype/liberation/*.ttf /usr/share/fonts/liberation/
-
-      # SDL3 for jm:ui/shell, which gui/main.odin (just gui) links.
-      # Ubuntu has no package for it, so it is built from source,
-      # console-only since nothing here opens a window, and installed to
-      # /usr/local/lib, which is on the default linker search path, so
-      # leita's own justfile finds it without changes. macOS links the
-      # static SDL3 jm's sdl3 recipe builds, with the other native
-      # libraries below.
-      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        if: runner.os == 'Linux'
-        id: sdl3-cache
-        with:
-          path: ${{ runner.temp }}/sdl3
-          key: sdl3-${{ env.SDL3_TAG }}-${{ runner.os }}-${{ runner.arch }}-v1
-      - name: sdl3 build (linux)
-        if: runner.os == 'Linux' && steps.sdl3-cache.outputs.cache-hit != 'true'
-        run: |
-          git -c advice.detachedHead=false clone -q --depth 1 --branch "$SDL3_TAG" https://github.com/libsdl-org/SDL "$RUNNER_TEMP/sdl3-src"
-          cmake -S "$RUNNER_TEMP/sdl3-src" -B "$RUNNER_TEMP/sdl3-src/build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/sdl3" -DSDL_UNIX_CONSOLE_BUILD=ON -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF
-          cmake --build "$RUNNER_TEMP/sdl3-src/build" --parallel
-          cmake --install "$RUNNER_TEMP/sdl3-src/build"
-      - name: sdl3 install (linux)
-        if: runner.os == 'Linux'
-        run: |
-          lib=$(dirname "$(find "$RUNNER_TEMP/sdl3" -name 'libSDL3.so*' -print -quit)")
-          sudo cp -P "$lib"/libSDL3.so* /usr/local/lib/
-          sudo ldconfig
-
-      # sqlite3, ui/blend2d and ui/kb are rebuilt only when the jm submodule
-      # moves or the pinned Blend2D/asmjit revisions change; ui/accesskit's
-      # and ui/shell's keys cover their own pinned releases instead, read
-      # the same way below.
-      - name: native library revisions
-        id: rev
-        run: |
-          value() { sed -n "s/^$1 *:= *\"\([^\"]*\)\".*/\1/p" jm/justfile; }
-          {
-            echo "blend2d=$(value blend2d_rev)"
-            echo "asmjit=$(value asmjit_rev)"
-            echo "accesskit=$(value accesskit_ver)"
-            echo "sdl3=$(value sdl3_rev)"
-          } >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        id: libs-cache
-        with:
-          path: |
-            jm/sqlite3/lib
-            jm/ui/blend2d/lib
-            jm/ui/kb/lib
-            jm/ui/accesskit/lib
-            jm/ui/shell/lib
-          key: jmlibs-${{ steps.jm.outputs.sha }}-${{ steps.rev.outputs.blend2d }}-${{ steps.rev.outputs.asmjit }}-${{ steps.rev.outputs.accesskit }}-${{ steps.rev.outputs.sdl3 }}-${{ runner.os }}-${{ runner.arch }}-v2
-
-      # Unix: jm's own [unix] recipes, bash throughout, build sqlite3 and
-      # Blend2D (CMake's default Unix Makefiles generator, no ninja needed)
-      # and kb_text_shape with the platform's cc, and on macOS the static
-      # SDL3 the window links (sdl3 does nothing on Linux, which has the
-      # shared one above).
-      - name: native libraries (unix)
-        if: runner.os != 'Windows' && steps.libs-cache.outputs.cache-hit != 'true'
-        run: cd jm && just sqlite blend2d kb accesskit sdl3
-      # Windows: sqlite3 and kb_text_shape built directly with cl, and
-      # Blend2D fetched at the pinned revisions and built with CMake +
-      # Ninja + clang-cl (MSVC's own cl hits an internal error on Blend2D's
-      # AVX2 deflate decoder), exactly as jm's own test.yml does, bypassing
-      # jm's [windows] recipes for the reason noted at the top of this
-      # file. accesskit's recipe is bash and unaffected, so it still runs
-      # through `just accesskit` below, on every OS.
-      - name: native libraries (windows)
-        if: runner.os == 'Windows' && steps.libs-cache.outputs.cache-hit != 'true'
-        env:
-          MSYS_NO_PATHCONV: 1
-          # Read into the environment rather than expanded inline, so the
-          # text jm/justfile holds is never substituted straight into this
-          # script.
-          BLEND2D_REV: ${{ steps.rev.outputs.blend2d }}
-          ASMJIT_REV: ${{ steps.rev.outputs.asmjit }}
-        run: |
-          value() { sed -n "/^$1 :=/,/[^\\\\]$/p" jm/justfile | grep -o '"[^"]*"' | tr -d '"' | tr -d '\n'; }
-          sqlite_defines=$(value sqlite_defines)
-          mkdir -p jm/sqlite3/lib jm/ui/kb/lib
-          # SC2086 (review:ignore actionlint/shellcheck): sqlite_defines
-          # holds several -D flags that cl must see as separate arguments;
-          # quoting it would pass them as one and sqlite would build
-          # unconfigured. brainfold's release.yml leaves the same pattern
-          # unquoted for the same reason.
-          cl -nologo -O2 -c jm/sqlite3/vendor/sqlite3.c -Fojm/sqlite3/lib/sqlite3.obj $sqlite_defines
-          lib -nologo -OUT:jm/sqlite3/lib/sqlite3.lib jm/sqlite3/lib/sqlite3.obj
-          cl -nologo -std:c11 -O2 -c jm/ui/kb/vendor/kb_text_shape.c -Fojm/ui/kb/lib/kb_text_shape.obj
-          lib -nologo -OUT:jm/ui/kb/lib/kb_text_shape.lib jm/ui/kb/lib/kb_text_shape.obj
-          git -c advice.detachedHead=false clone -q https://github.com/blend2d/blend2d "$RUNNER_TEMP/blend2d"
-          git -C "$RUNNER_TEMP/blend2d" checkout -q "$BLEND2D_REV"
-          git -c advice.detachedHead=false clone -q https://github.com/asmjit/asmjit "$RUNNER_TEMP/blend2d/3rdparty/asmjit"
-          git -C "$RUNNER_TEMP/blend2d/3rdparty/asmjit" checkout -q "$ASMJIT_REV"
-          cmake -S "$RUNNER_TEMP/blend2d" -B "$RUNNER_TEMP/blend2d/build" -G Ninja \
-            -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded \
-            -DCMAKE_BUILD_TYPE=Release -DBLEND2D_STATIC=ON -DBLEND2D_TEST=OFF
-          cmake --build "$RUNNER_TEMP/blend2d/build" --parallel
-          mkdir -p jm/ui/blend2d/lib
-          cp "$RUNNER_TEMP/blend2d/build/blend2d.lib" jm/ui/blend2d/lib/
-      - name: accesskit
-        if: steps.libs-cache.outputs.cache-hit != 'true'
-        run: cd jm && just accesskit
+      # Odin, just, SDL3 on Linux and jm's native libraries, cached.
+      - uses: ./.github/actions/setup
 
       # Type-check both modes. leita's own `check` recipe has no -target:,
       # so it only sees this host's files; the matrix running it on all

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+What Leita.app's window asks of the hardened runtime, which notarisation
+requires. No App Sandbox: Leita reads whole disks, every folder a person can
+reach, and a sandboxed app sees only its container and what the person picks
+in an open panel, so a scan of / or of another volume would find almost
+nothing. Full Disk Access is the person's to grant in System Settings, not an
+entitlement.
+
+allow-jit: Blend2D, which jm:ui draws with, compiles its drawing pipelines at
+run time with asmjit, which maps that code with MAP_JIT; the hardened runtime
+refuses MAP_JIT to a program without this. Nothing else is asked for: the
+window loads no library outside the system's, since SDL3 and the rest are
+linked in statically, so library validation stays on.
+-->
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.cs.allow-jit</key>
+	<true/>
+</dict>
+</plist>

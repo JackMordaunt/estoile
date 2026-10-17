@@ -14,7 +14,7 @@
 #   leita-v1.2.0-linux-amd64.tar.zst     both binaries, the window in app/,
 #   leita-v1.2.0-linux-arm64.tar.zst     for a person to download; app/ since
 #   leita-v1.2.0-windows-amd64.zip       macOS and Windows fold case, so
-#   leita-v1.2.0-darwin-universal.zip    leita and Leita cannot share a
+#                                        leita and Leita cannot share a
 #                                        directory. Windows's carries the
 #                                        window's SDL3.dll and accesskit.dll.
 #   leita-v1.2.0-linux-amd64.AppImage    the window as one file to run
@@ -22,6 +22,10 @@
 #   leita-v1.2.0-linux-amd64.rpm         the desktop entry, the icon and the
 #                                        recorder's unit (just package), and
 #                                        the same three for linux-arm64
+#   leita-v1.2.0-darwin-universal.dmg    Leita.app, the command line inside
+#                                        it, signed, notarised and stapled;
+#                                        -unsigned.dmg instead when the
+#                                        signing secrets are not set
 #   leita-<os>-<arch>[.exe]              each binary alone under a name no
 #   leita-window-<os>-<arch>[.exe]       release changes, which is what
 #                                        jm:selfupdate fetches from
@@ -36,9 +40,10 @@
 #
 # A tag with a pre-release suffix (v1.0.0-rc1) is published as a draft
 # pre-release, for a person to look over and publish; any other tag is
-# published at once. Signing is left to the cards that own it: the
-# executables (Windows, card 541; the macOS .app, card 542) and
-# sha256sums.txt.sig (jm:selfupdate, card 547).
+# published at once. The universal job signs and notarises Leita.app when
+# the MACOS_* secrets are set. Other signing is left to the cards that own
+# it: the Windows executables (card 541) and sha256sums.txt.sig
+# (jm:selfupdate, card 547).
 #
 # The Linux window carries SDL3 inside it and opens libcurl only to activate
 # a licence, so it needs nothing a stock desktop lacks but glibc and
@@ -245,7 +250,7 @@ jobs:
           mkdir -p dist
           cp "build/release/leita$LEITA_EXE" "dist/leita-$LEITA_TARGET$LEITA_EXE"
           cp "build/release/app/Leita$LEITA_EXE" "dist/leita-window-$LEITA_TARGET$LEITA_EXE"
-          case "$LEITA_TARGET" in darwin-*) cp LICENSE.md dist/; exit 0 ;; esac
+          case "$LEITA_TARGET" in darwin-*) exit 0 ;; esac
           root="leita-$LEITA_VERSION-$LEITA_TARGET"
           mkdir -p "pack/$root/app"
           cp "build/release/leita$LEITA_EXE" LICENSE.md "pack/$root/"
@@ -318,15 +323,29 @@ jobs:
 
   # One macOS binary for both architectures, joined with lipo: each slice
   # is a whole linked executable with the static SDL3 already inside, and
-  # keeps the ad-hoc signature its linker gave it. A plain binary for now;
-  # the .app bundle, signed and notarised, is card 542. Run on arm64, where
-  # the arm64 slice runs; the build job ran the x86_64 one natively.
+  # keeps the ad-hoc signature its linker gave it. The universal pair are
+  # the update binaries, and just bundle puts them in Leita.app, which ships
+  # signed and notarised in a .dmg. Run on arm64, where the arm64 slice
+  # runs; the build job ran the x86_64 one natively.
   universal:
     needs: [plan, build]
     runs-on: macos-26
     env:
       LEITA_VERSION: ${{ needs.plan.outputs.version }}
     steps:
+      # The justfile, the icon and tools/macos alone, for just bundle; the
+      # binaries come from the build job, so no Odin and no jm.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          sparse-checkout: |
+            justfile
+            branding/icon.png
+            tools/macos
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - uses: extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b # v3.1.0
+        with:
+          just-version: "1.58.0"
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: darwin-*
@@ -348,13 +367,146 @@ jobs:
             case " $archs " in *" arm64 "*) ;; *) echo "::error::$out is $archs"; exit 1 ;; esac
           done
           dist/leita-darwin-universal --version
-          root="leita-$LEITA_VERSION-darwin-universal"
-          mkdir -p "pack/$root/app"
-          cp dist/leita-darwin-universal "pack/$root/leita"
-          cp dist/leita-window-darwin-universal "pack/$root/app/Leita"
-          cp bin/LICENSE.md "pack/$root/"
-          (cd pack && zip -qry "../dist/$root.zip" "$root")
+      - name: bundle
+        run: |
+          set -euo pipefail
+          just bundle dist/leita-window-darwin-universal dist/leita-darwin-universal
+          app=build/release/Leita.app
+          for f in Info.plist MacOS/Leita Helpers/leita Resources/Leita.icns; do
+            [ -s "$app/Contents/$f" ] || { echo "::error::$app has no Contents/$f"; exit 1; }
+          done
+          plutil -p "$app/Contents/Info.plist"
+          "$app/Contents/Helpers/leita" --version
+
+      # Signed with the Developer ID Application certificate and notarised
+      # when every MACOS_* secret below is set; with none set, as on a fork
+      # or before the certificate exists, the .app is signed ad hoc, which
+      # seals the bundle so Gatekeeper offers Open Anyway rather than calling
+      # it damaged, and ships as -unsigned.dmg under a notice. Some but not
+      # all set is a mistake, and fails. MACOS_SIGNING_IDENTITY may be left
+      # unset: the certificate's own Developer ID Application identity is
+      # used. The certificate lives only in a keychain made for this run,
+      # deleted in the next step.
+      #
+      # The .app is notarised and stapled on its own before it goes in the
+      # .dmg, and the .dmg after: a ticket stapled to the .app travels with
+      # it once dragged to Applications, so a Mac offline at first launch
+      # still opens it, and the .dmg's own ticket covers the mount.
+      # Helpers/leita is signed before the bundle around it, as nested code
+      # must be; --deep would sign it with the window's entitlements, which
+      # it does not need.
+      - name: sign, notarise and dmg
+        env:
+          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          MACOS_NOTARY_APPLE_ID: ${{ secrets.MACOS_NOTARY_APPLE_ID }}
+          MACOS_NOTARY_TEAM_ID: ${{ secrets.MACOS_NOTARY_TEAM_ID }}
+          MACOS_NOTARY_PASSWORD: ${{ secrets.MACOS_NOTARY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          app=build/release/Leita.app
+          entitlements=tools/macos/Leita.entitlements
+          set_count=0
+          for name in MACOS_CERTIFICATE_P12 MACOS_CERTIFICATE_PASSWORD MACOS_NOTARY_APPLE_ID MACOS_NOTARY_TEAM_ID MACOS_NOTARY_PASSWORD; do
+            if [ -n "${!name}" ]; then set_count=$((set_count + 1)); fi
+          done
+          case $set_count in
+            0) signed=false ;;
+            5) signed=true ;;
+            *) echo "::error::$set_count of the 5 MACOS_* signing and notary secrets are set; set all or none"; exit 1 ;;
+          esac
+
+          # notarise submits a file and waits for Apple's verdict, failing
+          # with Apple's log unless it is Accepted: notarytool's own exit
+          # status says only that the submission went through.
+          notarise() {
+            local result id status
+            result=$(xcrun notarytool submit "$1" --apple-id "$MACOS_NOTARY_APPLE_ID" --team-id "$MACOS_NOTARY_TEAM_ID" \
+              --password "$MACOS_NOTARY_PASSWORD" --wait --output-format json)
+            id=$(plutil -extract id raw -o - - <<<"$result")
+            status=$(plutil -extract status raw -o - - <<<"$result")
+            echo "notarytool: $1: $status ($id)"
+            if [ "$status" != Accepted ]; then
+              xcrun notarytool log "$id" --apple-id "$MACOS_NOTARY_APPLE_ID" --team-id "$MACOS_NOTARY_TEAM_ID" --password "$MACOS_NOTARY_PASSWORD" || true
+              echo "::error::notarisation of $1 was $status"
+              exit 1
+            fi
+          }
+
+          if [ "$signed" = true ]; then
+            keychain="$RUNNER_TEMP/leita-signing.keychain-db"
+            keychain_password=$(openssl rand -hex 24)
+            security create-keychain -p "$keychain_password" "$keychain"
+            security set-keychain-settings -lut 3600 "$keychain"
+            security unlock-keychain -p "$keychain_password" "$keychain"
+            base64 --decode <<<"$MACOS_CERTIFICATE_P12" > "$RUNNER_TEMP/leita-signing.p12"
+            security import "$RUNNER_TEMP/leita-signing.p12" -k "$keychain" -f pkcs12 \
+              -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+            rm -f "$RUNNER_TEMP/leita-signing.p12"
+            security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" >/dev/null
+            # The search list gains the new keychain, keeping the runner's
+            # own, which hold Apple's intermediate certificates.
+            # A read loop, not mapfile: the job's bash may be the system's 3.2.
+            keychains=()
+            while IFS= read -r line; do keychains+=("$line"); done < <(security list-keychains -d user | sed 's/^ *"//; s/"$//')
+            security list-keychains -d user -s "$keychain" "${keychains[@]}"
+            identity=$MACOS_SIGNING_IDENTITY
+            if [ -z "$identity" ]; then
+              identity=$(security find-identity -v -p codesigning "$keychain" | sed -n 's/.*"\(Developer ID Application: .*\)"$/\1/p' | head -n 1)
+            fi
+            [ -n "$identity" ] || { echo "::error::the certificate holds no Developer ID Application identity"; exit 1; }
+            sign=(codesign --force --options runtime --timestamp --keychain "$keychain" --sign "$identity")
+          else
+            echo "::notice::no MACOS_* signing secrets: Leita.app is signed ad hoc, not notarised, and ships as -unsigned.dmg; Gatekeeper will stop it at first launch"
+            sign=(codesign --force --options runtime --sign -)
+          fi
+
+          "${sign[@]}" "$app/Contents/Helpers/leita"
+          "${sign[@]}" --entitlements "$entitlements" "$app"
+          codesign --verify --strict --verbose=2 "$app"
+          codesign --display --entitlements - "$app"
+
+          if [ "$signed" = true ]; then
+            ditto -c -k --keepParent "$app" "$RUNNER_TEMP/Leita.zip"
+            notarise "$RUNNER_TEMP/Leita.zip"
+            xcrun stapler staple "$app"
+            xcrun stapler validate "$app"
+            spctl --assess --type execute --verbose=2 "$app"
+            dmg="dist/leita-$LEITA_VERSION-darwin-universal.dmg"
+          else
+            dmg="dist/leita-$LEITA_VERSION-darwin-universal-unsigned.dmg"
+          fi
+
+          # A plain disk image: the .app, and a link to /Applications to
+          # drag it onto.
+          stage="$RUNNER_TEMP/dmg"
+          rm -rf "$stage"
+          mkdir -p "$stage"
+          ditto "$app" "$stage/Leita.app"
+          ln -s /Applications "$stage/Applications"
+          hdiutil create -volname Leita -srcfolder "$stage" -fs HFS+ -format UDZO -ov "$dmg"
+
+          if [ "$signed" = true ]; then
+            codesign --force --timestamp --keychain "$keychain" --sign "$identity" "$dmg"
+            notarise "$dmg"
+            xcrun stapler staple "$dmg"
+            xcrun stapler validate "$dmg"
+            spctl --assess --type open --context context:primary-signature --verbose=2 "$dmg"
+          fi
+          hdiutil verify "$dmg"
+          # What a person gets: the image mounts, holds the link, and the
+          # window inside it runs, as leita does when given a flag.
+          mount="$RUNNER_TEMP/leita-dmg"
+          hdiutil attach -nobrowse -readonly -mountpoint "$mount" "$dmg"
+          [ -L "$mount/Applications" ] || { echo "::error::$dmg has no Applications link"; exit 1; }
+          "$mount/Leita.app/Contents/MacOS/Leita" --version
+          codesign --verify --strict "$mount/Leita.app"
+          hdiutil detach "$mount"
           ls -l dist
+      - name: delete the signing keychain
+        if: always()
+        run: security delete-keychain "$RUNNER_TEMP/leita-signing.keychain-db" 2>/dev/null || true
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: dist-darwin-universal

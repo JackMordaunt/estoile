@@ -19,8 +19,12 @@ Projection :: struct {
 	// What to call the root. NTFS names it ".", which says nothing in a path, and the
 	// caller is the one that knows where the volume is mounted. Setting it here rather
 	// than afterwards keeps a watching thread from ever catching the placeholder.
-	root_name:  string,
-	root:       scan.Name, // root_name, copied into the tree once
+	root_name:   string,
+	root:        scan.Name, // root_name, copied into the tree once
+	// The record to root the tree at, found by the caller without reading the table
+	// at all. RECORD_ROOT, the volume's own root, unless set: a subtree the caller
+	// could not address directly still gets a true tree, just the whole volume's.
+	root_record: u32,
 	links_done: int,
 	settled:    []u64, // one bit per record
 	allocator:  mem.Allocator,
@@ -75,6 +79,9 @@ to_tree :: proc(m: ^Mft, t: ^scan.Tree, p: ^Projection) -> scan.Error {
 	if err := scan.reserve(t, u32(len(m.entries) + links)); err != nil {
 		return err
 	}
+	// Found outside the table (scan/target_windows.odin asks Windows for it, not
+	// the MFT), so a volume that shrank since is checked rather than trusted.
+	root := p.root_record if p.root_record != 0 && int(p.root_record) < len(m.entries) else RECORD_ROOT
 	if p.settled == nil {
 		p.allocator = t.allocator
 		bits, err := make([]u64, (len(m.entries) + 63) / 64, p.allocator)
@@ -117,6 +124,12 @@ to_tree :: proc(m: ^Mft, t: ^scan.Tree, p: ^Projection) -> scan.Error {
 			flags |= {.Reparse}
 		}
 		parent, settled := entry_parent_settled(m, i)
+		// The chosen root is rooted at itself, same as the volume's own root
+		// naturally is, so a subtree reads as whole as a volume does: nothing
+		// above it in the table reaches the tree through a parent link.
+		if i == root {
+			parent, settled = i, true
+		}
 		n.parent = parent
 		if settled {
 			flags |= {.Settled}
@@ -143,9 +156,9 @@ to_tree :: proc(m: ^Mft, t: ^scan.Tree, p: ^Projection) -> scan.Error {
 	}
 	p.links_done = links
 
-	t.root = RECORD_ROOT
+	t.root = root
 	if p.root_name != "" {
-		scan.node(t, RECORD_ROOT).name = p.root
+		scan.node(t, root).name = p.root
 	}
 	t.nodes_done = used
 	t.bytes_done = bytes

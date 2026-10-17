@@ -8,6 +8,11 @@ package version
 // justfile's version, from git describe); "dev" otherwise.
 VERSION :: #config(LEITA_VERSION, "dev")
 
+// YEAR is the year of this build, for the copyright line, set with
+// -define:LEITA_YEAR=n by whatever builds leita (the justfile's year, from the
+// date it is built); 2026 otherwise, the year LICENSE.md carries.
+YEAR :: #config(LEITA_YEAR, 2026)
+
 // PRODUCT is the product's name as the window and its messages spell it: the
 // toolbar, the window's title, the About dialog, and every message that names
 // the product.

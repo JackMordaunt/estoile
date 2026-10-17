@@ -71,7 +71,7 @@ about_dialog :: proc(gtx: ^ui.Ctx, m: ^Model) {
 		}
 		primer.text(
 			gtx,
-			fmt.aprintf("© %s", BUSINESS, allocator = gtx.allocator),
+			fmt.aprintf("© %d %s", version.YEAR, BUSINESS, allocator = gtx.allocator),
 			.Small,
 			color = primer.color(.Fg_Color_Muted),
 		)

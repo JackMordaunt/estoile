@@ -40,9 +40,11 @@ jm    := env("JM", root / "jm")
 # described, or a bare commit as git describe names one, g and its hash, so Odin
 # never reads it as a number; dev without git. LEITA_VERSION=<v> sets it instead.
 version := env("LEITA_VERSION", `git describe --tags --dirty 2>/dev/null || { h=$(git describe --always --dirty 2>/dev/null) && echo "g$h"; } || echo dev`)
+# The year of this build, for the copyright line. LEITA_YEAR=<n> sets it.
+year := env("LEITA_YEAR", `date +%Y`)
 # check_flags is what odin check takes; flags adds the macOS minimum, which
 # only build, run and test accept.
-check_flags := "-vet -strict-style -collection:jm=" + jm + " -define:LEITA_VERSION=" + version + " -define:LEITA_SHORT=" + short
+check_flags := "-vet -strict-style -collection:jm=" + jm + " -define:LEITA_VERSION=" + version + " -define:LEITA_SHORT=" + short + " -define:LEITA_YEAR=" + year
 flags := check_flags + minos
 # macOS 11.0 is the oldest Odin targets, and jm builds its native libraries
 # for it. Without the flag a binary carries the building Mac's own version as

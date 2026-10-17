@@ -1,5 +1,6 @@
 package leita_view
 
+import "core:fmt"
 import "core:testing"
 
 import "jm:ui"
@@ -7,6 +8,7 @@ import "jm:ui/ops"
 import "jm:ui/primer"
 import "jm:ui/render"
 
+import "../../version"
 import "../notices"
 
 @(private = "file")
@@ -22,8 +24,8 @@ about_frame :: proc(gtx: ^ui.Ctx, user: rawptr) {
 	notices_dialog(gtx, m)
 }
 
-// About in the settings menu opens About, which names the product, its version
-// and its maker and links to its page; Close closes it.
+// About in the settings menu opens About, which names the product, its version,
+// its maker and the year of the build, and links to its page; Close closes it.
 @(test)
 about_names_the_product_and_its_maker :: proc(t: ^testing.T) {
 	m: Model
@@ -38,11 +40,12 @@ about_names_the_product_and_its_maker :: proc(t: ^testing.T) {
 	render.headless_init(&h, about_frame, &m, {900, 700}, fonts)
 	defer render.headless_destroy(&h)
 
-	testing.expect(t, !ui.probe_tagged(&h.p, "© Librium LLC"), "closed to begin with")
+	copyright := fmt.tprintf("© %d %s", version.YEAR, BUSINESS)
+	testing.expect(t, !ui.probe_tagged(&h.p, copyright), "closed to begin with")
 	testing.expect(t, choose(&h.p, &m, "About Leita"))
 	ui.probe_advance(&h.p, 10, 1.0 / 60)
 	testing.expect(t, m.about_open)
-	testing.expect(t, ui.probe_tagged(&h.p, "© Librium LLC"), "the maker")
+	testing.expect(t, ui.probe_tagged(&h.p, copyright), "the maker and the year")
 	testing.expect(t, ui.probe_tagged(&h.p, "mordaunt.dev/leita"), "the product's page")
 	testing.expect(t, ui.probe_click_top(&h.p, "Close"))
 	ui.probe_advance(&h.p, 10, 1.0 / 60)

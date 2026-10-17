@@ -11,7 +11,7 @@
 
 <p align="center">See what is filling any drive the moment you open it, then hand the answer on as a report.</p>
 
-<p align="center"><b>Free to scan and clean up</b> · reports with a licence · source published · no telemetry · Linux, Windows and macOS</p>
+<p align="center"><b>Free to scan and clean up for personal use</b> · reports with a licence · source published · no telemetry · Linux, Windows and macOS</p>
 
 <p align="center">
   <a href="branding/demo.mp4"><img src="branding/demo-poster.png" style="border-radius: 12px; box-shadow: 0 22px 70px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(0, 0, 0, 0.12);" alt="leita scanning a disk: the sunburst, treemap and icicle views fill in as the scan runs, in the light theme and then the dark" width="900"></a>
@@ -41,7 +41,7 @@ off on a new disk, **HTML** to share, **CSV** for a spreadsheet, **JSON** for
 your own tools. Each report lists the largest folders and files, how full
 the disk is, and what can be cleaned up.
 
-Reports come with a licence. Try them free for the first 30 days.
+Reports need a licence. The first 30 days are a free trial.
 
 ## See what changed
 
@@ -78,8 +78,8 @@ are not. btrfs subvolumes, which / and /home usually are on Fedora and openSUSE,
 are not recorded yet; a scan there asks each folder as before. A scan says which it
 used: "(recorded changes)" or "(folder times)".
 
-Comparing scans comes with a licence too, with the same 30-day trial. leita
-keeps every scan either way, so your history is all there when you add one.
+Comparing scans needs a licence too. leita keeps every scan either way, so your
+history is all there when you add one.
 
 ## Scheduled scans
 
@@ -111,8 +111,7 @@ the scan it first appears, and again only after it has cleared:
 leita monitor add D: --warn-used 80 --fail-used 95 --min-free 20GB --full-within 14 --growth
 ```
 
-Scheduled scans and their alerts come with a licence, with the same 30-day
-trial.
+Scheduled scans and their alerts need a licence, with the same 30-day trial.
 
 ## Free up space, safely
 
@@ -143,7 +142,7 @@ Open **Leita** and pick a drive or folder. To scan a whole drive, run it as
 an administrator.
 
 Prefer the terminal? The `leita` command does the same, and writes reports
-too, under a licence or during the trial. `le` is the same command, shorter:
+too, under a licence. `le` is the same command, shorter:
 
 ```sh
 leita D: --report usage.pdf
@@ -158,8 +157,8 @@ Leita.app/Contents/MacOS/Leita ~ --report usage.pdf
 
 ## Scripts and monitoring
 
-Alert from your RMM tool the moment a drive passes 90% used, no report and no
-licence required. `--warn-used` and `--fail-used` check the percent used,
+Alert from your RMM tool the moment a drive passes 90% used, without writing a
+report. `--warn-used` and `--fail-used` check the percent used,
 `--min-free` checks the bytes still free, and leita exits with a code your
 script or RMM tool (NinjaOne, Datto, ConnectWise, ...) can act on:
 
@@ -184,16 +183,17 @@ plain there too.
 
 ## Licensing
 
-**Scanning, the charts and Reclaim are free for personal use.** That covers
-your own computer, your own studies, and unpaid hobby or open-source work.
+**Scanning, the charts and Reclaim are free for personal use**: your own
+computer, your own studies, and unpaid hobby or open-source work.
 
-**Reports, change tracking and scheduled scans need a licence.** They work
-for 30 days from the first time you run leita, so you can try them first. To add a licence,
-choose **Licence** in the settings menu and paste the licence key from your receipt.
+**Reports, change tracking and monitoring need a licence.** They work for 30
+days from the first time you run leita, so you can try them first.
 
-**Organisations need a commercial licence for any use.** This applies to
-businesses, sole traders, schools, charities and government. You can
-evaluate leita for 30 days before you buy. The full terms are in
+**An organisation may evaluate leita for 30 days, then needs a licence for any
+use.** That covers businesses, sole traders, schools, charities and government.
+
+To add a licence, choose **Licence** in the settings menu and paste the licence
+key from your receipt. What counts as personal use, and the rest of the terms, are in
 [LICENSE.md](LICENSE.md).
 
 ## Build from source

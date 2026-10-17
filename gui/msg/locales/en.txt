@@ -253,7 +253,7 @@ add_licence = Add licence
 licensed_to = Licensed to {0}
 # {0} the tier, {1} the order, {2} the date issued
 licence_details = {0} · order {1} · issued {2}
-licence_terms = Scanning, the charts and Reclaim are free for personal use. Reports and change tracking need a licence. An organisation needs one for any use once its 30-day evaluation ends.
+licence_terms = Scanning, the charts and Reclaim are free for personal use. Reports, change tracking and monitoring need a licence, after a 30-day trial. An organisation may evaluate leita for 30 days, then needs a licence for any use.
 trial_left.one = You can try reports and change tracking for {0} more day.
 trial_left = You can try reports and change tracking for {0} more days.
 buy_licence = Buy a licence
@@ -266,7 +266,7 @@ licence_to_add = Licence to add
 licence_privacy = {0} sends the key once, to mordaunt.dev, to fetch your licence. It sends nothing else, then or later.
 open_licence_file = Open licence file…
 trial_ended_title = Your 30-day trial of reports and change tracking has ended
-trial_ended_body = Scanning, the charts and Reclaim stay free. A licence brings back reports and what changed since the last scan.
+trial_ended_body = Scanning, the charts and Reclaim stay free for personal use. A licence brings back reports, change tracking and monitoring. An organisation needs one for any use after its 30-day evaluation.
 reports_locked = Exporting reports needs a licence now the 30-day trial has ended.
 # {0} the product's name
 change_locked = Seeing what changed since the last scan needs a licence now the 30-day trial has ended. {0} still keeps every scan, so it is all there once you add one.

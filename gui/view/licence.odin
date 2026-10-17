@@ -171,9 +171,9 @@ send_licence :: proc(gtx: ^ui.Ctx, m: ^Model, r: ^query.Licence_Result, text: st
 }
 
 /*
-trial_banner says, once the trial is over and leita runs under no licence, that
-reports and change tracking now need one, and that the rest stays free.
-Dismissed, it stays away until leita next starts.
+trial_banner says, once the trial is over and leita runs under no licence, who
+may keep using it, in the same words as the licence dialog. Dismissed, it stays
+away until leita next starts.
 */
 @(private)
 trial_banner :: proc(gtx: ^ui.Ctx, m: ^Model) {

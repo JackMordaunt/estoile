@@ -611,11 +611,8 @@ Kind :: enum {
 	directories,
 }
 
-// Whether i lies under root, memoizing the climb so a chain shared by siblings is
-// walked once. The MFT reader loads the whole volume even when asked for a
-// subtree, rooting the tree below the volume's own root rather than at it, so
-// without this a subtree's ranking would include whatever the rest of the volume
-// holds, root among them.
+// Whether a node lies under the scan root. Unknown until a climb decides;
+// Outside only once a climb has ended on a different root.
 @(private = "file")
 Under_State :: enum u8 {
 	Unknown,
@@ -623,73 +620,90 @@ Under_State :: enum u8 {
 	Outside,
 }
 
+// One ranking pass's memory of that. The chain grows with the tree: a fixed
+// cap both dropped a file past it and remembered those ancestors as outside,
+// so every sibling under them was dropped too. rank holds one for the pass,
+// and the summary prints that same ranking.
 @(private = "file")
-under_root :: proc(t: ^scan.Tree, roll: ^survey.Rollup, root: u32, known: []Under_State, i: u32) -> bool {
-	chain: [64]u32
-	depth := 0
+Under :: struct {
+	t:     ^scan.Tree,
+	roll:  ^survey.Rollup,
+	known: []Under_State,
+	chain: [dynamic]u32,
+}
+
+@(private = "file")
+under_open :: proc(t: ^scan.Tree, roll: ^survey.Rollup) -> Under {
+	// Not the temp allocator: a live scan ranks every pass, as fast as it
+	// can, with nothing in that loop ever resetting it.
+	return {
+		t = t,
+		roll = roll,
+		known = make([]Under_State, roll.seen),
+		chain = make([dynamic]u32, 0, 16),
+	}
+}
+
+@(private = "file")
+under_close :: proc(u: ^Under) {
+	delete(u.known)
+	delete(u.chain)
+}
+
+// True when i is the scan root or lies under it. The MFT reader loads the
+// whole volume even when asked for a subtree, rooting the tree below the
+// volume's own root rather than at it, so without this a subtree's ranking
+// would include whatever the rest of the volume holds, root among them.
+// A climb that stops short — a parent the rollup has not seen, or a cycle —
+// remembers nothing: those nodes stay unknown, and a later sibling is
+// classified from its own walk.
+@(private = "file")
+under_root :: proc(u: ^Under, i: u32) -> bool {
+	clear(&u.chain)
 	cur := i
-	state := Under_State.Outside
+	state := Under_State.Unknown
+	root := u.t.root
 	for {
 		if cur == root {
 			state = .Inside
 			break
 		}
-		if known[cur] != .Unknown {
-			state = known[cur]
+		if u.known[cur] != .Unknown {
+			state = u.known[cur]
 			break
 		}
-		if depth == len(chain) {
+		parent := scan.node(u.t, cur).parent
+		// Ended on a root, and it is not the scan's: the chain is outside.
+		if parent == cur {
+			state = .Outside
+			append(&u.chain, cur)
 			break
 		}
-		chain[depth] = cur
-		depth += 1
-		parent := scan.node(t, cur).parent
-		if parent == cur || parent >= roll.seen {
-			break
+		if parent >= u.roll.seen || len(u.chain) >= int(u.roll.seen) {
+			return false
 		}
+		append(&u.chain, cur)
 		cur = parent
 	}
-	for j := depth - 1; j >= 0; j -= 1 {
-		known[chain[j]] = state
+	for j := len(u.chain) - 1; j >= 0; j -= 1 {
+		u.known[u.chain[j]] = state
 	}
 	return state == .Inside
 }
 
-// The directories that hold the most, largest first.
-rank :: proc(t: ^scan.Tree, roll: ^survey.Rollup, top: []Sized) -> int {
+// The largest files or directories under the scan root, largest first, and how
+// many were kept. Directories when kind is left out: the live scan ranks those
+// every pass, and the summary prints both through here.
+rank :: proc(t: ^scan.Tree, roll: ^survey.Rollup, top: []Sized, kind := Kind.directories) -> int {
 	count := 0
-	// Not the temp allocator: a live scan calls this every pass, as fast as it can,
-	// with nothing in that loop ever resetting it.
-	known := make([]Under_State, roll.seen, context.allocator)
-	defer delete(known)
+	u := under_open(t, roll)
+	defer under_close(&u)
 	// Bounded by what the rollup has seen rather than the tree: a reader may hand out
 	// more slots while this runs, and those have not been charged yet.
 	for i in 0 ..< roll.seen {
-		f := scan.node_flags(scan.node(t, i))
-		if .Used not_in f || .Directory not_in f || i == t.root {
-			continue
-		}
-		if !under_root(t, roll, t.root, known, i) {
-			continue
-		}
-		bytes := survey.total(roll, i)
-		if bytes == 0 {
-			continue
-		}
-		top_n(top, &count, Sized{bytes = bytes, record = i})
-	}
-	return count
-}
-
-print_largest :: proc(t: ^scan.Tree, roll: ^survey.Rollup, kind: Kind) {
-	top: [TOP_N]Sized
-	count := 0
-	known := make([]Under_State, roll.seen, context.allocator)
-	defer delete(known)
-	for i in 0 ..< roll.seen {
 		n := scan.node(t, i)
 		flags := scan.node_flags(n)
-		if .Used not_in flags || !under_root(t, roll, t.root, known, i) {
+		if .Used not_in flags {
 			continue
 		}
 		bytes: u64
@@ -705,11 +719,19 @@ print_largest :: proc(t: ^scan.Tree, roll: ^survey.Rollup, kind: Kind) {
 			}
 			bytes = survey.total(roll, i)
 		}
-		if bytes == 0 {
+		// Climb before dropping an empty one, so a later sibling of it still
+		// finds the ancestors already classified.
+		if !under_root(&u, i) || bytes == 0 {
 			continue
 		}
-		top_n(top[:], &count, Sized{bytes = bytes, record = i})
+		top_n(top, &count, Sized{bytes = bytes, record = i})
 	}
+	return count
+}
+
+print_largest :: proc(t: ^scan.Tree, roll: ^survey.Rollup, kind: Kind) {
+	top: [TOP_N]Sized
+	count := rank(t, roll, top[:], kind)
 	say_heading(fmt.tprintf("largest %v", kind), count)
 	// Every path starts with the scanned place; dim, it lets the tail that
 	// differs stand out. The place itself, among the directories, stays whole.

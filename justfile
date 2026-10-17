@@ -339,6 +339,12 @@ install: (cli "release")
     fi
     echo "installed $dest/{{bin}} and $dest/{{short}}"
 
+# An NTFS folder read from the MFT against a walk of it, from an elevated prompt
+# on Windows, optimised and without the sanitizer: just mft-bench 'C:\Windows'
+mft-bench folder: sqlite
+    mkdir -p build/test
+    LEITA_BENCH_MFT='{{folder}}' {{odin}} test survey -o:speed {{flags}} -define:ODIN_TEST_NAMES=survey.bench_a_folder_from_the_mft_against_a_walk -out:build/test/mft-bench{{exe}}
+
 # leita against fd on one seeded tree: the host filesystem, then throw-away
 # ext4 and btrfs images, then tmpfs. Loop images sit on this disk, so they
 # are not a raw drive. Warm cache only. `just fsbench "--files 20000"`

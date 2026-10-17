@@ -1547,9 +1547,11 @@ reclaim_empties_the_trash_it_found :: proc(t: ^testing.T) {
 		nil,
 	)
 	sync.guard(&trash_env)
-	home := strings.clone(os.get_env("HOME", context.temp_allocator), context.temp_allocator)
-	testing.expect(t, os.set_env("HOME", root) == nil)
-	defer os.set_env("HOME", home)
+	// What package home reads the home from: Windows names a profile, not HOME.
+	HOME :: "USERPROFILE" when ODIN_OS == .Windows else "HOME"
+	home := strings.clone(os.get_env(HOME, context.temp_allocator), context.temp_allocator)
+	testing.expect(t, os.set_env(HOME, root) == nil)
+	defer os.set_env(HOME, home)
 
 	r: Rig
 	rig_open(&r, root)

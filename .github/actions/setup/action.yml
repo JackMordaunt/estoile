@@ -68,10 +68,11 @@ runs:
       with:
         just-version: "1.58.0"
 
-    # report/pdf falls back through a list of system fonts, failing its
-    # test outright if it finds none; Ubuntu ships none of them, so
-    # fonts-liberation is installed and symlinked where pdf/system.odin
-    # looks, the same fix jm's own test.yml uses. btrfs-progs
+    # report/pdf sets text in the first of a list of system fonts, and in
+    # the Liberation Sans it carries where none is there; Ubuntu ships none
+    # of them, so fonts-liberation is installed and symlinked where
+    # pdf/system.odin looks, as jm's own test.yml does, and both paths are
+    # tested. btrfs-progs
     # makes and reads the image test.yml's btrfs-test runs on. cmake and
     # ninja build Blend2D and SDL3 from source. The -dev packages after them
     # are the headers SDL3 needs to build its X11, Wayland, input and sound

@@ -76,8 +76,7 @@ FORMAT_NAMES := [Format]string {
 /*
 export writes r to w as format, a PDF on paper. It is the one call every export
 goes through, the command line's and the window's, so whatever decides who may
-export wraps this alone. Nothing is written to w when the format cannot be made,
-as a PDF on a machine with no font to set it in.
+export wraps this alone. Nothing is written to w when the format cannot be made.
 */
 export :: proc(w: io.Writer, r: ^Report, format: Format, paper := Paper.A4) -> Error {
 	sb := strings.builder_make(context.temp_allocator)

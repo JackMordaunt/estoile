@@ -243,6 +243,34 @@ truetype_subsets_keep_only_drawn_glyphs :: proc(t: ^testing.T) {
 	testing.expect_value(t, sfnt_checksum(out[:]), 0xB1B0AFBA)
 }
 
+// On a machine with no font installed, text is set in the Liberation Sans the
+// package carries, regular and bold: Latin, accented, Greek and Cyrillic all
+// drawn, none as .notdef, and the bold face embedded as a font of its own.
+@(test)
+a_machine_without_fonts_sets_text_in_the_carried_face :: proc(t: ^testing.T) {
+	doc: Document
+	init(&doc)
+	defer destroy(&doc)
+	doc.compress = false
+	bold: Font
+	font, ok := add_system_fonts(&doc, &bold, installed = false)
+	if !testing.expect(t, ok, "the carried face did not load") {
+		return
+	}
+	testing.expect(t, bold != font, "no bold face beside the regular")
+	add_page(&doc)
+	text := "Größe, café, Ærøskøbing, Ελλάδα, Привет"
+	draw_text(&doc, 50, 60, text, font, 12)
+	draw_text(&doc, 50, 80, "Largest", bold, 12)
+	for r in text {
+		testing.expectf(t, glyph(doc.fonts[font], r) != 0, "%q drawn as .notdef", r)
+	}
+	data := to_bytes(&doc)
+	defer delete(data)
+	xref_ok(t, data)
+	testing.expect(t, contains(data, "LiberationSans-Bold"), "the bold face is not embedded")
+}
+
 // Latin, accented, CJK and emoji text in the fonts this machine has: the CJK
 // is set in the fallback when there is one, and the CFF subset holds the
 // glyphs drawn, with no subroutines left. Skipped where no system font is.
@@ -251,9 +279,8 @@ unicode_text_in_system_fonts :: proc(t: ^testing.T) {
 	doc: Document
 	init(&doc)
 	defer destroy(&doc)
-	// A machine with none of SYSTEM_FONTS cannot set a report: that fails.
 	font, ok := add_system_fonts(&doc)
-	if !testing.expect(t, ok, "add_system_fonts found none of SYSTEM_FONTS") {
+	if !testing.expect(t, ok, "add_system_fonts found no font, not even its own") {
 		return
 	}
 	add_page(&doc)

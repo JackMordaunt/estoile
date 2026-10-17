@@ -8,15 +8,16 @@ them with nothing else installed.
 The list follows jm's THIRD_PARTY.md, narrowed to what the window imports:
 jm itself, Odin's core and SDL3, Blend2D and asmjit to draw, the odin-blend2d
 binding, kb_text_shape to shape text, AccessKit for screen readers, SQLite for
-the history, libcurl for the one licence request, and Primer's tokens,
-behaviours and Octicons. Windows builds link the libcurl.lib Odin bundles,
+the history, libcurl for the one licence request, Primer's tokens, behaviours
+and Octicons, and the Liberation Sans pdf carries for reports. Windows builds link the libcurl.lib Odin bundles,
 which carries mbedTLS and zlib (jm/http/http.odin, THIRD_PARTY.md), and list
 them too.
 
 Where each text came from: jm/LICENSE; odin root's LICENSE and
 vendor/sdl3/LICENSE.txt; jm's `just blend2d` checkouts' LICENSE.md;
 jm/ui/blend2d/LICENSE; jm/ui/kb/vendor/LICENSE; the accesskit-c 0.23.1 release
-archive's LICENSE-MIT and LICENSE.chromium; curl's COPYING; the LICENSE of
+archive's LICENSE-MIT and LICENSE.chromium; curl's COPYING; pdf/fonts/LICENSE,
+from the liberation-fonts-ttf-2.1.5 release; the LICENSE of
 each package under jm/tools/primer/upstream/npm; madler/zlib's and
 Mbed-TLS/mbedtls's LICENSE. To add a component, copy its notice into text/ and
 add it here.
@@ -50,6 +51,12 @@ ALL := [?]Notice {
 		"Zlib",
 		"https://github.com/JimmyLefevre/kb",
 		#load("text/kb_text_shape.txt", string),
+	},
+	{
+		"Liberation Sans",
+		"OFL-1.1",
+		"https://github.com/liberationfonts/liberation-fonts",
+		#load("text/liberation.txt", string),
 	},
 	{"Odin", "Zlib", "https://odin-lang.org", #load("text/odin.txt", string)},
 	{

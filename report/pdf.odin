@@ -23,15 +23,19 @@ and files, what it holds by kind, and Reclaim's groups when asked for. Every
 page's foot names the target and says "Page n of N", and a table that runs
 onto another page starts there again with its title and column heads.
 
-Text is set in the machine's own fonts (pdf.add_system_fonts), embedded, with
+Text is set in the machine's own fonts, or the Liberation Sans pdf carries
+where it has no sans-serif (pdf.add_system_fonts), embedded, with
 the ToUnicode maps pdf writes: pdftotext gave back Latin, Cyrillic, CJK and
 emoji names from one on 2026-10-09, the emoji drawn as boxes, having no font.
 A path too long for its column is wrapped onto a second line (path_lines); one
 too long for two keeps its start and its end, the middle left out for an
-ellipsis, so the text layer holds that path cut, not whole. On a machine with
-no font: No_Font, and nothing is written.
+ellipsis, so the text layer holds that path cut, not whole. No_Font, and
+nothing written, only should the carried face fail to load.
+
+installed false sets it in the carried face alone, as on a machine with no
+fonts, for tests.
 */
-write_pdf :: proc(w: io.Writer, r: ^Report, paper: Paper) -> Error {
+write_pdf :: proc(w: io.Writer, r: ^Report, paper: Paper, installed := true) -> Error {
 	doc: pdf.Document
 	pdf.init(&doc)
 	defer pdf.destroy(&doc)
@@ -40,7 +44,7 @@ write_pdf :: proc(w: io.Writer, r: ^Report, paper: Paper) -> Error {
 		r     = r,
 		sheet = PAPER_SIZES[paper],
 	}
-	regular, ok := pdf.add_system_fonts(&doc, &p.bold)
+	regular, ok := pdf.add_system_fonts(&doc, &p.bold, installed)
 	if !ok {
 		return .No_Font
 	}

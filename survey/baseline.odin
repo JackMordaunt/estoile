@@ -122,7 +122,7 @@ baseline_save :: proc(path, place: string, t: ^scan.Tree, cursor: changes.Cursor
 		os.remove(temporary)
 		return false
 	}
-	if os.rename(temporary, path) != nil {
+	if !replace(temporary, path) {
 		os.remove(temporary)
 		return false
 	}

@@ -82,6 +82,7 @@ FILE_ERRORS := [files.Error]msg.Msg {
 	.Not_Directory = .File_Not_Directory,
 	.Partly        = .File_Partly,
 	.Mount_Point   = .File_Mount_Point,
+	.Not_Yours     = .File_Not_Yours,
 	.Unsupported   = .File_Unsupported,
 	.Other         = .File_Other,
 }

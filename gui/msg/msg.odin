@@ -274,6 +274,7 @@ Msg :: enum u16 {
 	File_Not_Directory,
 	File_Partly,
 	File_Mount_Point,
+	File_Not_Yours,
 	File_Unsupported,
 	File_Other,
 	Name_Empty,

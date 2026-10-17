@@ -536,3 +536,32 @@ within_compares_as_the_platform_does :: proc(t: ^testing.T) {
 	rel, ok = within("/opt", "/opt", .Unix)
 	testing.expect(t, ok && rel == "")
 }
+
+// As root, Reclaim deletes only what the person sudo ran it for could: a folder
+// under their home that they own. Run as anyone else, the system decides.
+@(test)
+root_deletes_only_the_invokers_own_under_their_home :: proc(t: ^testing.T) {
+	ann := home.User{"/home/ann/", "1000"}
+	mine := "/home/ann/src/web/node_modules"
+	testing.expect(t, root_may_delete(mine, 1000, ann, 0, .Unix))
+	testing.expect(
+		t,
+		!root_may_delete(mine, 1001, ann, 0, .Unix),
+		"another's folder in ann's home",
+	)
+	testing.expect(t, !root_may_delete(mine, 0, ann, 0, .Unix), "root's folder in ann's home")
+	bobs := "/home/bob/proj/node_modules"
+	testing.expect(t, !root_may_delete(bobs, 1001, ann, 0, .Unix), "bob's, under his home")
+	testing.expect(t, !root_may_delete(bobs, 1000, ann, 0, .Unix), "ann's, outside her home")
+	testing.expect(
+		t,
+		!root_may_delete("/home/annex/x", 1000, ann, 0, .Unix),
+		"a name that starts alike",
+	)
+	testing.expect(t, !root_may_delete("/home/ann", 1000, ann, 0, .Unix), "the home itself")
+	testing.expect(t, !root_may_delete(mine, 1000, home.User{"/home/ann", ""}, 0, .Unix), "no id")
+	testing.expect(t, !root_may_delete(mine, 1000, home.User{"", "1000"}, 0, .Unix), "no home")
+
+	// Not root: the system's permissions decide, whoever owns it.
+	testing.expect(t, root_may_delete(bobs, 1001, ann, 1000, .Unix))
+}

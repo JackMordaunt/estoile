@@ -34,6 +34,9 @@ Error :: enum u8 {
 	Not_Directory, // asked to delete a tree at something that is not a directory
 	Partly, // some of a tree could not be deleted, so the tree is still there
 	Mount_Point, // asked to delete a tree another filesystem is mounted at
+	// run as root, asked to delete what is not the invoking user's, or not under
+	// their home (reclaim.root_may_delete)
+	Not_Yours,
 	Unsupported,
 	Other,
 }
@@ -60,6 +63,8 @@ describe :: proc(e: Error) -> string {
 		return "some of it could not be deleted"
 	case .Mount_Point:
 		return "another filesystem is mounted there"
+	case .Not_Yours:
+		return "as root, only your own folders in your home are deleted"
 	case .Unsupported:
 		return "this system cannot do that"
 	case .Other:

@@ -230,7 +230,8 @@ name_of :: proc(d: ^Desk, e: command.Entry) -> string {
 reclaim_answer is what can be deleted under the directory q names, once the scan
 is over: reclaim.find's candidates, grouped by kind, each with when it or what it
 directly holds was last modified. A candidate that is no longer a directory on disk
-is left out. What it offers is kept, and Clean deletes nothing else.
+is left out, as is one Reclaim run as root may not delete (refused_as_root). What
+it offers is kept, and Clean deletes nothing else.
 */
 reclaim_answer :: proc(d: ^Desk, q: query.Reclaim) -> (r: query.Reclaim_Result) {
 	r.generation = d.generation
@@ -298,6 +299,9 @@ reclaim_answer :: proc(d: ^Desk, q: query.Reclaim) -> (r: query.Reclaim_Result) 
 			}
 			modified, is_dir := synth.modified(c.path), true
 			if !synthetic {
+				if refused_as_root(c.path, who) {
+					continue
+				}
 				modified, is_dir = newest_modification(c.path)
 			}
 			if !is_dir {
@@ -316,6 +320,25 @@ reclaim_answer :: proc(d: ^Desk, q: query.Reclaim) -> (r: query.Reclaim_Result) 
 	}
 	r.groups = groups[:]
 	return
+}
+
+/*
+refused_as_root is whether Reclaim, run as root, must leave the directory at path
+alone: it is not under the home of who, the person sudo ran it for, or not theirs
+(reclaim.root_may_delete). One whose owner cannot be read is left alone too. Run
+as anyone else, it is left to the system's permission checks.
+*/
+refused_as_root :: proc(path: string, who: home.User) -> bool {
+	when ODIN_OS == .Windows {
+		return false
+	} else {
+		euid := home.effective_uid()
+		if euid != 0 {
+			return false
+		}
+		owner, ok := files.owner(path)
+		return !ok || !reclaim.root_may_delete(path, owner, who, euid)
+	}
 }
 
 // newest_modification is when the directory at path, or anything it directly
@@ -345,6 +368,7 @@ clean :: proc(d: ^Desk, c: ^command.Clean, done: ^[dynamic]history.Action) {
 	}
 	deleted, failed, refused: int
 	freed: u64
+	who := home.user(context.temp_allocator)
 	for node in c.nodes[:min(c.count, len(c.nodes))] {
 		category, offered := d.reclaimable[node]
 		if !offered || category == .Trash || survey.removed(&s.roll, &s.tree, node) {
@@ -352,6 +376,12 @@ clean :: proc(d: ^Desk, c: ^command.Clean, done: ^[dynamic]history.Action) {
 			continue
 		}
 		path := scan.path(&s.tree, node, context.temp_allocator)
+		// Asked again here: what was offered may have changed hands since.
+		if refused_as_root(path, who) {
+			note(done, .Delete, path, files.describe(.Not_Yours), 0, true)
+			failed += 1
+			continue
+		}
 		left, gave, err := files.delete_tree(path)
 		freed += gave
 		if err != .None {
@@ -399,8 +429,14 @@ empty_trash :: proc(d: ^Desk, e: command.Entry, done: ^[dynamic]history.Action) 
 	for c in survey.next_child(&it) {
 		append(&children, c)
 	}
+	who := home.user(context.temp_allocator)
 	for c in children {
 		path := scan.path(&s.tree, c, context.temp_allocator)
+		if refused_as_root(path, who) {
+			note(done, .Empty_Trash, path, files.describe(.Not_Yours), 0, true)
+			failed += 1
+			continue
+		}
 		if .Directory not_in scan.node_flags(scan.node(&s.tree, c)) {
 			// The freedesktop.org Trash keeps everything in its files and info
 			// directories; the Finder's holds what was trashed itself.

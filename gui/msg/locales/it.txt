@@ -319,6 +319,7 @@ file_bad_name = non è un nome valido per un file
 file_not_directory = non è una cartella
 file_partly = una parte non è stata eliminata
 file_mount_point = lì è montato un altro file system
+file_not_yours = come root vengono eliminate solo le cartelle proprie nella propria cartella Inizio
 file_unsupported = questo sistema non lo consente
 file_other = il sistema ha rifiutato l'operazione
 name_empty = il nome non può essere vuoto

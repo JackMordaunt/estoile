@@ -43,6 +43,16 @@ is_link :: proc(path: string) -> bool {
 	return posix.lstat(cpath, &st) == .OK && posix.S_ISLNK(st.st_mode)
 }
 
+// owner is the user id that owns path, not following a link, as lstat says.
+owner :: proc(path: string) -> (uid: u32, ok: bool) {
+	st: posix.stat_t
+	cpath := strings.clone_to_cstring(path, context.temp_allocator)
+	if posix.lstat(cpath, &st) != .OK {
+		return 0, false
+	}
+	return u32(st.st_uid), true
+}
+
 /*
 remove_tree deletes the directory at path and everything in it, through
 descriptors: each directory is opened relative to the one holding it with

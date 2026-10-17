@@ -281,6 +281,7 @@ file_bad_name = 这不是有效的文件名
 file_not_directory = 它不是目录
 file_partly = 部分内容无法删除
 file_mount_point = 那里挂载了另一个文件系统
+file_not_yours = 以 root 身份运行时，只删除你个人目录中属于你的文件夹
 file_unsupported = 此系统不支持该操作
 file_other = 系统拒绝了该操作
 name_empty = 名称不能为空

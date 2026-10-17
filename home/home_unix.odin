@@ -8,7 +8,19 @@ import "core:sys/posix"
 
 // user is the person at the keyboard, as the package doc has it, in allocator.
 user :: proc(allocator := context.allocator) -> User {
-	if name := os.get_env("SUDO_USER", context.temp_allocator); name != "" {
+	return user_as(effective_uid(), allocator)
+}
+
+// effective_uid is the user id the process acts as: 0 when it runs as root.
+effective_uid :: proc() -> u32 {
+	return u32(posix.geteuid())
+}
+
+// user_as is user for a process acting as euid, which a test can pretend is root.
+@(private)
+user_as :: proc(euid: u32, allocator := context.allocator) -> User {
+	name := os.get_env("SUDO_USER", context.temp_allocator) if euid == 0 else ""
+	if name != "" {
 		cname := strings.clone_to_cstring(name, context.temp_allocator)
 		if pw := posix.getpwnam(cname); pw != nil && pw.pw_dir != nil {
 			return {

@@ -33,6 +33,7 @@ package reclaim
 import "core:mem"
 import "core:os"
 import "core:slice"
+import "core:strconv"
 import "core:strings"
 
 import "../home"
@@ -383,6 +384,32 @@ find :: proc(
 	// Largest first, as the person deciding reads them.
 	slice.sort_by(f.found[:], proc(a, b: Candidate) -> bool {return a.bytes > b.bytes})
 	return f.found[:]
+}
+
+/*
+root_may_delete is whether Reclaim, acting as user id euid, may delete the
+directory at path, whose owner is owner, for user. As root it may delete anything
+the system holds, another user's work among it (sudo leita on /home would offer
+and delete /home/bob/proj/node_modules), so it keeps to what user could delete
+themself: a directory under their home that is theirs. Any other user id is left
+to the system's permission checks; a capability short of root is not looked for.
+*/
+root_may_delete :: proc(
+	path: string,
+	owner: u32,
+	user: home.User,
+	euid: u32,
+	platform := HOST,
+) -> bool {
+	if euid != 0 {
+		return true
+	}
+	uid, ok := strconv.parse_u64_of_base(user.uid, 10)
+	if !ok || uid != u64(owner) {
+		return false
+	}
+	rel, inside := within(path, strings.trim_right(user.dir, separators(platform)), platform)
+	return inside && rel != ""
 }
 
 // visit looks through directory dir, whose path is the finder's, for candidates.

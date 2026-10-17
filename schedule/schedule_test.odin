@@ -295,6 +295,12 @@ the_program_recorded_is_the_path_leita_was_started_by :: proc(t: ^testing.T) {
 	testing.expect_value(t, stable_program(rel, real, "", dir, a), link)
 	app := "/Applications/Leita.app/Contents/MacOS/Leita"
 	testing.expect_value(t, stable_program("leita", app, path, dir, a), app)
+	testing.expect_value(t, stable_program(link, app, "", dir, a), app)
+	// The bundle's command line, started through a link onto PATH such as
+	// /usr/local/bin/leita, keeps the bundle's path, not the link's.
+	helper := "/Applications/Leita.app/Contents/Helpers/leita"
+	testing.expect_value(t, stable_program("leita", helper, path, dir, a), helper)
+	testing.expect_value(t, stable_program(link, helper, "", dir, a), helper)
 
 	// this_program reads the process PATH. Two fixtures stand in for it, so a
 	// leita installed on the machine cannot decide the result: an earlier

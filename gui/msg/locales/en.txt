@@ -345,6 +345,8 @@ name_dot = that name means a folder itself
 name_slash = a name cannot hold /
 name_nul = a name cannot hold a NUL
 name_reserved = a name cannot hold \ : * ? " < > or |
+name_device = that name is one Windows keeps for a device
+name_trailing = a name cannot end in a space or a dot
 # Why a scan could not start: {0} a path, {1} the system's reason
 cannot_scan = cannot scan {0}: {1}
 nothing_to_scan = nothing here can be scanned

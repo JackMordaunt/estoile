@@ -214,3 +214,64 @@ a_failure_with_the_path_gone_is_not_called_a_refusal :: proc(t: ^testing.T) {
 a_refusal_says_nothing_was_deleted :: proc(t: ^testing.T) {
 	testing.expect(t, strings.contains(describe(.Not_Recycled), "nothing was deleted"))
 }
+
+// is_device_name matches the reserved names in any case and with any text after
+// the first dot.
+@(test)
+windows_refuses_device_names :: proc(t: ^testing.T) {
+	names := []string {
+		"CON", "PRN", "AUX", "NUL", "COM1", "COM9", "LPT1", "LPT9", "con", "Nul", "cOm3",
+		"lpt5", "CON.txt", "nul.tar.gz", "aux.", "COM1.log", "CON .txt", "prn  ",
+	}
+	for name in names {
+		testing.expectf(
+			t,
+			windows_name_fault(name) != .None,
+			"%q is a device or ends in a dot or space",
+			name,
+		)
+	}
+	for name in ([]string{"CON", "PRN", "AUX", "NUL", "COM1", "LPT9", "con.txt", "Nul"}) {
+		testing.expect_value(t, windows_name_fault(name), Name_Fault.Device)
+	}
+}
+
+// A name ending in a space or dot is refused, which Microsoft's naming page
+// tells programs not to make.
+@(test)
+windows_refuses_a_trailing_space_or_dot :: proc(t: ^testing.T) {
+	for name in ([]string{"notes.", "notes ", "notes. ", "a.b.", "README  ", "x. ."}) {
+		testing.expect_value(t, windows_name_fault(name), Name_Fault.Trailing)
+	}
+}
+
+// Names that only look like the reserved ones are fine, and so is the rest.
+@(test)
+windows_keeps_names_that_are_not_devices :: proc(t: ^testing.T) {
+	names := []string {
+		"readme.txt", "CONSOLE", "COM", "COM0", "COM10", "LPT", "LPT0", "AUXILIARY.txt",
+		"my.CON", "a.nul", ".gitignore", "con-1", "NULL", "notes",
+	}
+	for name in names {
+		testing.expect_value(t, windows_name_fault(name), Name_Fault.None)
+	}
+	testing.expect_value(t, windows_name_fault(`a:b`), Name_Fault.Reserved)
+	testing.expect_value(t, windows_name_fault(`CON|`), Name_Fault.Reserved)
+}
+
+// name_fault applies the rules that hold everywhere and, on Windows, these.
+@(test)
+name_fault_refuses_what_no_system_keeps :: proc(t: ^testing.T) {
+	testing.expect_value(t, name_fault(""), Name_Fault.Empty)
+	testing.expect_value(t, name_fault(".."), Name_Fault.Dot)
+	testing.expect_value(t, name_fault("a/b"), Name_Fault.Slash)
+	testing.expect_value(t, name_fault("report.pdf"), Name_Fault.None)
+	when ODIN_OS == .Windows {
+		testing.expect_value(t, name_fault("CON"), Name_Fault.Device)
+		testing.expect_value(t, name_fault("notes."), Name_Fault.Trailing)
+	} else {
+		// elsewhere both are ordinary names
+		testing.expect_value(t, name_fault("CON"), Name_Fault.None)
+		testing.expect_value(t, name_fault("notes."), Name_Fault.None)
+	}
+}

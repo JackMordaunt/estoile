@@ -1,7 +1,10 @@
 package ntfs
 
+import "core:slice"
 import "core:testing"
 import "core:unicode/utf16"
+
+import "../scan"
 
 // ---- synthetic on-disk structures -------------------------------------------------
 //
@@ -553,4 +556,202 @@ test_resident_file_costs_no_clusters :: proc(t: ^testing.T) {
 	testing.expect_value(t, m.entries[100].allocated, u64(0))
 	testing.expect_value(t, m.stats.resident_files, u64(1))
 	testing.expect_value(t, m.stats.resident_bytes, u64(5))
+}
+
+// ---- projecting a subtree -----------------------------------------------------------
+
+// One record holding one name, and `clusters` of data when it is a file.
+@(private = "file")
+put_record :: proc(
+	t: ^testing.T,
+	m: ^Mft,
+	number: u32,
+	parent: File_Ref,
+	name: string,
+	clusters: u8 = 0,
+	directory := false,
+	sequence: u16 = 1,
+) {
+	attrs := make([dynamic][]byte, context.temp_allocator)
+	append(&attrs, resident(.File_Name, file_name_value(parent, name, .Win32)))
+	if clusters > 0 {
+		bytes := u64(clusters) * 4096
+		append(&attrs, nonresident(.Data, bytes, bytes, []byte{0x11, clusters, 0x10, 0x00}))
+	}
+	flags := Record_Flags{.In_Use, .Directory} if directory else Record_Flags{.In_Use}
+	add(t, m, build_record(attrs[:], record_number = number, sequence = sequence, flags = flags))
+}
+
+// One file of one cluster with a second name in another directory.
+@(private = "file")
+put_linked :: proc(t: ^testing.T, m: ^Mft, number: u32, first, second: File_Ref, a, b: string) {
+	rec := build_record(
+		{
+			resident(.File_Name, file_name_value(first, a, .Win32)),
+			resident(.File_Name, file_name_value(second, b, .Win32)),
+			nonresident(.Data, 4096, 4096, []byte{0x11, 0x01, 0x10, 0x00}),
+		},
+		record_number = number,
+		link_count = 2,
+	)
+	add(t, m, rec)
+}
+
+@(private = "file")
+TEMP :: 67 // the folder a subtree projection is rooted at
+@(private = "file")
+SUB :: 74 // a folder inside it
+
+/*
+A volume with a folder of a few files, C:\Users\ann\temp, beside a Windows folder of
+300 others, and the records a subtree must keep out even though they point near it.
+The folder's own record and its subfolder are left for the caller to add, so a test
+can see what waits on them.
+*/
+@(private = "file")
+volume_around_a_folder :: proc(t: ^testing.T, m: ^Mft) {
+	root := make_ref(RECORD_ROOT, 5)
+	put_record(t, m, RECORD_ROOT, root, ".", directory = true, sequence = 5)
+	put_record(t, m, 64, root, "Windows", directory = true)
+	windows := make_ref(64, 1)
+	for i in u32(200) ..< 500 {
+		put_record(t, m, i, windows, "system.dll", clusters = 1)
+	}
+	put_record(t, m, 65, root, "Users", directory = true)
+	put_record(t, m, 66, make_ref(65, 1), "ann", directory = true)
+
+	temp := make_ref(TEMP, 3)
+	put_record(t, m, 70, temp, "a.txt", clusters = 1)
+	put_record(t, m, 71, temp, "b.txt", clusters = 2)
+	put_record(t, m, 72, temp, "c.txt", clusters = 3)
+	put_record(t, m, 73, temp, "d.txt", clusters = 4)
+	put_record(t, m, 75, make_ref(SUB, 1), "e.txt", clusters = 1)
+	// Counted where it lives, in Windows; here only as another name for it.
+	put_linked(t, m, 76, windows, temp, "linked.txt", "here.txt")
+	// Lives here; its other name, in Windows, is no path into this folder.
+	put_linked(t, m, 77, temp, windows, "away.txt", "there.txt")
+	// Two folders each naming the other as parent, which only a damaged table holds.
+	put_record(t, m, 80, make_ref(81, 1), "round", directory = true)
+	put_record(t, m, 81, make_ref(80, 1), "about", directory = true)
+	// Written for an earlier folder in temp's slot, so it was never in this one.
+	put_record(t, m, 82, make_ref(TEMP, 99), "stale.txt", clusters = 1)
+}
+
+// The names of every used node, the way a search reads the tree: by slot, not by
+// following the root down.
+@(private = "file")
+used_names :: proc(tree: ^scan.Tree) -> []string {
+	names := make([dynamic]string, context.temp_allocator)
+	for i in 0 ..< scan.slots(tree) {
+		if .Used in scan.node_flags(scan.node(tree, i)) {
+			append(&names, scan.name_of(tree, i))
+		}
+	}
+	slice.sort(names[:])
+	return names[:]
+}
+
+// Whether every used node's parents lead to the tree's root.
+@(private = "file")
+all_under_root :: proc(tree: ^scan.Tree) -> bool {
+	for i in 0 ..< scan.slots(tree) {
+		if .Used not_in scan.node_flags(scan.node(tree, i)) {
+			continue
+		}
+		r := i
+		for depth := 0; scan.node(tree, r).parent != r; depth += 1 {
+			if depth > 64 {
+				return false
+			}
+			r = scan.node(tree, r).parent
+		}
+		if r != tree.root {
+			return false
+		}
+	}
+	return true
+}
+
+@(test)
+test_a_tree_rooted_at_a_folder_holds_only_that_folder :: proc(t: ^testing.T) {
+	m: Mft
+	testing.expect_value(t, mft_init(&m, 1024, 4096, 1), Error.None)
+	defer mft_destroy(&m)
+	volume_around_a_folder(t, &m)
+	tree: scan.Tree
+	testing.expect_value(t, scan.tree_init(&tree), scan.Error.None)
+	defer scan.tree_destroy(&tree)
+	p := Projection {
+		root_name   = `C:\Users\ann\temp`,
+		root_record = TEMP,
+	}
+	defer projection_destroy(&p)
+
+	// The folder is not read yet, so nothing waiting on it is known to be in it, and
+	// nothing else of the volume is in the tree meanwhile.
+	testing.expect_value(t, to_tree(&m, &tree, &p), scan.Error.None)
+	testing.expect_value(t, len(used_names(&tree)), 0)
+	testing.expect_value(t, tree.nodes_done, u64(0))
+
+	put_record(t, &m, TEMP, make_ref(66, 1), "temp", directory = true, sequence = 3)
+	testing.expect_value(t, to_tree(&m, &tree, &p), scan.Error.None)
+	testing.expect_value(t, tree.nodes_done, u64(6)) // temp, a to d, away
+	testing.expect(t, all_under_root(&tree), "a node outside the folder")
+
+	put_record(t, &m, SUB, make_ref(TEMP, 3), "sub", directory = true)
+	testing.expect_value(t, to_tree(&m, &tree, &p), scan.Error.None)
+	testing.expect_value(t, tree.nodes_done, u64(8))
+
+	// Hard links arrive once the table is complete, and the last pass redoes every
+	// record, which is the answer a scan ends on.
+	mft_set_complete(&m)
+	testing.expect_value(t, to_tree(&m, &tree, &p), scan.Error.None)
+	projection_reset(&p)
+	testing.expect_value(t, to_tree(&m, &tree, &p), scan.Error.None)
+
+	want := []string {
+		`C:\Users\ann\temp`,
+		"a.txt",
+		"away.txt",
+		"b.txt",
+		"c.txt",
+		"d.txt",
+		"e.txt",
+		"here.txt",
+		"sub",
+	}
+	got := used_names(&tree)
+	testing.expectf(t, slice.equal(got, want), "used nodes %v, want %v", got, want)
+	testing.expect(t, all_under_root(&tree), "a node outside the folder")
+	testing.expect_value(t, tree.root, u32(TEMP))
+	// here.txt is another name for a file counted in Windows, so it adds nothing.
+	testing.expect_value(t, tree.nodes_done, u64(8))
+	testing.expect_value(t, tree.bytes_done, u64((1 + 2 + 3 + 4 + 1 + 1) * 4096))
+}
+
+@(test)
+test_a_tree_of_the_whole_volume_keeps_every_record :: proc(t: ^testing.T) {
+	// The same table rooted at the volume, so the test above is known to be keeping
+	// something out rather than finding nothing there to keep.
+	m: Mft
+	testing.expect_value(t, mft_init(&m, 1024, 4096, 1), Error.None)
+	defer mft_destroy(&m)
+	volume_around_a_folder(t, &m)
+	put_record(t, &m, TEMP, make_ref(66, 1), "temp", directory = true, sequence = 3)
+	put_record(t, &m, SUB, make_ref(TEMP, 3), "sub", directory = true)
+	mft_set_complete(&m)
+	tree: scan.Tree
+	testing.expect_value(t, scan.tree_init(&tree), scan.Error.None)
+	defer scan.tree_destroy(&tree)
+	p := Projection {
+		root_name = `C:\`,
+	}
+	defer projection_destroy(&p)
+
+	testing.expect_value(t, to_tree(&m, &tree, &p), scan.Error.None)
+	testing.expect_value(t, tree.root, u32(RECORD_ROOT))
+	// The root, Windows with its 300 and linked.txt, Users, ann, temp with its
+	// 7, the loop of two and the stale file; then the two extra names.
+	testing.expect_value(t, tree.nodes_done, u64(1 + 302 + 2 + 8 + 2 + 1))
+	testing.expect_value(t, len(used_names(&tree)), 1 + 302 + 2 + 8 + 2 + 1 + 2)
 }

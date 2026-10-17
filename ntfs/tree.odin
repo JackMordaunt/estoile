@@ -14,6 +14,11 @@ rooted at itself forever.
 
 `fresh` is what became final since the last call, which is the only work an
 incremental consumer has to do.
+
+`under` is what keeps a subtree to itself. Rooting the tree at a record cuts it
+from its parents, but every other record of the volume would still be a used node
+beside it, and whatever reads the tree's nodes rather than the root's descendants,
+a search or a list of the largest files, would answer for the whole volume.
 */
 Projection :: struct {
 	// What to call the root. NTFS names it ".", which says nothing in a path, and the
@@ -27,7 +32,27 @@ Projection :: struct {
 	root_record: u32,
 	links_done: int,
 	settled:    []u64, // one bit per record
+	// With a root_record other than the volume's own, whether each record is under
+	// it. Nil for the whole volume, where every record is.
+	under:      []Under,
+	chain:      [dynamic]u32, // the records being followed up to one already decided
 	allocator:  mem.Allocator,
+}
+
+/*
+Whether a record is under the chosen root.
+
+A record is decided once every link from it up to the root, or up to some other
+record rooted at itself, is final, and then it never changes. Until then it waits,
+because a parent not yet read may still turn out to be the way in.
+*/
+@(private)
+Under :: enum u8 {
+	Undecided,
+	Yes,
+	No,
+	Waiting, // a link above it is not final yet; asked again on the next call
+	Following, // on the chain being followed now, so meeting it again is a loop
 }
 
 /*
@@ -43,11 +68,18 @@ projection_reset :: proc(p: ^Projection) {
 	for i in 0 ..< len(p.settled) {
 		p.settled[i] = 0
 	}
+	// What was decided stays true, but redoing every record means deciding it again
+	// too, so the final answer owes nothing to a frame taken while the table filled.
+	for &u in p.under {
+		u = .Undecided
+	}
 	p.links_done = 0
 }
 
 projection_destroy :: proc(p: ^Projection) {
 	delete(p.settled, p.allocator)
+	delete(p.under, p.allocator)
+	delete(p.chain)
 	p^ = {}
 }
 
@@ -89,6 +121,14 @@ to_tree :: proc(m: ^Mft, t: ^scan.Tree, p: ^Projection) -> scan.Error {
 			return .Out_Of_Memory
 		}
 		p.settled = bits
+		if root != RECORD_ROOT {
+			under, under_err := make([]Under, len(m.entries), p.allocator)
+			if under_err != nil {
+				return .Out_Of_Memory
+			}
+			p.under = under
+			p.chain = make([dynamic]u32, p.allocator)
+		}
 		// Names stay in the table's arenas and nodes borrow them, so the tree has to be
 		// able to read those arenas. Once per tree, which is when `settled` is made.
 		for &s in m.sinks {
@@ -97,12 +137,21 @@ to_tree :: proc(m: ^Mft, t: ^scan.Tree, p: ^Projection) -> scan.Error {
 		p.root = scan.name_copy(t, p.root_name)
 	}
 
+	if p.under != nil {
+		decide(m, p, root)
+	}
+
 	used, bytes: u64
 
 	for i in 0 ..< u32(len(m.entries)) {
 		if marked(p.settled, i) {
 			used += 1
 			bytes += m.entries[i].allocated
+			continue
+		}
+		// Not in the tree at all, rather than in it beside the root: that is what
+		// keeps a search, or anything else that reads every node, to the subtree.
+		if p.under != nil && p.under[i] != .Yes {
 			continue
 		}
 		e := &m.entries[i]
@@ -147,6 +196,11 @@ to_tree :: proc(m: ^Mft, t: ^scan.Tree, p: ^Projection) -> scan.Error {
 	// to the same slot. Links are merged when the scan ends, so this is empty
 	// until then.
 	for l, k in m.links[p.links_done:links] {
+		// A name in a directory outside the subtree is not one of its paths, though
+		// the file itself may be; one inside is, though the file may live elsewhere.
+		if p.under != nil && (int(l.parent) >= len(p.under) || p.under[l.parent] != .Yes) {
+			continue
+		}
 		index := u32(len(m.entries) + p.links_done + k)
 		n := scan.node(t, index)
 		n.parent = l.parent
@@ -163,6 +217,71 @@ to_tree :: proc(m: ^Mft, t: ^scan.Tree, p: ^Projection) -> scan.Error {
 	t.nodes_done = used
 	t.bytes_done = bytes
 	return .None
+}
+
+/*
+Decide, for every record not yet decided, whether it is under `root`.
+
+Each record is followed up its parents only until it meets one already decided, and
+everything met on the way takes that answer, so no record is followed through
+twice: one call is O(records) however deep the tree runs, where following every
+record to the top would be O(records * depth). Records waiting on a link that is
+not final are asked again next call, from where they stopped. Only the subtree's
+own links matter: a record is in once its chain reaches `root`, whatever lies above.
+*/
+@(private)
+decide :: proc(m: ^Mft, p: ^Projection, root: u32) {
+	for &u in p.under {
+		if u == .Waiting {
+			u = .Undecided
+		}
+	}
+	p.under[root] = .Yes
+	for i in 0 ..< u32(len(m.entries)) {
+		if p.under[i] == .Undecided {
+			follow(m, p, i)
+		}
+	}
+}
+
+// Follow one record up to an answer and give it to every record on the way.
+@(private)
+follow :: proc(m: ^Mft, p: ^Projection, from: u32) {
+	clear(&p.chain)
+	answer := Under.Waiting
+	r := from
+	for {
+		switch p.under[r] {
+		case .Yes, .No, .Waiting:
+			answer = p.under[r]
+		case .Following:
+			// A loop of parents, which only a damaged table holds, never reaches root.
+			answer = .No
+		case .Undecided:
+			e := &m.entries[r]
+			// Unpublished or still nameless, its parent may yet change.
+			if !entry_published(e) || e.name == "" {
+				break
+			}
+			parent, settled := entry_parent_settled(m, r)
+			if !settled {
+				break
+			}
+			p.under[r] = .Following
+			append(&p.chain, r)
+			// Rooted at itself, and not the root: the volume's own top, or an orphan.
+			if parent == r {
+				answer = .No
+				break
+			}
+			r = parent
+			continue
+		}
+		break
+	}
+	for c in p.chain {
+		p.under[c] = answer
+	}
 }
 
 // The tree's handle on a name in one of the table's arenas. Every name the table holds

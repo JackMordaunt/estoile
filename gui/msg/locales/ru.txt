@@ -337,6 +337,7 @@ file_cross_device = объект находится в другой файлов
 file_bad_name = недопустимое имя файла
 file_not_directory = это не папка
 file_partly = часть не удалось удалить
+file_mount_point = там смонтирована другая файловая система
 file_unsupported = система не поддерживает это действие
 file_other = система отказала
 name_empty = имя не может быть пустым

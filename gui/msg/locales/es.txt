@@ -320,6 +320,7 @@ file_cross_device = está en un sistema de archivos distinto al de la Papelera
 file_bad_name = ese no es un nombre válido para un archivo
 file_not_directory = no es una carpeta
 file_partly = no se pudo eliminar todo
+file_mount_point = hay otro sistema de archivos montado ahí
 file_unsupported = este sistema no lo admite
 file_other = el sistema lo rechazó
 name_empty = el nombre no puede estar vacío

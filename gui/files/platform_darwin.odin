@@ -129,3 +129,51 @@ documents :: proc(allocator := context.allocator) -> string {
 	}
 	return strings.concatenate({home, "/Documents"}, allocator)
 }
+
+// look is what the entry name in the directory dir is, not following a link.
+@(private)
+look :: proc(dir: posix.FD, name: cstring) -> (Look, posix.Errno) {
+	st: posix.stat_t
+	if posix.fstatat(dir, name, &st, {.SYMLINK_NOFOLLOW}) != .OK {
+		return {}, posix.errno()
+	}
+	return look_of(st), .NONE
+}
+
+// look_self is what the directory open as fd is.
+@(private)
+look_self :: proc(fd: posix.FD) -> (Look, posix.Errno) {
+	st: posix.stat_t
+	if posix.fstat(fd, &st) != .OK {
+		return {}, posix.errno()
+	}
+	return look_of(st), .NONE
+}
+
+/*
+look_of is st as a Look. lstat gives no mount id, so a mount at a folder is told by
+its device alone: this assumes whatever is mounted there reports a device of its
+own, which has not been checked on a Mac. A nullfs mount (mount_nullfs(8)) of the
+same volume may keep the device and not be seen here. The walk does see one (DIR_MNTSTATUS_MNTPOINT in
+walk/read_darwin.odin), so Reclaim never offers it, but one inside a candidate
+would be entered.
+*/
+@(private = "file")
+look_of :: proc(st: posix.stat_t) -> Look {
+	return Look {
+		directory = posix.S_ISDIR(st.st_mode),
+		regular = posix.S_ISREG(st.st_mode),
+		device = u64(st.st_dev),
+		inode = u64(st.st_ino),
+		links = u64(st.st_nlink),
+		disk = u64(st.st_blocks) * 512,
+		mode = st.st_mode - posix.S_IFMT,
+	}
+}
+
+// mount_points is none: macOS keeps its mount table in the kernel (getmntinfo(3)),
+// not a file, and look_of says what a device alone can tell.
+@(private)
+mount_points :: proc(path: string) -> map[[2]u64]struct{} {
+	return make(map[[2]u64]struct{}, context.temp_allocator)
+}

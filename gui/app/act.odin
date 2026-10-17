@@ -254,7 +254,9 @@ reclaim_answer :: proc(d: ^Desk, q: query.Reclaim) -> (r: query.Reclaim_Result) 
 			node: u32,
 		) -> string {return scan.name_of(&(^Scan)(data).tree, node)},
 		directory = proc(data: rawptr, node: u32) -> bool {
-			return .Directory in scan.node_flags(scan.node(&(^Scan)(data).tree, node))
+			// A mount point is another volume's, never Reclaim's (reclaim.Source).
+			flags := scan.node_flags(scan.node(&(^Scan)(data).tree, node))
+			return flags & {.Directory, .Mount} == {.Directory}
 		},
 		bytes = proc(data: rawptr, node: u32) -> u64 {
 			s := (^Scan)(data)

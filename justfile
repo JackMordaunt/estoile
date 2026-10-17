@@ -9,6 +9,7 @@
 #   just test                 run every imported package's tests under ASan -> build/test/
 #   just btrfs-test [--sudo]  the btrfs and walk tests on a throw-away btrfs image,
 #                             as root too with --sudo where sudo asks no password
+#   just mount-test [--sudo]  the delete test that mounts, in a namespace of its own
 #   just install              put the release command line on PATH as leita and le
 #   just check                type-check both modes without producing a binary
 #   just clean                remove build/
@@ -150,6 +151,24 @@ test: sqlite
 # as CI does. See tools/btrfs-fixture: just btrfs-test [--sudo] [--keep]
 btrfs-test *args: sqlite
     tools/btrfs-fixture --odin "{{odin}}" --flags "{{san}} {{flags}}" {{args}}
+
+# The delete test that mounts: a tmpfs and a bind inside a tree being deleted.
+# It runs in a user and mount namespace of its own (unshare -rm), which needs no
+# root and leaves nothing mounted; --sudo runs it as root instead, where sudo asks
+# no password. Skipped where neither can mount. Linux only: just mount-test [--sudo]
+mount-test *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ "{{os()}}" != linux ]; then echo "mount-test: skipped: the mounts are Linux's"; exit 0; fi
+    mkdir -p build/test
+    {{odin}} build gui/files -build-mode:test -debug {{san}} {{flags}} \
+        -define:ODIN_TEST_NAMES=leita_files.a_delete_never_crosses_a_mount -out:build/test/mount-test
+    if [ "{{args}}" = --sudo ]; then
+        exec sudo -n env LEITA_MOUNT_TEST=1 build/test/mount-test
+    elif unshare --user --map-root-user --mount true 2>/dev/null; then
+        LEITA_MOUNT_TEST=1 exec unshare --user --map-root-user --mount build/test/mount-test
+    fi
+    echo "mount-test: skipped: no user namespaces here; give --sudo where sudo asks no password"
 
 # Type-check both modes without producing a binary.
 check:

@@ -427,7 +427,8 @@ candidates :: proc(
 			return scan.name_of((^Source_Data)(data).t, node)
 		},
 		directory = proc(data: rawptr, node: u32) -> bool {
-			return .Directory in scan.node_flags(scan.node((^Source_Data)(data).t, node))
+			flags := scan.node_flags(scan.node((^Source_Data)(data).t, node))
+			return flags & {.Directory, .Mount} == {.Directory}
 		},
 		bytes = proc(data: rawptr, node: u32) -> u64 {
 			d := (^Source_Data)(data)

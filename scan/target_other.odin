@@ -201,6 +201,35 @@ mounted_at :: proc(
 	}
 }
 
+/*
+mounts_under is every mount point the mount table has at or below dir, in
+allocator. dir must be a real path, as the table's points are, with no link or dot
+in it. It reads /proc/mounts, which is Linux's; on another system, or when the
+file cannot be read, there are none.
+*/
+mounts_under :: proc(dir: string, allocator := context.allocator) -> []string {
+	out := make([dynamic]string, allocator)
+	when ODIN_OS == .Linux {
+		table, err := os.read_entire_file_from_path(PROC_MOUNTS, context.temp_allocator)
+		if err != nil {
+			return out[:]
+		}
+		text := string(table)
+		point := strings.builder_make(context.temp_allocator)
+		for line in strings.split_lines_iterator(&text) {
+			rest := line
+			_ = strings.fields_iterator(&rest) or_continue // the device
+			field := strings.fields_iterator(&rest) or_continue
+			strings.builder_reset(&point)
+			unescape_to(&point, field)
+			if covers(dir, strings.to_string(point)) {
+				append(&out, strings.clone(strings.to_string(point), allocator))
+			}
+		}
+	}
+	return out[:]
+}
+
 @(private)
 PROC_MOUNTS :: "/proc/mounts"
 
@@ -221,18 +250,24 @@ unescape :: proc(s: string, allocator := context.allocator) -> string {
 		return s
 	}
 	b := strings.builder_make(allocator)
+	unescape_to(&b, s)
+	return strings.to_string(b)
+}
+
+// unescape_to writes s to b with the mount table's escapes undone.
+@(private)
+unescape_to :: proc(b: ^strings.Builder, s: string) {
 	for i := 0; i < len(s); i += 1 {
 		if s[i] == '\\' && i + 3 < len(s) {
 			v := (int(s[i + 1]) - '0') * 64 + (int(s[i + 2]) - '0') * 8 + (int(s[i + 3]) - '0')
 			if v >= 0 && v < 256 {
-				strings.write_byte(&b, byte(v))
+				strings.write_byte(b, byte(v))
 				i += 3
 				continue
 			}
 		}
-		strings.write_byte(&b, s[i])
+		strings.write_byte(b, s[i])
 	}
-	return strings.to_string(b)
 }
 
 // Only the filesystems a reader here could specialise for are named; everything else

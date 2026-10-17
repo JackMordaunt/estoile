@@ -280,6 +280,7 @@ file_cross_device = ゴミ箱とは別のファイルシステム上にありま
 file_bad_name = ファイル名として使用できない名前です
 file_not_directory = ディレクトリではありません
 file_partly = 一部を削除できませんでした
+file_mount_point = 別のファイルシステムがマウントされています
 file_unsupported = このシステムでは実行できません
 file_other = システムに拒否されました
 name_empty = 名前を空にすることはできません

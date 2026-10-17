@@ -3056,6 +3056,12 @@ monitoring_watches_a_place_and_hands_it_to_the_scheduler :: proc(t: ^testing.T) 
 	ui.text_set(&r.m.limit_warn, "1")
 	ui.probe_advance(&r.p, 20, 1.0 / 60)
 	testing.expect(t, render.headless_png(&r.hl, "build/test/monitoring_alerts_editor.png"))
+	// Where the recorder's switch is offered, the editor's Save opens below
+	// the dialog's fold at this window's height, and a click where Save is
+	// laid out but not drawn lands on nothing: the body is scrolled to it
+	// first, as a person would.
+	testing.expect(t, ui.probe_scroll(&r.p, "Warn at percent used", 10))
+	ui.probe_advance(&r.p, 20, 1.0 / 60)
 	testing.expect(t, ui.probe_click_top(&r.p, "Save"))
 	hand_on(&r)
 	testing.expect(t, settle(&r, "Warn at percent used", false), "the editor closes")

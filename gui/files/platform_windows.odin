@@ -1,6 +1,7 @@
 #+build windows
 package leita_files
 
+import "core:os"
 import "core:strings"
 import win32 "core:sys/windows"
 

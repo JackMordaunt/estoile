@@ -189,6 +189,11 @@ computer, your own studies, and unpaid hobby or open-source work.
 **Reports, change tracking and monitoring need a licence.** They work for 30
 days from the first time you run leita, so you can try them first.
 
+Without the window, `leita licence add FILE` keeps the licence file from your
+receipt (or the line in it beginning `leita1.`), and `leita licence` shows whose
+it is. For a single run, as in a container, set `LEITA_LICENCE` to that line
+instead.
+
 **An organisation may evaluate leita for 30 days, then needs a licence for any
 use.** That covers businesses, sole traders, schools, charities and government.
 

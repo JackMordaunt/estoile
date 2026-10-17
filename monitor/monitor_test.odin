@@ -361,11 +361,14 @@ monitoring_stays_locked_when_the_first_use_file_is_deleted :: proc(t: ^testing.T
 	defer os.remove_all(dir)
 	kept := join(dir, "data", "history.db")
 	began := time.unix(1_800_000_000, 0)
-	testing.expect(t, unlocked_beside(kept, began), "the first run starts the trial")
+	_, open, _ := licence_beside(kept, "", began)
+	testing.expect(t, open, "the first run starts the trial")
 	month := time.time_add(began, 31 * 24 * time.Hour)
-	testing.expect(t, !unlocked_beside(kept, month), "a month on, it is over")
+	_, open, _ = licence_beside(kept, "", month)
+	testing.expect(t, !open, "a month on, it is over")
 	testing.expect(t, os.remove(join(dir, "data", "first-use")) == nil)
-	testing.expect(t, !unlocked_beside(kept, month), "deleting the file does not restart it")
+	_, open, _ = licence_beside(kept, "", month)
+	testing.expect(t, !open, "deleting the file does not restart it")
 }
 
 @(test)

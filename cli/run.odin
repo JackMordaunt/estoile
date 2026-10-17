@@ -22,7 +22,6 @@ import "../monitor"
 import "../ntfs"
 import "../report"
 import "../scan"
-import "../settings"
 import "../survey"
 import "../term"
 import "../version"
@@ -44,6 +43,9 @@ Scan
   leita monitor ...         scheduled scans of the places you watch; leita monitor -h
   leita journal ...         Linux: record which folders change, so a scan reads only
                             those; off until leita journal on; leita journal -h
+  leita licence ...         the licence: leita licence add LICENCE keeps one, leita
+                            licence remove forgets it, LEITA_LICENCE holds one for a
+                            single run; leita licence -h
   --live                    draw the answer as it is found rather than once at the end
   --no-history              neither compare with earlier scans of this place nor keep
                             this one
@@ -143,6 +145,8 @@ run :: proc(args: []string) -> int {
 			return monitor.run_command_line(args[1:])
 		case "journal":
 			return journal.run_command_line(args[1:])
+		case "licence":
+			return licence_command_line(args[1:])
 		}
 	}
 
@@ -177,19 +181,29 @@ run :: proc(args: []string) -> int {
 	}
 
 	// Each finished scan is kept where the window keeps its own, to compare the
-	// next with, and the licence beside it, whether or not this run keeps its scan.
+	// next with, and the licence beside it, whether or not this run keeps its scan;
+	// LEITA_LICENCE holds one for this run in its place.
 	data := history.default_path(context.temp_allocator)
-	licensee := licence.licensee_kept(licence.path_beside(data, context.temp_allocator))
-	now := time.now()
-	first := settings.trial_began(data, now)
-	return scan_and_say(opt, data, licensee, !licence.unlocked(licensee != "", first, now))
+	given := os.get_env(licence.ENV, context.temp_allocator)
+	licensee, unlocked, problem := monitor.licence_beside(data, given, time.now())
+	if problem != "" {
+		say_note("%s", problem)
+	}
+	return scan_and_say(opt, data, licensee, !unlocked)
 }
 
-// is_subcommand says whether args open with a command of its own, monitor or
-// journal, whose command line is the rest; Leita, the window, asks before it
-// takes one argument as a path.
+// is_subcommand says whether args open with a command of its own, monitor,
+// journal or licence, whose command line is the rest; Leita, the window, asks
+// before it takes one argument as a path.
 is_subcommand :: proc(args: []string) -> bool {
-	return len(args) > 0 && (args[0] == "monitor" || args[0] == "journal")
+	if len(args) == 0 {
+		return false
+	}
+	switch args[0] {
+	case "monitor", "journal", "licence":
+		return true
+	}
+	return false
 }
 
 // find_color finds --color among args the way the parser would, as --color=WORD
@@ -255,7 +269,7 @@ scan_and_say :: proc(opt: Options, kept := "", licensee := "", locked := false) 
 	}
 	if opt.report != "" && locked {
 		say_error(
-			"reports need a licence now the 30-day trial has ended; add one in Leita, the window, under Licence in its settings",
+			"reports need a licence now the 30-day trial has ended; add one with leita licence add, or in Leita, the window, under Licence in its settings",
 		)
 		return 1
 	}

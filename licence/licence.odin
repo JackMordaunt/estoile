@@ -377,20 +377,111 @@ save :: proc(path, text: string) -> Error {
 	return .None
 }
 
-// licensee_kept is whose licence is kept at path, checked against the key leita
-// was built with: "" when there is none that checks. In the temp allocator.
-licensee_kept :: proc(path: string) -> string {
-	key, ok := public_key()
-	if !ok || path == "" {
-		return ""
+// keep checks text against key, nil for the key leita was built with, and, if it
+// holds, keeps it at path as the licence in use, as the window does, returning
+// its terms in allocator.
+keep :: proc(
+	path, text: string,
+	key: []byte = nil,
+	allocator := context.allocator,
+) -> (
+	Licence,
+	Error,
+) {
+	built: [ed25519.PUBLIC_KEY_SIZE]byte
+	against, ok := key_or_built(key, &built)
+	if !ok {
+		return {}, .No_Key
 	}
-	text, err := read(path)
+	l, err := check(text, against, allocator)
+	if err == .None {
+		err = save(path, text)
+	}
 	if err != .None {
-		return ""
+		destroy(&l, allocator)
+		return {}, err
 	}
-	l, cerr := check(text, key[:], context.temp_allocator)
-	if cerr != .None {
-		return ""
+	return l, .None
+}
+
+// forget removes the licence kept at path, saying whether there was one.
+forget :: proc(path: string) -> (was: bool, err: Error) {
+	if path == "" || !os.exists(path) {
+		return false, .None
 	}
-	return l.licensee
+	if os.remove(path) != nil {
+		return true, .Unwritable
+	}
+	return true, .None
+}
+
+// ENV holds a licence for one run, in place of the one kept: for a server, a
+// container or a CI job, where nothing is kept between runs.
+ENV :: "LEITA_LICENCE"
+
+// Source is where the licence in use came from.
+Source :: enum u8 {
+	None, // no licence is kept, and ENV holds none
+	Env, // ENV, for this run
+	Kept, // the file beside the history store
+}
+
+/*
+in_use is the licence leita runs under: given, what ENV holds, for this run, or
+else the one kept at path, checked against key, nil for the key leita was built
+with. err says why the one from names did not check; .None when it did, or when
+there is none. In the temp allocator.
+*/
+in_use :: proc(path, given: string, key: []byte = nil) -> (l: Licence, from: Source, err: Error) {
+	text := strings.trim_space(given)
+	if text != "" {
+		from = .Env
+	} else if path != "" && os.exists(path) {
+		from = .Kept
+		text = read(path) or_return
+	} else {
+		return
+	}
+	built: [ed25519.PUBLIC_KEY_SIZE]byte
+	against, ok := key_or_built(key, &built)
+	if !ok {
+		return {}, from, .No_Key
+	}
+	l, err = check(text, against, context.temp_allocator)
+	return
+}
+
+// key_or_built is key, or when it is nil the key leita was built with, decoded
+// into built; false when there is neither.
+@(private)
+key_or_built :: proc(key: []byte, built: ^[ed25519.PUBLIC_KEY_SIZE]byte) -> ([]byte, bool) {
+	if key != nil {
+		return key, true
+	}
+	ok: bool
+	built^, ok = public_key()
+	return built[:], ok
+}
+
+// describe says why a licence was not taken, as the command line says it.
+describe :: proc(err: Error) -> string {
+	switch err {
+	case .None:
+		return "the licence holds"
+	case .No_Key:
+		return "this build of leita takes no licences"
+	case .Malformed:
+		return "it is not a leita licence; give the whole line, from leita1. to its end, or the file holding it"
+	case .Version:
+		return "it is a licence for a newer leita; update leita to use it"
+	case .Signature:
+		return "it is not a licence Librium signed, or it has been changed"
+	case .Terms:
+		return "it does not say who it is for or what it covers"
+	case .Unreadable:
+		return "the licence file could not be read"
+	case .Unwritable:
+		return "the licence could not be kept"
+	}
+	return ""
 }

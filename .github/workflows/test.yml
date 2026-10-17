@@ -253,6 +253,10 @@ jobs:
           LEITA_LICENCE_KEY="${LEITA_LICENCE_KEY:-$(just --evaluate test_licence_key)}"
           export LEITA_LICENCE_KEY
           just build release
+          # Built with the test key, the release binary takes its licence.
+          if [ "$LEITA_LICENCE_KEY" = "$(just --evaluate test_licence_key)" ]; then
+            LEITA_LICENCE="$(just --evaluate test_licence)" build/release/leita licence
+          fi
       - name: check-licence
         run: |
           if [ "${{ runner.os }}" = Windows ]; then export SAN=; fi

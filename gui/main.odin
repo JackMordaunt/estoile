@@ -7,13 +7,14 @@ Leita: see what is using the disk, as the scan finds it.
 	Leita monitor ...      monitoring's command line, as leita monitor
 	Leita journal ...      the change recorder's, as leita journal: the window runs
 	                       it under pkexec to turn the recorder on or off
+	Leita licence ...      the licence's, as leita licence
 
 Leita takes the same arguments as leita, and launch decides which it is from
 them: alone or with one path it opens the window; with any argument that starts
-with "-", or with monitor or journal, it is leita, whose exit code it exits with.
-So a flag the window has no use for, --report say, still does what leita does,
-and -h is help rather than a folder named -h. A Mac with only the app can
-therefore run reports from the terminal: Leita ~ --report usage.pdf.
+with "-", or with monitor, journal or licence, it is leita, whose exit code it
+exits with. So a flag the window has no use for, --report say, still does what
+leita does, and -h is help rather than a folder named -h. A Mac with only the
+app can therefore run reports from the terminal: Leita ~ --report usage.pdf.
 
 The window is jm:ui in Primer. Its pieces are gui's packages:
 

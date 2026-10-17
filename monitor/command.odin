@@ -70,7 +70,7 @@ Context :: struct {
 }
 
 // LOCKED says why a paid command was refused.
-LOCKED :: "monitoring needs a licence now the 30-day trial has ended; add one in Leita, the window, under Licence in its settings"
+LOCKED :: "monitoring needs a licence now the 30-day trial has ended; add one with leita licence add, or in Leita, the window, under Licence in its settings"
 
 // dispatch carries out the monitor command args names, saying how it went on w,
 // and returns the exit code.
@@ -523,13 +523,17 @@ run_command_line :: proc(args: []string) -> int {
 	host := schedule.host_default(context.temp_allocator)
 	paths := paths_beside(kept, context.temp_allocator)
 	now := time.now()
+	_, unlocked, problem := licence_beside(kept, os.get_env(licence.ENV, context.temp_allocator), now)
+	if problem != "" {
+		notef({style = style}, os.to_writer(os.stderr), "%s", problem)
+	}
 	c := Context {
 		style    = style,
 		paths    = paths,
 		host     = host,
 		argv     = {schedule.this_program(context.temp_allocator), "monitor", "run"},
 		aside    = os.to_writer(os.stderr),
-		unlocked = unlocked_beside(kept, now),
+		unlocked = unlocked,
 		now      = now,
 		notify   = show,
 		desktop  = alert.SYSTEM,
@@ -537,12 +541,32 @@ run_command_line :: proc(args: []string) -> int {
 	return dispatch(c, args, os.to_writer(os.stdout))
 }
 
-// unlocked_beside is whether the paid features work at now for the stores beside
-// the history store at kept: under the licence kept there, or in the trial
-// (settings.trial_began).
-unlocked_beside :: proc(kept: string, now: time.Time) -> bool {
-	licensee := licence.licensee_kept(licence.path_beside(kept, context.temp_allocator))
-	return licence.unlocked(licensee != "", settings.trial_began(kept, now), now)
+/*
+licence_beside is whose licence leita runs under at now for the stores beside
+the history store at kept, "" for none, and whether the paid features work:
+under given, the licence LEITA_LICENCE holds for this run, or the one kept
+there, or in the trial (settings.trial_began). key is what a licence is checked
+against, nil for the key leita was built with. problem says why given was not
+taken, "" when it was or there is none; the run goes on without it. The command
+line's report and the monitor both ask here. In the temp allocator.
+*/
+licence_beside :: proc(
+	kept, given: string,
+	now: time.Time,
+	key: []byte = nil,
+) -> (
+	licensee: string,
+	unlocked: bool,
+	problem: string,
+) {
+	l, from, err := licence.in_use(licence.path_beside(kept, context.temp_allocator), given, key)
+	if from == .Env && err != .None {
+		problem = fmt.tprintf("%s holds no licence this leita takes: %s", licence.ENV, licence.describe(err))
+	}
+	if err == .None {
+		licensee = l.licensee
+	}
+	return licensee, licence.unlocked(licensee != "", settings.trial_began(kept, now), now), problem
 }
 
 // show runs a notification's command for real, and says whether it ran.

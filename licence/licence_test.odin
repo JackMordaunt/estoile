@@ -334,3 +334,50 @@ nowhere_to_keep_the_start_ends_the_trial :: proc(t: ^testing.T) {
 	testing.expect_value(t, memo.text, "1800000000")
 	testing.expect_value(t, unix(first_use("", memo_ledger(&memo), now)), unix(now))
 }
+
+// A licence kept is the one in use, until what LEITA_LICENCE holds takes its
+// place for a run; forgotten, there is none.
+@(test)
+the_licence_in_use_is_the_one_given_or_else_the_one_kept :: proc(t: ^testing.T) {
+	s := signer()
+	dir, derr := os.make_directory_temp("", "leita-licence-*", context.temp_allocator)
+	testing.expect(t, derr == nil)
+	defer os.remove_all(dir)
+	kept, _ := filepath.join({dir, "data", "history.db"}, context.temp_allocator)
+	path := path_beside(kept, context.temp_allocator)
+
+	_, from, err := in_use(path, "", s.pub[:])
+	testing.expect_value(t, from, Source.None)
+	testing.expect_value(t, err, Error.None)
+
+	_, kerr := keep(path, "leita1.e30=.AAAA", s.pub[:], context.temp_allocator)
+	testing.expect_value(t, kerr, Error.Malformed)
+	testing.expect(t, !os.exists(path), "what does not check is not kept")
+	_, kerr = keep(path, mint(&s, TERMS), s.pub[:], context.temp_allocator)
+	testing.expect_value(t, kerr, Error.None)
+
+	l: Licence
+	l, from, err = in_use(path, "", s.pub[:])
+	testing.expect_value(t, from, Source.Kept)
+	testing.expect_value(t, l.licensee, "Acme Ltd")
+
+	given := mint(&s, `{"licensee": "Ops Team", "tier": "team", "order": "ord_2"}`)
+	l, from, err = in_use(path, given, s.pub[:])
+	testing.expect_value(t, from, Source.Env)
+	testing.expect_value(t, l.licensee, "Ops Team")
+	_, from, err = in_use(path, "not a licence", s.pub[:])
+	testing.expect_value(t, from, Source.Env)
+	testing.expect_value(t, err, Error.Malformed)
+
+	if KEY == "" {
+		_, _, err = in_use(path, "", nil)
+		testing.expect_value(t, err, Error.No_Key)
+	}
+
+	was, ferr := forget(path)
+	testing.expect(t, was && ferr == .None)
+	_, from, _ = in_use(path, "", s.pub[:])
+	testing.expect_value(t, from, Source.None)
+	was, _ = forget(path)
+	testing.expect(t, !was, "nothing to forget")
+}

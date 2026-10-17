@@ -422,12 +422,10 @@ R_FILM :: "/r" + scan.SEPARATOR + "film.mkv"
 R_PROJ :: "/r" + scan.SEPARATOR + "proj"
 @(private = "file")
 R_PROJ_NODE_MODULES_XJS :: R_PROJ + scan.SEPARATOR + "node_modules" + scan.SEPARATOR + "x.js"
-// Reclaim's own candidate path, unlike the tree paths above: reclaim.odin
-// joins a child onto a path with a literal '/' (visit, reclaim.odin), and
-// reclaim_test.odin's own fixtures and expected paths are "/home/ann/..."
-// throughout, on every OS, so this one is not built from scan.SEPARATOR.
+// Reclaim's own candidate path, which it joins on the host's separator as scan
+// does (visit, reclaim.odin).
 @(private = "file")
-RECLAIM_NODE_MODULES :: "/r/proj/node_modules"
+RECLAIM_NODE_MODULES :: R_PROJ + scan.SEPARATOR + "node_modules"
 
 @(private = "file")
 small_tree :: proc(t: ^testing.T, tree: ^scan.Tree, roll: ^survey.Rollup, mounted := false) {

@@ -1,5 +1,6 @@
 package reclaim
 
+import "core:os"
 import "core:slice"
 import "core:strings"
 import "core:testing"
@@ -122,6 +123,7 @@ home_tree :: proc(t: ^Fake) -> (root: u32) {
 	fake_add(t, fake_path(t, web, "node_modules"), "left-pad.js", false, 100)
 	rust := fake_path(t, home, "src/tool")
 	fake_add(t, rust, "Cargo.toml", false, 1)
+	fake_add(t, fake_path(t, rust, "target"), "CACHEDIR.TAG", false, 1)
 	fake_path(t, rust, "target/debug")
 	fake_path(t, home, "src/py/pkg/__pycache__")
 
@@ -148,7 +150,7 @@ home_tree :: proc(t: ^Fake) -> (root: u32) {
 	fake_path(t, home, "go/pkg/mod/github.com")
 	fake_path(t, home, TRASH + "/files")
 
-	// The macOS places, matched by path on every platform.
+	// The macOS places, looked for on a Mac.
 	fake_path(t, home, "Library/Caches/com.apple.Safari")
 	fake_path(t, home, "Library/Caches/Homebrew/downloads")
 	fake_add(t, fake_path(t, home, "Library/Caches"), "a-file-in-caches", false, 5)
@@ -182,7 +184,7 @@ only_what_proves_itself_regenerable_is_found :: proc(t: ^testing.T) {
 	tree: Fake
 	defer fake_destroy(&tree)
 	root := home_tree(&tree)
-	found := find(fake_source(&tree), root, "/", ANN)
+	found := find(fake_source(&tree), root, "/", ANN, platform = .Darwin)
 	defer candidates_destroy(found)
 
 	want := []string {
@@ -212,7 +214,7 @@ each_candidate_says_what_it_is :: proc(t: ^testing.T) {
 	tree: Fake
 	defer fake_destroy(&tree)
 	root := home_tree(&tree)
-	found := find(fake_source(&tree), root, "/", ANN)
+	found := find(fake_source(&tree), root, "/", ANN, platform = .Darwin)
 	defer candidates_destroy(found)
 	testing.expect_value(t, len(found), 15)
 	for c in found {
@@ -227,6 +229,9 @@ each_candidate_says_what_it_is :: proc(t: ^testing.T) {
 			want = .Build_Output
 		case strings.has_suffix(c.path, "__pycache__"):
 			want = .Python
+		case strings.has_suffix(c.path, ".cache/pip"),
+		     strings.has_suffix(c.path, "Caches/Homebrew"):
+			want = .Package_Cache
 		case strings.contains(c.path, ".cache/"), strings.contains(c.path, "Caches"):
 			want = .App_Cache
 		case strings.has_suffix(c.path, "DeviceSupport"):
@@ -250,7 +255,7 @@ a_scan_below_home_finds_by_rule_alone :: proc(t: ^testing.T) {
 	fake_add(&tree, web, "package.json", false, 1)
 	fake_path(&tree, web, "node_modules")
 	fake_path(&tree, web, ".cache/x")
-	found := find(fake_source(&tree), web, "/home/ann/src/web", ANN)
+	found := find(fake_source(&tree), web, "/home/ann/src/web", ANN, platform = .Unix)
 	defer candidates_destroy(found)
 	testing.expect(t, slice.equal(found_paths(found), []string{"/home/ann/src/web/node_modules"}))
 }
@@ -261,13 +266,17 @@ nothing_under_a_system_directory_even_from_its_top :: proc(t: ^testing.T) {
 	defer fake_destroy(&tree)
 	lib := fake_add(&tree, 0, "lib", true)
 	fake_path(&tree, lib, "python3/__pycache__")
-	found := find(fake_source(&tree), lib, "/usr/lib", ANN)
+	found := find(fake_source(&tree), lib, "/usr/lib", ANN, platform = .Unix)
 	defer candidates_destroy(found)
 	testing.expect_value(t, len(found), 0)
-	testing.expect(t, under_system("/usr"))
-	testing.expect(t, under_system("/usr/lib"))
-	testing.expect(t, !under_system("/usrdata"))
-	testing.expect(t, !under_system("/home/ann"))
+	f := Finder {
+		platform = .Unix,
+		system   = system_dirs(.Unix, context.temp_allocator),
+	}
+	testing.expect(t, under_system(&f, "/usr"))
+	testing.expect(t, under_system(&f, "/usr/lib"))
+	testing.expect(t, !under_system(&f, "/usrdata"))
+	testing.expect(t, !under_system(&f, "/home/ann"))
 }
 
 // What macOS keeps under home that is not made again is never offered, whatever
@@ -277,7 +286,7 @@ nothing_macos_keeps_for_good_is_offered :: proc(t: ^testing.T) {
 	tree: Fake
 	defer fake_destroy(&tree)
 	root := home_tree(&tree)
-	found := find(fake_source(&tree), root, "/", ANN)
+	found := find(fake_source(&tree), root, "/", ANN, platform = .Darwin)
 	defer candidates_destroy(found)
 	testing.expect_value(t, len(found), 15)
 	kept := []string {
@@ -310,7 +319,7 @@ the_users_trash_on_another_volume_is_found :: proc(t: ^testing.T) {
 	fake_path(&tree, root, "Volumes/Backup/.Trashes/501/theirs")
 	fake_path(&tree, root, "Volumes/Backup/Photos/1000")
 	fake_path(&tree, root, "Volumes/.Trashes/1000")
-	found := find(fake_source(&tree), root, "/", ANN)
+	found := find(fake_source(&tree), root, "/", ANN, platform = .Darwin)
 	defer candidates_destroy(found)
 	want := []string{"/Volumes/Backup/.Trashes/1000"}
 	got := found_paths(found)
@@ -320,11 +329,210 @@ the_users_trash_on_another_volume_is_found :: proc(t: ^testing.T) {
 	}
 
 	volume := fake_path(&tree, root, "Volumes/Backup")
-	below := find(fake_source(&tree), volume, "/Volumes/Backup", ANN)
+	below := find(fake_source(&tree), volume, "/Volumes/Backup", ANN, platform = .Darwin)
 	defer candidates_destroy(below)
 	testing.expect(t, slice.equal(found_paths(below), want))
 
-	none := find(fake_source(&tree), root, "/", home.User{"/home/ann", ""})
+	none := find(fake_source(&tree), root, "/", home.User{"/home/ann", ""}, platform = .Darwin)
 	defer candidates_destroy(none)
 	testing.expect_value(t, len(none), 0)
+}
+
+// project makes a directory at path under from holding the file marker, as a
+// project's manifest, and returns it.
+@(private)
+project :: proc(t: ^Fake, from: u32, path, marker: string) -> u32 {
+	dir := fake_path(t, from, path)
+	fake_add(t, dir, marker, false, 1)
+	return dir
+}
+
+// make_output makes the directory out in a project at path under from whose
+// manifest is marker, holding the file inside unless that is "".
+@(private)
+make_output :: proc(t: ^Fake, from: u32, path, marker, out: string, inside := "") {
+	dir := fake_path(t, project(t, from, path, marker), out)
+	if inside != "" {
+		fake_add(t, dir, inside, false, 1)
+	}
+}
+
+// What Windows and its programs installed, node_modules beside a package.json
+// or a __pycache__, is never offered, wherever the environment puts Windows, in
+// whatever case and with either slash.
+@(test)
+nothing_under_windows_or_its_programs :: proc(t: ^testing.T) {
+	was := strings.clone(os.get_env("SystemRoot", context.temp_allocator), context.temp_allocator)
+	testing.expect(t, os.set_env("SystemRoot", `D:\WinNT\`) == nil)
+	defer if was != "" {
+		os.set_env("SystemRoot", was)
+	} else {
+		os.unset_env("SystemRoot")
+	}
+
+	tree: Fake
+	defer fake_destroy(&tree)
+	root := fake_add(&tree, 0, `C:\`, true)
+	make_output(&tree, root, "Program Files/nodejs", "package.json", "node_modules")
+	make_output(&tree, root, "Program Files (x86)/app", "package.json", "node_modules")
+	fake_path(&tree, root, "PROGRAMDATA/tool/__pycache__")
+	fake_path(&tree, root, "windows/System32/__pycache__")
+	make_output(&tree, root, "Users/ann/src/web", "package.json", "node_modules")
+	ann := home.User{"C:/Users/ann/", ""}
+	found := find(fake_source(&tree), root, `C:\`, ann, platform = .Windows)
+	defer candidates_destroy(found)
+	want := []string{`C:\Users\ann\src\web\node_modules`}
+	got := found_paths(found)
+	testing.expectf(t, slice.equal(got, want), "found\n%v\nwant\n%v", got, want)
+
+	// From below a system directory, by either slash, nothing.
+	nodejs := fake_path(&tree, root, "Program Files/nodejs")
+	below := find(fake_source(&tree), nodejs, "c:/program files/nodejs", ann, platform = .Windows)
+	defer candidates_destroy(below)
+	testing.expect_value(t, len(below), 0)
+
+	// Windows where the environment says it is, not only at C:\Windows.
+	other := fake_add(&tree, 0, `D:\`, true)
+	fake_path(&tree, other, "WinNT/x/__pycache__")
+	fake_path(&tree, other, "WinNTdata/x/__pycache__")
+	moved := find(fake_source(&tree), other, `D:\`, ann, platform = .Windows)
+	defer candidates_destroy(moved)
+	testing.expect(t, slice.equal(found_paths(moved), []string{`D:\WinNTdata\x\__pycache__`}))
+}
+
+// /opt, /mnt, /media, /srv, /snap, /nix and root's home are not the user's to
+// clear, whatever proof stands beside what they hold.
+@(test)
+nothing_under_what_unix_installs_or_mounts :: proc(t: ^testing.T) {
+	tree: Fake
+	defer fake_destroy(&tree)
+	root := fake_add(&tree, 0, "/", true)
+	installed := []string {
+		"opt/app",
+		"mnt/backup/x",
+		"media/ann/disk/web",
+		"srv/www",
+		"snap/code/1/app",
+		"nix/store/abc-web",
+		"root/web",
+		"var/lib/app",
+	}
+	for dir in installed {
+		make_output(&tree, root, dir, "package.json", "node_modules")
+	}
+	make_output(&tree, root, "home/ann/web", "package.json", "node_modules")
+	found := find(fake_source(&tree), root, "/", ANN, platform = .Unix)
+	defer candidates_destroy(found)
+	want := []string{"/home/ann/web/node_modules"}
+	got := found_paths(found)
+	testing.expectf(t, slice.equal(got, want), "found\n%v\nwant\n%v", got, want)
+
+	opt := fake_path(&tree, root, "opt")
+	below := find(fake_source(&tree), opt, "/opt", ANN, platform = .Unix)
+	defer candidates_destroy(below)
+	testing.expect_value(t, len(below), 0)
+}
+
+// A Library under a Linux home is someone's own folder: none of macOS's places
+// is looked for there, and a Mac's own system directories are a Mac's.
+@(test)
+macos_places_only_on_a_mac :: proc(t: ^testing.T) {
+	tree: Fake
+	defer fake_destroy(&tree)
+	root := fake_add(&tree, 0, "/", true)
+	home := fake_path(&tree, root, "home/ann")
+	fake_path(&tree, home, "Library/Caches/Homebrew")
+	fake_path(&tree, home, "Library/Caches/x")
+	fake_path(&tree, home, "Library/Developer/Xcode/DerivedData")
+	make_output(&tree, root, "Library/App", "package.json", "node_modules")
+
+	linux := find(fake_source(&tree), root, "/", ANN, platform = .Unix)
+	defer candidates_destroy(linux)
+	want := []string{"/Library/App/node_modules"}
+	got := found_paths(linux)
+	testing.expectf(t, slice.equal(got, want), "on Linux found\n%v\nwant\n%v", got, want)
+
+	mac := find(fake_source(&tree), root, "/", ANN, platform = .Darwin)
+	defer candidates_destroy(mac)
+	want = []string {
+		"/home/ann/Library/Caches/Homebrew",
+		"/home/ann/Library/Developer/Xcode/DerivedData",
+	}
+	got = found_paths(mac)
+	testing.expectf(t, slice.equal(got, want), "on a Mac found\n%v\nwant\n%v", got, want)
+}
+
+// Only the caches known to be made again are offered from ~/.cache; one with a
+// name nobody checked is looked in like any other folder, and Hugging Face's
+// models are offered without the login token beside them.
+@(test)
+only_known_caches_are_offered :: proc(t: ^testing.T) {
+	tree: Fake
+	defer fake_destroy(&tree)
+	root := fake_add(&tree, 0, "/", true)
+	home := fake_path(&tree, root, "home/ann")
+	fake_path(&tree, home, ".cache/pip/wheels")
+	fake_path(&tree, home, ".cache/unknown/saves")
+	fake_path(&tree, home, ".cache/go-build/00")
+	hf := fake_path(&tree, home, ".cache/huggingface")
+	fake_add(&tree, hf, "token", false, 1)
+	fake_path(&tree, hf, "hub/models--x")
+	make_output(&tree, home, ".cache/unknown/app", "package.json", "node_modules")
+	found := find(fake_source(&tree), root, "/", ANN, platform = .Unix)
+	defer candidates_destroy(found)
+	want := []string {
+		"/home/ann/.cache/go-build",
+		"/home/ann/.cache/huggingface/hub",
+		"/home/ann/.cache/pip",
+		"/home/ann/.cache/unknown/app/node_modules",
+	}
+	got := found_paths(found)
+	testing.expectf(t, slice.equal(got, want), "found\n%v\nwant\n%v", got, want)
+}
+
+// build, target and a virtual environment beside their project's file are its
+// tool's only when they hold the file the tool writes into them.
+@(test)
+output_holds_what_its_tool_wrote :: proc(t: ^testing.T) {
+	tree: Fake
+	defer fake_destroy(&tree)
+	root := fake_add(&tree, 0, "/", true)
+	src := fake_path(&tree, root, "home/ann/src")
+	make_output(&tree, src, "notes", "CMakeLists.txt", "build")
+	make_output(&tree, src, "cmake", "CMakeLists.txt", "build", "CMakeCache.txt")
+	make_output(&tree, src, "meson-docs", "meson.build", "build")
+	make_output(&tree, src, "meson", "meson.build", "build", "build.ninja")
+	make_output(&tree, src, "rust-old", "Cargo.toml", "target")
+	make_output(&tree, src, "rust", "Cargo.toml", "target", "CACHEDIR.TAG")
+	make_output(&tree, src, "pydata", "requirements.txt", "venv")
+	make_output(&tree, src, "py", "requirements.txt", "venv", "pyvenv.cfg")
+	make_output(&tree, src, "uv", "pyproject.toml", ".venv", "pyvenv.cfg")
+	// The file must be a file: a folder of that name proves nothing.
+	fake_path(&tree, project(&tree, src, "odd", "Cargo.toml"), "target/CACHEDIR.TAG")
+	found := find(fake_source(&tree), root, "/", ANN, platform = .Unix)
+	defer candidates_destroy(found)
+	want := []string {
+		"/home/ann/src/cmake/build",
+		"/home/ann/src/meson/build",
+		"/home/ann/src/py/venv",
+		"/home/ann/src/rust/target",
+		"/home/ann/src/uv/.venv",
+	}
+	got := found_paths(found)
+	testing.expectf(t, slice.equal(got, want), "found\n%v\nwant\n%v", got, want)
+}
+
+// within compares on the platform's separator and case, never part of a name.
+@(test)
+within_compares_as_the_platform_does :: proc(t: ^testing.T) {
+	rel, ok := within(`c:/program files/nodejs`, `C:\Program Files`, .Windows)
+	testing.expect(t, ok && rel == "nodejs")
+	_, ok = within(`C:\Program Filesystem`, `C:\Program Files`, .Windows)
+	testing.expect(t, !ok)
+	_, ok = within("/Opt/app", "/opt", .Unix)
+	testing.expect(t, !ok, "case counts on Linux")
+	_, ok = within(`/opt\app`, "/opt", .Unix)
+	testing.expect(t, !ok, "a backslash is part of a name on Linux")
+	rel, ok = within("/opt", "/opt", .Unix)
+	testing.expect(t, ok && rel == "")
 }

@@ -1429,6 +1429,7 @@ A directory of projects, made fresh:
 	<root>/web/node_modules/lib/index.js    64 KiB, touched a month ago
 	<root>/rust/Cargo.toml                  a Rust project
 	<root>/rust/target/app                  128 KiB, touched today
+	<root>/rust/target/CACHEDIR.TAG         4 KiB, cargo's word that target is its own
 	<root>/plain/build/out.o                32 KiB, a build folder of no known project
 */
 @(private = "file")
@@ -1452,6 +1453,8 @@ projects :: proc(t: ^testing.T, name: string) -> string {
 	write(t, fmt.tprintf("%s/web/node_modules/lib/index.js", root), 64 * 1024)
 	write(t, fmt.tprintf("%s/rust/Cargo.toml", root), 2)
 	write(t, fmt.tprintf("%s/rust/target/app", root), 128 * 1024)
+	// 4 KiB, a whole block where blocks are 4 KiB, as the sizes here assume.
+	write(t, fmt.tprintf("%s/rust/target/CACHEDIR.TAG", root), 4 * 1024)
 	write(t, fmt.tprintf("%s/plain/build/out.o", root), 32 * 1024)
 	age(t, fmt.tprintf("%s/web/node_modules", root), 30)
 	return root
@@ -1500,9 +1503,9 @@ reclaim_offers_only_what_rebuilds_and_deletes_what_is_chosen :: proc(t: ^testing
 	testing.expect(t, settle(&r, "0 B in 0 folders chosen"))
 	testing.expect(t, ui.probe_click(&r.p, "rust/target"))
 	press_and_hand_on(&r)
-	testing.expect(t, settle(&r, "131.1 kB in 1 folder chosen"))
+	testing.expect(t, settle(&r, "135.2 kB in 1 folder chosen"))
 	confirm(t, &r, "Clean up", "Delete")
-	testing.expect(t, settle(&r, "Deleted 1 folder and freed 131.1 kB"))
+	testing.expect(t, settle(&r, "Deleted 1 folder and freed 135.2 kB"))
 	testing.expect(t, !os.exists(fmt.tprintf("%s/rust/target", root)))
 	testing.expect(t, settle(&r, "Nothing here is safe to reclaim."))
 

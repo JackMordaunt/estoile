@@ -5,18 +5,25 @@ leita's Reclaim mode, so it errs one way only: a candidate must prove what it is
 
 A directory is a candidate when a rule names it and, for every name that could
 also be someone's work (target, build, .venv), when the directory holding it also
-holds the file that shows which tool made it: node_modules beside package.json,
-target beside Cargo.toml. Names nothing else uses (__pycache__) need no proof.
-Bare build, dist and out are never candidates. Under the user's home, the
-per-application directories of the XDG cache and of macOS's Library/Caches, a
-few package managers' download caches, Xcode's build output and device symbols,
-the simulator's cache, and the Trash are candidates by where they are, as is the
-user's Trash on an external volume. The places are matched by path alone, on
-every platform: a Library under a Linux home is as safe to match as nothing
-there is named that way.
+holds the file that shows which tool made it: node_modules beside package.json.
+Where a project could keep a folder of that name of its own, the directory must
+also hold the file the tool writes into it: a Cargo target its CACHEDIR.TAG, a
+CMake build its CMakeCache.txt, a virtual environment its pyvenv.cfg. Names
+nothing else uses (__pycache__) need no proof. Bare build, dist and out are never
+candidates.
+
+Under the user's home, the caches of tools known to make them again, a few package
+managers' download caches, Xcode's build output and device symbols, the
+simulator's cache, and the Trash are candidates by where they are, as is the
+user's Trash on an external volume. A cache is offered by its name, from a list:
+anything can write under ~/.cache, so a name not on the list proves nothing.
+macOS's places, those under Library, are looked for only on a Mac: a Library
+under a Linux home is someone's own folder.
 
 A match is not looked inside: what it holds goes with it. Nothing inside a .git
-directory, and nothing under a system directory, is ever a candidate.
+directory, and nothing under a directory of the system or its programs, is ever a
+candidate. Which directories those are, what separates a path's names and whether
+case counts are the scan's platform's.
 
 The package knows the scan only through a Source, so it is tested over trees
 made in memory.
@@ -24,6 +31,7 @@ made in memory.
 package reclaim
 
 import "core:mem"
+import "core:os"
 import "core:slice"
 import "core:strings"
 
@@ -60,12 +68,33 @@ CATEGORY_REASONS := [Category]string {
 	.Trash          = "Already deleted; emptying it frees the space for good.",
 }
 
+// Platform is the system a scan's paths are of, which says what separates their
+// names, whether case counts, which directories are the system's, and whether
+// macOS's places are looked for.
+Platform :: enum u8 {
+	Unix,
+	Darwin,
+	Windows,
+}
+
+// HOST is the platform leita runs on, whose disks it scans.
+when ODIN_OS == .Windows {
+	HOST :: Platform.Windows
+} else when ODIN_OS == .Darwin {
+	HOST :: Platform.Darwin
+} else {
+	HOST :: Platform.Unix
+}
+
 // Rule is a directory name that is a candidate, beside one of markers in the
-// directory holding it; with no markers, anywhere.
+// directory holding it; with no markers, anywhere. With inside, the directory
+// must also hold that file, which its tool writes there and a folder of
+// someone's own work of the same name would not.
 Rule :: struct {
 	name:     string,
 	markers:  []string,
 	category: Category,
+	inside:   string,
 }
 
 @(rodata)
@@ -87,34 +116,45 @@ GRADLE_MARK := [?]string {
 	"settings.gradle.kts",
 }
 @(rodata)
-CMAKE_MARK := [?]string{"CMakeLists.txt", "meson.build"}
-@(rodata)
 ZIG_MARK := [?]string{"build.zig"}
 
 RULES := [?]Rule {
-	{"node_modules", JS_MARK[:], .Dependencies},
-	{".next", JS_MARK[:], .Build_Output},
-	{".nuxt", JS_MARK[:], .Build_Output},
-	{".svelte-kit", JS_MARK[:], .Build_Output},
-	{".parcel-cache", JS_MARK[:], .Build_Output},
-	{".turbo", JS_MARK[:], .Build_Output},
-	{"target", {"Cargo.toml"}, .Build_Output},
-	{"target", {"pom.xml"}, .Build_Output},
-	{".gradle", GRADLE_MARK[:], .Build_Output},
-	{"build", GRADLE_MARK[:], .Build_Output},
-	{"build", CMAKE_MARK[:], .Build_Output},
-	{"zig-cache", ZIG_MARK[:], .Build_Output},
-	{".zig-cache", ZIG_MARK[:], .Build_Output},
-	{".build", {"Package.swift"}, .Build_Output},
-	// The name Odin's compiler gives its own cache directory, as of dev-2026-10.
-	{".odin-cache", nil, .Build_Output},
-	{"__pycache__", nil, .Python},
-	{".pytest_cache", nil, .Python},
-	{".mypy_cache", nil, .Python},
-	{".ruff_cache", nil, .Python},
-	{".tox", PY_MARK[:], .Python},
-	{".venv", PY_MARK[:], .Python},
-	{"venv", PY_MARK[:], .Python},
+	{"node_modules", JS_MARK[:], .Dependencies, ""},
+	{".next", JS_MARK[:], .Build_Output, ""},
+	{".nuxt", JS_MARK[:], .Build_Output, ""},
+	{".svelte-kit", JS_MARK[:], .Build_Output, ""},
+	{".parcel-cache", JS_MARK[:], .Build_Output, ""},
+	{".turbo", JS_MARK[:], .Build_Output, ""},
+	// cargo writes a CACHEDIR.TAG into the target directory it makes ("a cache
+	// directory tag created by cargo", seen in a target on 2026-10-17); a target
+	// beside Cargo.toml without one is not known to be cargo's.
+	{"target", {"Cargo.toml"}, .Build_Output, "CACHEDIR.TAG"},
+	{"target", {"pom.xml"}, .Build_Output, ""},
+	{".gradle", GRADLE_MARK[:], .Build_Output, ""},
+	{"build", GRADLE_MARK[:], .Build_Output, ""},
+	// A C or C++ project keeps folders called build of its own (scripts, docs), so
+	// only the one CMake configured, which holds its CMakeCache.txt, or the one
+	// Meson set up, which holds its build.ninja, is the build's (CMake 4.4.3 and
+	// Meson 1.12.1, checked 2026-10-17).
+	{"build", {"CMakeLists.txt"}, .Build_Output, "CMakeCache.txt"},
+	{"build", {"meson.build"}, .Build_Output, "build.ninja"},
+	{"zig-cache", ZIG_MARK[:], .Build_Output, ""},
+	{".zig-cache", ZIG_MARK[:], .Build_Output, ""},
+	{".build", {"Package.swift"}, .Build_Output, ""},
+	// Odin's compiler makes .odin-cache beside the binary it builds, and keeps in
+	// it only manifests of the build and the binary itself (try_cached_build in
+	// its src/cached.cpp, as of dev-2026-09).
+	{".odin-cache", nil, .Build_Output, ""},
+	{"__pycache__", nil, .Python, ""},
+	{".pytest_cache", nil, .Python, ""},
+	{".mypy_cache", nil, .Python, ""},
+	{".ruff_cache", nil, .Python, ""},
+	{".tox", PY_MARK[:], .Python, ""},
+	// python -m venv and virtualenv write pyvenv.cfg into every environment they
+	// make (Python 3.14.7 and virtualenv 21.14.10, checked 2026-10-17); a folder
+	// of these names without one is not an environment.
+	{".venv", PY_MARK[:], .Python, "pyvenv.cfg"},
+	{"venv", PY_MARK[:], .Python, "pyvenv.cfg"},
 }
 
 // TRASH is the user's Trash, relative to the home directory: the Finder's on
@@ -126,35 +166,111 @@ when ODIN_OS == .Darwin {
 }
 
 // HOME_PLACES are candidates by where they are, relative to the home directory.
-// A place ending in /* makes each directory it holds a candidate of its own.
+// A place for darwin is looked for only on a Mac.
 HOME_PLACES := [?]struct {
 	path:     string,
 	category: Category,
+	darwin:   bool,
 } {
-	{".cache/*", .App_Cache},
-	{".npm/_cacache", .Package_Cache},
-	{".cargo/registry/cache", .Package_Cache},
-	{".cargo/registry/src", .Package_Cache},
-	{"go/pkg/mod", .Package_Cache},
-	{".gradle/caches", .Package_Cache},
-	{".m2/repository", .Package_Cache},
-	{"Library/Caches/*", .App_Cache},
-	{"Library/Developer/Xcode/DerivedData", .Build_Output},
-	{"Library/Developer/Xcode/iOS DeviceSupport", .Device_Support},
-	{"Library/Developer/Xcode/watchOS DeviceSupport", .Device_Support},
-	{"Library/Developer/Xcode/tvOS DeviceSupport", .Device_Support},
-	{"Library/Developer/Xcode/visionOS DeviceSupport", .Device_Support},
-	{"Library/Developer/CoreSimulator/Caches", .App_Cache},
-	{TRASH, .Trash},
+	{".npm/_cacache", .Package_Cache, false},
+	{".cargo/registry/cache", .Package_Cache, false},
+	{".cargo/registry/src", .Package_Cache, false},
+	{".cargo/git/db", .Package_Cache, false},
+	{".cargo/git/checkouts", .Package_Cache, false},
+	{"go/pkg/mod", .Package_Cache, false},
+	{".gradle/caches", .Package_Cache, false},
+	{".m2/repository", .Package_Cache, false},
+	{".nuget/packages", .Package_Cache, false},
+	// Hugging Face's downloaded models; its login token, beside them, is kept.
+	{".cache/huggingface/hub", .Package_Cache, false},
+	{"Library/Caches/Google/Chrome", .App_Cache, true},
+	{"Library/Developer/Xcode/DerivedData", .Build_Output, true},
+	{"Library/Developer/Xcode/iOS DeviceSupport", .Device_Support, true},
+	{"Library/Developer/Xcode/watchOS DeviceSupport", .Device_Support, true},
+	{"Library/Developer/Xcode/tvOS DeviceSupport", .Device_Support, true},
+	{"Library/Developer/Xcode/visionOS DeviceSupport", .Device_Support, true},
+	{"Library/Developer/CoreSimulator/Caches", .App_Cache, true},
+	{TRASH, .Trash, false},
 }
+
+// Cache is a directory of a cache home whose tool is known to make again what it
+// holds.
+Cache :: struct {
+	name:     string,
+	category: Category,
+}
+
+/*
+XDG_CACHES are the directories of ~/.cache that are candidates, each by name.
+No other is: anything can write under ~/.cache, and not everything there is made
+again, so a name nobody has checked proves nothing. Hugging Face keeps its login
+token in ~/.cache/huggingface (HF_HOME's default, by huggingface_hub's
+documentation), and poetry its virtual environments in
+~/.cache/pypoetry/virtualenvs (virtualenvs.path's default on Linux, by
+poetry's).
+*/
+@(rodata)
+XDG_CACHES := [?]Cache {
+	{"pip", .Package_Cache}, // wheels and downloads, fetched again
+	{"uv", .Package_Cache}, // uv's packages; its tools and Pythons live elsewhere
+	{"npm", .Package_Cache}, // npm's cache where it is pointed under XDG
+	{"yarn", .Package_Cache}, // Yarn 1's packages
+	{"pnpm", .Package_Cache}, // pnpm's metadata; its store lives elsewhere
+	{"composer", .Package_Cache}, // Composer's downloads
+	{"pre-commit", .Package_Cache}, // hook environments, made again on the next commit
+	{"go-build", .Build_Output}, // go's build cache, GOCACHE
+	{"mesa_shader_cache", .App_Cache}, // compiled shaders, compiled again when drawn
+	{"mesa_shader_cache_db", .App_Cache}, // the same, as newer Mesa keeps it
+	{"fontconfig", .App_Cache}, // font lists, made again by the next program
+	{"thumbnails", .App_Cache}, // thumbnails, drawn again when shown
+	{"mozilla", .App_Cache}, // Firefox's web cache; the profile is elsewhere
+	{"chromium", .App_Cache}, // the browser's web cache; the profile is in ~/.config
+	{"google-chrome", .App_Cache}, // the same, for Chrome
+}
+
+/*
+MACOS_CACHES are the directories of ~/Library/Caches that are candidates, each by
+name, as XDG_CACHES are of ~/.cache: what an application keeps there is offered
+once someone has checked that it makes it again.
+*/
+@(rodata)
+MACOS_CACHES := [?]Cache {
+	{"Homebrew", .Package_Cache}, // bottles and downloads, fetched again
+	{"pip", .Package_Cache},
+	{"Yarn", .Package_Cache},
+	{"pnpm", .Package_Cache},
+	{"composer", .Package_Cache},
+	{"CocoaPods", .Package_Cache}, // pod specs and downloads
+	{"node-gyp", .Package_Cache}, // Node's headers, fetched for the next native build
+	{"typescript", .Package_Cache}, // type definitions the editor fetches again
+	{"go-build", .Build_Output},
+	{"JetBrains", .App_Cache}, // the IDEs' indexes, built again on opening a project
+	{"com.apple.Safari", .App_Cache}, // Safari's web cache
+	{"Firefox", .App_Cache},
+	{"Chromium", .App_Cache},
+}
+
+// CACHE_HOMES are the directories under home whose listed directories are
+// candidates each; one for darwin is looked for only on a Mac.
+CACHE_HOMES := [?]struct {
+	path:   string,
+	caches: []Cache,
+	darwin: bool,
+}{{".cache", XDG_CACHES[:], false}, {"Library/Caches", MACOS_CACHES[:], true}}
 
 // VOLUMES is where macOS mounts other volumes. The Trash matched on one is the
 // path <volume>/.Trashes/<uid>, the user's by id, which is the layout assumed of
 // the Finder; no external volume was at hand to observe it, so a test holds it.
 VOLUMES :: "/Volumes/"
 
-// SYSTEM are directories nothing under is ever a candidate.
-SYSTEM := [?]string {
+/*
+UNIX_SYSTEM are the directories nothing under is ever a candidate on Linux and the
+other Unixes: the system's own, where packages and installers put programs (/opt,
+/snap, /nix), root's home, what a server serves (/srv), and where other disks are
+mounted (/mnt, /media), whose trees are not the user's to judge.
+*/
+@(rodata)
+UNIX_SYSTEM := [?]string {
 	"/bin",
 	"/boot",
 	"/dev",
@@ -162,12 +278,43 @@ SYSTEM := [?]string {
 	"/lib",
 	"/lib32",
 	"/lib64",
+	"/media",
+	"/mnt",
+	"/nix",
+	"/opt",
 	"/proc",
+	"/root",
 	"/run",
 	"/sbin",
+	"/snap",
+	"/srv",
 	"/sys",
 	"/usr",
 	"/var",
+}
+
+// DARWIN_SYSTEM are macOS's own besides UNIX_SYSTEM: its /etc, /tmp and /var are
+// links into /private.
+@(rodata)
+DARWIN_SYSTEM := [?]string{"/Applications", "/Library", "/System", "/cores", "/private"}
+
+// WINDOWS_SYSTEM are Windows's own and its programs' where it is installed as
+// usual; WINDOWS_SYSTEM_ENV name them where it is installed elsewhere.
+@(rodata)
+WINDOWS_SYSTEM := [?]string {
+	`C:\Windows`,
+	`C:\Program Files`,
+	`C:\Program Files (x86)`,
+	`C:\ProgramData`,
+}
+@(rodata)
+WINDOWS_SYSTEM_ENV := [?]string {
+	"SystemRoot",
+	"windir",
+	"ProgramFiles",
+	"ProgramFiles(x86)",
+	"ProgramW6432",
+	"ProgramData",
 }
 
 // Source is the scan as the finder sees it.
@@ -195,7 +342,10 @@ Finder :: struct {
 	src:       Source,
 	home:      string,
 	uid:       string,
+	platform:  Platform,
+	system:    []string,
 	path:      strings.Builder,
+	held:      [dynamic]u32, // what a directory a rule names holds, as rule_for reads it
 	found:     [dynamic]Candidate,
 	allocator: mem.Allocator,
 }
@@ -204,7 +354,7 @@ Finder :: struct {
 find searches the directory top, whose path is top_path, for candidates, the
 largest first, their paths in allocator. user is whose home directory and user id
 the candidates that are where they are belong to; an empty home or id leaves
-those out.
+those out. platform is the system the scan's paths are of.
 */
 find :: proc(
 	src: Source,
@@ -212,18 +362,22 @@ find :: proc(
 	top_path: string,
 	user: home.User,
 	allocator := context.allocator,
+	platform := HOST,
 ) -> []Candidate {
 	f := Finder {
 		src       = src,
-		home      = strings.trim_right(user.dir, "/"),
+		home      = strings.trim_right(user.dir, separators(platform)),
 		uid       = user.uid,
+		platform  = platform,
+		system    = system_dirs(platform, context.temp_allocator),
 		path      = strings.builder_make(context.temp_allocator),
+		held      = make([dynamic]u32, context.temp_allocator),
 		found     = make([dynamic]Candidate, allocator),
 		allocator = allocator,
 	}
-	// The path is kept without a trailing slash, so the root is "".
-	strings.write_string(&f.path, strings.trim_right(top_path, "/"))
-	if !under_system(strings.to_string(f.path)) {
+	// The path is kept without a trailing separator, so the root is "" (or C:).
+	strings.write_string(&f.path, strings.trim_right(top_path, separators(platform)))
+	if !under_system(&f, strings.to_string(f.path)) {
 		visit(&f, top)
 	}
 	// Largest first, as the person deciding reads them.
@@ -236,7 +390,7 @@ find :: proc(
 visit :: proc(f: ^Finder, dir: u32) {
 	kids := make([dynamic]u32, context.temp_allocator)
 	f.src.children(f.src.data, dir, &kids)
-	each, every := place_each(f, strings.to_string(f.path))
+	caches := caches_in(f, strings.to_string(f.path))
 	for kid in kids {
 		if !f.src.directory(f.src.data, kid) {
 			continue
@@ -246,10 +400,10 @@ visit :: proc(f: ^Finder, dir: u32) {
 			continue
 		}
 		mark := len(f.path.buf)
-		strings.write_byte(&f.path, '/')
+		strings.write_byte(&f.path, separator(f.platform))
 		strings.write_string(&f.path, name)
 		path := strings.to_string(f.path)
-		category, matched := each, every
+		category, matched := cache_for(f, caches, name)
 		if !matched {
 			category, matched = place_of(f, path)
 		}
@@ -257,7 +411,7 @@ visit :: proc(f: ^Finder, dir: u32) {
 			category, matched = .Trash, true
 		}
 		if !matched {
-			category, matched = rule_for(f, name, kids[:])
+			category, matched = rule_for(f, name, kid, kids[:])
 		}
 		switch {
 		case matched:
@@ -270,37 +424,51 @@ visit :: proc(f: ^Finder, dir: u32) {
 					category,
 				},
 			)
-		case !under_system(path):
+		case !under_system(f, path):
 			visit(f, kid)
 		}
 		resize(&f.path.buf, mark)
 	}
 }
 
-// rule_for is the category of a directory called name in a directory holding
+// rule_for is the category of directory dir, called name, in a directory holding
 // siblings, if a rule makes it a candidate there.
 @(private)
-rule_for :: proc(f: ^Finder, name: string, siblings: []u32) -> (Category, bool) {
+rule_for :: proc(f: ^Finder, name: string, dir: u32, siblings: []u32) -> (Category, bool) {
 	for rule in RULES {
 		if rule.name != name {
 			continue
 		}
-		if len(rule.markers) == 0 {
-			return rule.category, true
+		if len(rule.markers) > 0 && !holds_file(f, siblings, ..rule.markers) {
+			continue
 		}
-		for sib in siblings {
-			if f.src.directory(f.src.data, sib) {
+		if rule.inside != "" {
+			clear(&f.held)
+			f.src.children(f.src.data, dir, &f.held)
+			if !holds_file(f, f.held[:], rule.inside) {
 				continue
 			}
-			sname := f.src.name(f.src.data, sib)
-			for marker in rule.markers {
-				if sname == marker {
-					return rule.category, true
-				}
+		}
+		return rule.category, true
+	}
+	return {}, false
+}
+
+// holds_file is whether one of nodes is a file called one of names.
+@(private)
+holds_file :: proc(f: ^Finder, nodes: []u32, names: ..string) -> bool {
+	for node in nodes {
+		if f.src.directory(f.src.data, node) {
+			continue
+		}
+		got := f.src.name(f.src.data, node)
+		for name in names {
+			if got == name {
+				return true
 			}
 		}
 	}
-	return {}, false
+	return false
 }
 
 // place_of is the category of path if it is a whole place under home.
@@ -311,24 +479,36 @@ place_of :: proc(f: ^Finder, path: string) -> (Category, bool) {
 		return {}, false
 	}
 	for place in HOME_PLACES {
-		if !strings.has_suffix(place.path, "/*") && rel == place.path {
+		if (!place.darwin || f.platform == .Darwin) && same(rel, place.path, f.platform) {
 			return place.category, true
 		}
 	}
 	return {}, false
 }
 
-// place_each is the category every directory held by path has, if path is a
-// place under home whose directories are candidates each.
+// caches_in is the caches the directory at path may hold, if it is a cache home
+// under home.
 @(private)
-place_each :: proc(f: ^Finder, path: string) -> (Category, bool) {
+caches_in :: proc(f: ^Finder, path: string) -> []Cache {
 	rel, ok := under_home(f, path)
 	if !ok {
-		return {}, false
+		return nil
 	}
-	for place in HOME_PLACES {
-		if strings.has_suffix(place.path, "/*") && rel == place.path[:len(place.path) - 2] {
-			return place.category, true
+	for place in CACHE_HOMES {
+		if (!place.darwin || f.platform == .Darwin) && same(rel, place.path, f.platform) {
+			return place.caches
+		}
+	}
+	return nil
+}
+
+// cache_for is the category of the directory called name in a cache home that
+// may hold caches, if it is one of them.
+@(private)
+cache_for :: proc(f: ^Finder, caches: []Cache, name: string) -> (Category, bool) {
+	for c in caches {
+		if same(name, c.name, f.platform) {
+			return c.category, true
 		}
 	}
 	return {}, false
@@ -354,22 +534,102 @@ volume_trash :: proc(f: ^Finder, path: string) -> bool {
 // under_home is path relative to home, if it lies under it.
 @(private)
 under_home :: proc(f: ^Finder, path: string) -> (string, bool) {
-	if f.home == "" ||
-	   len(path) <= len(f.home) + 1 ||
-	   !strings.has_prefix(path, f.home) ||
-	   path[len(f.home)] != '/' {
-		return "", false
-	}
-	return path[len(f.home) + 1:], true
+	rel, ok := within(path, f.home, f.platform)
+	return rel, ok && rel != ""
 }
 
 // under_system is whether path is a system directory or under one.
-under_system :: proc(path: string) -> bool {
-	for dir in SYSTEM {
-		if path == dir ||
-		   strings.has_prefix(path, dir) && len(path) > len(dir) && path[len(dir)] == '/' {
+@(private)
+under_system :: proc(f: ^Finder, path: string) -> bool {
+	for dir in f.system {
+		if _, ok := within(path, dir, f.platform); ok {
 			return true
 		}
 	}
 	return false
+}
+
+// system_dirs are the directories nothing under is ever a candidate on platform,
+// in allocator: on Windows the usual ones and wherever the environment says
+// Windows and its programs are instead.
+@(private)
+system_dirs :: proc(platform: Platform, allocator := context.allocator) -> []string {
+	dirs := make([dynamic]string, allocator)
+	switch platform {
+	case .Windows:
+		append(&dirs, ..WINDOWS_SYSTEM[:])
+		for name in WINDOWS_SYSTEM_ENV {
+			dir := strings.trim_right(os.get_env(name, allocator), separators(platform))
+			if dir != "" {
+				append(&dirs, dir)
+			}
+		}
+	case .Darwin:
+		append(&dirs, ..UNIX_SYSTEM[:])
+		append(&dirs, ..DARWIN_SYSTEM[:])
+	case .Unix:
+		append(&dirs, ..UNIX_SYSTEM[:])
+	}
+	return dirs[:]
+}
+
+// separator is what a scan's paths on platform join names with, as
+// scan.SEPARATOR is for the host's.
+@(private)
+separator :: proc(platform: Platform) -> byte {
+	return '\\' if platform == .Windows else '/'
+}
+
+// separators are what may separate names in a path on platform: Windows takes
+// either slash, and a path typed, passed in or built by hand may carry /.
+@(private)
+separators :: proc(platform: Platform) -> string {
+	return `\/` if platform == .Windows else "/"
+}
+
+// within is path relative to dir, if path is dir or lies under it on platform.
+@(private)
+within :: proc(path, dir: string, platform: Platform) -> (rel: string, ok: bool) {
+	n := len(dir)
+	if n == 0 || len(path) < n || !same(path[:n], dir, platform) {
+		return "", false
+	}
+	if len(path) == n {
+		return "", true
+	}
+	if strings.index_byte(separators(platform), path[n]) < 0 {
+		return "", false
+	}
+	return path[n + 1:], true
+}
+
+// same is whether a and b name the same path on platform. On Windows either slash
+// separates and case does not count, as NTFS does not count it; a name there is
+// compared by its ASCII letters alone, which every system directory's is.
+@(private)
+same :: proc(a, b: string, platform: Platform) -> bool {
+	if platform != .Windows {
+		return a == b
+	}
+	if len(a) != len(b) {
+		return false
+	}
+	for i in 0 ..< len(a) {
+		if fold(a[i]) != fold(b[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+// fold is c as same compares it on Windows: / as \, a capital as its small letter.
+@(private)
+fold :: proc(c: byte) -> byte {
+	switch c {
+	case '/':
+		return '\\'
+	case 'A' ..= 'Z':
+		return c + ('a' - 'A')
+	}
+	return c
 }

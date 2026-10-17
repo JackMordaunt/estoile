@@ -448,7 +448,9 @@ candidates :: proc(
 		who =
 			home.User{synth.HOME, ""} if engine == .Synthetic else home.user(context.temp_allocator)
 	}
-	found := reclaim.find(src, top, top_path, who, context.temp_allocator)
+	// The made-up disk is a Mac's.
+	platform := reclaim.Platform.Darwin if engine == .Synthetic else reclaim.HOST
+	found := reclaim.find(src, top, top_path, who, context.temp_allocator, platform)
 	// By category, and within one largest first as find left them.
 	slice.stable_sort_by(found, proc(a, b: reclaim.Candidate) -> bool {
 		return a.category < b.category

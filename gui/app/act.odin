@@ -271,7 +271,8 @@ reclaim_answer :: proc(d: ^Desk, q: query.Reclaim) -> (r: query.Reclaim_Result) 
 		},
 	}
 	synthetic := s.engine == .Synthetic
-	// A made-up disk has a made-up owner, whose home is where its caches are.
+	// A made-up disk has a made-up owner, whose home is where its caches are, on
+	// a made-up Mac.
 	who := home.User{synth.HOME, ""} if synthetic else home.user(context.temp_allocator)
 	found := reclaim.find(
 		src,
@@ -279,6 +280,7 @@ reclaim_answer :: proc(d: ^Desk, q: query.Reclaim) -> (r: query.Reclaim_Result) 
 		scan.path(&s.tree, dir, context.temp_allocator),
 		who,
 		context.temp_allocator,
+		.Darwin if synthetic else reclaim.HOST,
 	)
 	clear(&d.reclaimable)
 	now := time.time_to_unix(time.now())

@@ -483,7 +483,7 @@ desk_step :: proc(d: ^Desk, v: Desk_In) {
 		case command.Scan:
 			find_forget(d)
 			scan_end(d)
-			scan_begin(d, command.text_of(&c.path))
+			scan_begin(d, command.text_of(&c.path), c.path.cut)
 			answer_all(d)
 		case command.Stop:
 			if s := d.scan; s != nil && s.state == .Scanning {
@@ -566,17 +566,24 @@ desk_step :: proc(d: ^Desk, v: Desk_In) {
 // --- the scan ------------------------------------------------------------------
 
 // scan_begin starts a reader on path. A target that cannot be scanned still makes
-// a scan, a failed one, so the window can say why.
-scan_begin :: proc(d: ^Desk, path: string) {
+// a scan, a failed one, so the window can say why. A path that was cut to fit its
+// command is refused the same way: scanning what is left of it would read an
+// ancestor, and Reclaim would offer other projects' folders as this one's.
+scan_begin :: proc(d: ^Desk, path: string, cut := false) {
 	d.generation += 1
 	d.snapshot, d.compared = 0, {}
 	clear(&d.was)
 	s := new(Scan)
 	d.scan = s
-	s.path = strings.clone(path)
+	s.path = strings.clone(path) if !cut else ""
 	s.started = time.tick_now()
 	s.begun = time.now()
 	s.state = .Failed
+
+	if cut {
+		s.problem = strings.clone(say(d, .Path_Too_Long))
+		return
+	}
 
 	target, choice, err := scan.resolve(path)
 	if err != nil {
@@ -834,6 +841,10 @@ listing :: proc(d: ^Desk, q: query.Listing) -> query.Listing_Result {
 	if dir >= s.roll.seen {
 		return r
 	}
+	if survey.removed(&s.roll, &s.tree, dir) {
+		r.gone, r.up = true, live_above(s, dir, top)
+		return r
+	}
 	r.dir = dir
 	r.bytes = survey.total(&s.roll, dir)
 	r.was = was_of(d, dir)
@@ -893,6 +904,10 @@ rings :: proc(d: ^Desk, q: query.Rings) -> query.Rings_Result {
 	}
 	dir := q.dir == query.ROOT ? top : q.dir
 	if dir >= s.roll.seen {
+		return r
+	}
+	if survey.removed(&s.roll, &s.tree, dir) {
+		r.gone, r.up = true, live_above(s, dir, top)
 		return r
 	}
 	r.dir = dir
@@ -970,6 +985,19 @@ ancestors :: proc(s: ^Scan, node: u32, allocator := context.temp_allocator) -> [
 		append(&out, cur)
 	}
 	return out[:]
+}
+
+// live_above is the nearest ancestor of dir the tree still holds, or query.ROOT
+// for the top, which is what the window calls it: where the window goes when the
+// directory it shows has been forgotten.
+live_above :: proc(s: ^Scan, dir, top: u32) -> u32 {
+	way := crumbs(s, dir, top)
+	for i := len(way) - 2; i >= 0; i -= 1 {
+		if !survey.removed(&s.roll, &s.tree, way[i].node) {
+			return query.ROOT if way[i].node == top else way[i].node
+		}
+	}
+	return query.ROOT
 }
 
 // crumbs is the way from the top of the scan down to dir. A chain that never

@@ -100,6 +100,8 @@ Listing_Result :: struct {
 	entries:    []Entry, // the largest, at most LISTING_LIMIT
 	more:       int, // entries past the limit
 	more_bytes: u64, // and what they hold between them
+	gone:       bool, // dir was forgotten (moved to the Trash, cleaned up), so nothing else is set but up
+	up:         u32, // when gone, the nearest ancestor the scan still holds
 }
 
 // LISTING_LIMIT is the most entries a listing carries.
@@ -159,6 +161,8 @@ Rings_Result :: struct {
 	was:        i64, // what dir held in the snapshot compared with, or -1
 	compared:   bool, // whether a snapshot is compared with, so was says anything
 	arcs:       []Arc, // ring by ring is not promised; each arc carries its depth
+	gone:       bool, // dir was forgotten (moved to the Trash, cleaned up), so nothing else is set but up
+	up:         u32, // when gone, the nearest ancestor the scan still holds
 }
 
 // RING_DEPTH is how many rings a sunburst draws.

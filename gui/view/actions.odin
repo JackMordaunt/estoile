@@ -82,6 +82,34 @@ forget_history :: proc(m: ^Model) {
 	clear(&m.forward)
 }
 
+// leave_gone moves the window off the directory it shows, which the host has
+// forgotten (moved to the Trash, or cleaned up), to up, the nearest ancestor still
+// in the tree, and drops the directory from the history. The host forgets a node
+// without telling the window, so a history id is found out when it is reached;
+// until then it is only a number that names nothing, never drawn.
+@(private)
+leave_gone :: proc(m: ^Model, up: u32) {
+	gone := m.dir
+	m.dir = up
+	m.scroll = {}
+	drop_id :: proc(ids: ^[dynamic]u32, gone, here: u32) {
+		kept := 0
+		for id in ids^ {
+			if id != gone {
+				ids[kept] = id
+				kept += 1
+			}
+		}
+		resize(ids, kept)
+		// A step to the place already shown goes nowhere.
+		for len(ids) > 0 && ids[len(ids) - 1] == here {
+			pop(ids)
+		}
+	}
+	drop_id(&m.back, gone, up)
+	drop_id(&m.forward, gone, up)
+}
+
 // walk_history walks the history on the mouse's back and forward buttons, or Alt with
 // an arrow, wherever the pointer is: keys the frame asks for window-wide. The
 // platform's command key, Cmd on macOS and Ctrl elsewhere, with L edits the

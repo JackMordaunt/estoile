@@ -106,8 +106,10 @@ Model :: struct {
 	path:             ui.Text_State,
 	// The location bar (location.odin): whether it is the field, whether the field
 	// is still to take focus, how far its steps are scrolled, whether they follow
-	// the deepest, and the trail it shows.
+	// the deepest, the trail it shows, and whether the path last entered was too
+	// long to send, which the status says.
 	editing:          bool,
+	path_long:        bool,
 	edit_focus:       bool,
 	location_offset:  f32,
 	location_follow:  bool,
@@ -333,6 +335,7 @@ view :: proc(gtx: ^ui.Ctx, user: rawptr) {
 		m.side = {}
 		m.menu_open, m.trash_open, m.rename_open = false, false, false
 		m.export_open = false
+		m.path_long = false
 		// The delete dialogs too: their Confirm would act on the new scan's
 		// default selection, which the person has not seen.
 		m.clean_open, m.empty_open = false, false
@@ -549,14 +552,18 @@ licence answer brings at startup, keeps its place in flow under the slot.
 status :: proc(gtx: ^ui.Ctx, m: ^Model, prog: ^query.Progress_Result) {
 	if prog == nil || prog.generation == 0 {
 		if primer.slot(gtx, lines = 2) {
-			primer.text(gtx, tr(.Status_Empty), color = primer.color(.Fg_Color_Muted))
+			if m.path_long {
+				path_long_line(gtx)
+			} else {
+				primer.text(gtx, tr(.Status_Empty), color = primer.color(.Fg_Color_Muted))
+			}
 		}
 		return
 	}
 	if primer.slot(gtx, lines = 2) {
 		if ui.column(gtx, align = .Fill) {
 			state_line(gtx, prog)
-			message_line(gtx, prog)
+			message_line(gtx, m, prog)
 		}
 	}
 	notice(gtx, m, prog.notice)
@@ -610,8 +617,15 @@ Status_Message :: struct {
 // in; that a raw read would be far faster; then why the scan read its place
 // whole. A failed scan's problem is the banner's (view), not the line's.
 @(private)
-status_messages :: proc(gtx: ^ui.Ctx, prog: ^query.Progress_Result) -> []Status_Message {
+status_messages :: proc(
+	gtx: ^ui.Ctx,
+	m: ^Model,
+	prog: ^query.Progress_Result,
+) -> []Status_Message {
 	msgs := make([dynamic]Status_Message, gtx.allocator)
+	if m.path_long {
+		append(&msgs, Status_Message{tr(.Path_Too_Long), "", true})
+	}
 	if prog.unread > 0 {
 		detail := ""
 		if ODIN_OS == .Darwin && prog.denied {
@@ -628,13 +642,24 @@ status_messages :: proc(gtx: ^ui.Ctx, prog: ^query.Progress_Result) -> []Status_
 	return msgs[:]
 }
 
+// path_long_line is the status before any scan, when the path typed was too long:
+// the warning mark and the reason, in the place of the invitation to name a
+// directory.
+@(private)
+path_long_line :: proc(gtx: ^ui.Ctx) {
+	fg := primer.color(.Fg_Color_Attention)
+	ui.row(gtx, gap = 8, align = .Center)
+	alert(gtx, fg)
+	primer.text(gtx, tr(.Path_Too_Long), color = fg)
+}
+
 // message_line is the status' second line: the first of status_messages on one
 // line, cut with an ellipsis rather than wrapped so the slot never grows, then
 // "+N more" when others apply, listed in its tooltip. Nothing when there is
 // nothing to say; the slot keeps the line's height.
 @(private)
-message_line :: proc(gtx: ^ui.Ctx, prog: ^query.Progress_Result) {
-	msgs := status_messages(gtx, prog)
+message_line :: proc(gtx: ^ui.Ctx, m: ^Model, prog: ^query.Progress_Result) {
+	msgs := status_messages(gtx, m, prog)
 	if len(msgs) == 0 {
 		return
 	}

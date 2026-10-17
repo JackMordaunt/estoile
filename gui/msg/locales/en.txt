@@ -350,6 +350,7 @@ name_reserved = a name cannot hold \ : * ? " < > or |
 # Why a scan could not start: {0} a path, {1} the system's reason
 cannot_scan = cannot scan {0}: {1}
 nothing_to_scan = nothing here can be scanned
+path_too_long = that path is too long to scan
 reader_failed = could not start the reader
 
 # Monitoring: scheduled scans of the places watched. {0} of monitoring_explain is the product's name; of monitoring_through, where the system keeps the schedule (a name such as systemd user timer leita-monitor.timer, not translated); of last_scanned, when, then {1} a size and {2} seconds.

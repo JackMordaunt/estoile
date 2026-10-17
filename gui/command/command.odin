@@ -11,15 +11,18 @@ package leita_command
 // MAX_PATH is the longest path a command carries, in bytes.
 MAX_PATH :: 1024
 
-// Text is a string that fits in a message. One that filled the buffer may have
-// been cut short.
+// Text is a string that fits in a message. cut is set when the string did not
+// fit and buf holds only its start: a path so cut names an ancestor, so whoever
+// acts on one must refuse it.
 Text :: struct {
 	buf: [MAX_PATH]u8,
 	len: int,
+	cut: bool,
 }
 
 text_make :: proc(s: string) -> (t: Text) {
 	t.len = copy(t.buf[:], s)
+	t.cut = len(s) > len(t.buf)
 	return
 }
 

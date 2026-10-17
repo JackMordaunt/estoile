@@ -285,6 +285,7 @@ name_nul = 이름에 NUL 문자를 포함할 수 없음
 name_reserved = 이름에 \ : * ? " < > 또는 | 문자를 포함할 수 없음
 cannot_scan = {0} 스캔 불가: {1}
 nothing_to_scan = 스캔할 수 있는 항목이 없음
+path_too_long = 경로가 너무 길어 스캔할 수 없음
 reader_failed = 리더를 시작할 수 없음
 
 monitoring = 모니터링

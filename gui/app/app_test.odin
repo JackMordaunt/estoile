@@ -324,6 +324,37 @@ a_path_that_is_not_there_fails_with_a_reason :: proc(t: ^testing.T) {
 	)
 }
 
+// A path longer than a command carries is cut by it, and what is left of this one
+// is a directory that exists: scanning it would read the wrong place, so the scan
+// fails instead, as a path cut anywhere else would have.
+@(test)
+a_path_longer_than_a_command_carries_is_refused :: proc(t: ^testing.T) {
+	root := fixture(t, "longpath")
+	defer os.remove_all(root)
+	// Each "/." is the directory it is in, so every prefix of this path names root.
+	long := strings.concatenate(
+		{root, strings.repeat("/.", command.MAX_PATH / 2, context.temp_allocator)},
+		context.temp_allocator,
+	)
+	defer free_all(context.temp_allocator)
+	r: Rig
+	rig_open(&r, long)
+	defer rig_close(&r)
+	testing.expect(t, settle(&r, "Failed"), "the failure is shown")
+	testing.expect(t, ui.probe_tagged(&r.p, "that path is too long to scan"), "and why")
+	testing.expect(t, !r.h.desk.scan.grown, "nothing was read")
+
+	// The same through a command, as the location field sends it.
+	scan_command := command.Scan {
+		path = command.text_make(long),
+	}
+	testing.expect(t, scan_command.path.cut, "the command was cut")
+	stream.port_send(r.h.cmd_port, command.Command(scan_command))
+	hand_on(&r)
+	testing.expect(t, settle(&r, "that path is too long to scan"))
+	testing.expect(t, r.h.desk.scan.state == .Failed)
+}
+
 @(test)
 a_click_on_an_arc_opens_it_and_the_hub_goes_back_up :: proc(t: ^testing.T) {
 	root := fixture(t, "rings")
@@ -576,6 +607,65 @@ a_right_click_on_a_contents_row_trashes_it :: proc(t: ^testing.T) {
 	} else {
 		testing.expect(t, os.exists(landed), "in the Trash")
 	}
+}
+
+// Back and Forward do not enter a directory that went to the Trash: the host
+// answers for it as gone, and the window goes to the nearest folder that is not,
+// with the forgotten one out of its history.
+@(test)
+forward_does_not_enter_a_trashed_directory :: proc(t: ^testing.T) {
+	when ODIN_OS == .Darwin || ODIN_OS == .Windows {
+		return // their Trash cannot be pointed at a scratch one
+	}
+	place := fixture(t, "forwardtrash")
+	defer os.remove_all(place)
+	defer os.remove_all(fmt.tprintf("%s-data", place))
+	sync.guard(&trash_env)
+	own_trash(t, place)
+	defer os.unset_env("XDG_DATA_HOME")
+
+	r: Rig
+	rig_open(&r, place)
+	defer rig_close(&r)
+	testing.expect(t, settle(&r, "Done"))
+	testing.expect(t, settle(&r, "274.4 kB in 2 items"))
+	top := r.m.dir
+
+	// Into photos and back out, so photos waits in the history.
+	open_row(&r, "photos")
+	testing.expect(t, settle(&r, "270.3 kB in 2 items"), "photos is open")
+	photos := r.m.dir
+	ui.probe_key(&r.p, .Left, {.Alt})
+	press_and_hand_on(&r)
+	testing.expect(t, settle(&r, "274.4 kB in 2 items"), "back at the top")
+	testing.expect_value(t, len(r.m.forward), 1)
+
+	open_row(&r, "photos", .Right)
+	press_and_hand_on(&r)
+	testing.expect(t, ui.probe_click(&r.p, "Trash"), "the row's menu offers Trash")
+	press_and_hand_on(&r)
+	press_and_hand_on(&r)
+	testing.expect(t, ui.probe_click(&r.p, "Trash"), "the dialog asks first")
+	press_and_hand_on(&r)
+	testing.expect(t, settle(&r, "Moved photos to the Trash"), "the notice says so")
+
+	gone := listing(&r.h.desk, query.Listing{generation = r.m.generation, dir = photos})
+	testing.expect(t, gone.gone, "the host says photos is gone")
+	testing.expect_value(t, len(gone.entries), 0)
+	testing.expect_value(t, gone.up, query.ROOT)
+
+	ui.probe_key(&r.p, .Right, {.Alt})
+	// The host's answer for photos is what sends the window off it.
+	deadline := time.tick_now()._nsec + i64(30 * time.Second)
+	for r.m.dir == photos && time.tick_now()._nsec < deadline {
+		ui.inbox_drain(&r.h.inbox, &r.p.layout)
+		press_and_hand_on(&r)
+		time.sleep(time.Millisecond)
+	}
+	testing.expect_value(t, r.m.dir, top)
+	testing.expect_value(t, len(r.m.forward), 0)
+	testing.expect_value(t, len(r.m.back), 0)
+	testing.expect(t, !ui.probe_tagged(&r.p, "small.jpg"), "none of its contents is drawn")
 }
 
 @(test)

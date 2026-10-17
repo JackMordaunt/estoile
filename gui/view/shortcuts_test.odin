@@ -79,3 +79,32 @@ the_window_is_named_after_the_place :: proc(t: ^testing.T) {
 	ui.probe_frame(p)
 	testing.expect(t, ui.probe_title(p) == window_title("/"), "named once, kept across frames")
 }
+
+// A directory the host has forgotten leaves the window and the history: it goes
+// to the nearest ancestor still in the tree, and the way back and forth keeps
+// neither the forgotten directory nor a step to where it already is.
+@(test)
+a_forgotten_directory_leaves_the_history :: proc(t: ^testing.T) {
+	r: Shortcut_Rig
+	shortcuts_open(&r, {generation = 1, state = .Done, target = "/top"})
+	defer shortcuts_close(&r)
+	p := &r.h.p
+
+	r.m.dir = 7
+	append(&r.m.back, 1, 7, 3)
+	append(&r.m.forward, 7, 2)
+	ui.probe_deliver(
+		p,
+		query.Rings{generation = 1, dir = 7},
+		query.Rings_Result{generation = 1, dir = 7, gone = true, up = 3},
+	)
+	ui.probe_frame(p)
+	ui.probe_frame(p)
+	testing.expect_value(t, r.m.dir, 3)
+	testing.expect_value(t, len(r.m.back), 1)
+	testing.expect_value(t, len(r.m.forward), 1)
+	if len(r.m.back) == 1 && len(r.m.forward) == 1 {
+		testing.expect_value(t, r.m.back[0], 1)
+		testing.expect_value(t, r.m.forward[0], 2)
+	}
+}

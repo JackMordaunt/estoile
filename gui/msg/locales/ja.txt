@@ -288,6 +288,7 @@ name_nul = 名前に NUL は使用できません
 name_reserved = 名前に \ : * ? " < > | は使用できません
 cannot_scan = {0} をスキャンできません: {1}
 nothing_to_scan = スキャンできるものがありません
+path_too_long = このパスは長すぎてスキャンできません
 reader_failed = 読み取りを開始できませんでした
 
 monitoring = モニタリング

@@ -328,6 +328,7 @@ name_nul = un nom ne peut pas contenir NUL
 name_reserved = un nom ne peut pas contenir \ : * ? " < > ou |
 cannot_scan = impossible d’analyser {0} : {1}
 nothing_to_scan = rien ici ne peut être analysé
+path_too_long = ce chemin est trop long pour être analysé
 reader_failed = impossible de démarrer le lecteur
 
 monitoring = Surveillance

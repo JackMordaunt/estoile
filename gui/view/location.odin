@@ -84,6 +84,10 @@ steps_of :: proc(gtx: ^ui.Ctx, crumbs: []query.Crumb) -> []Step {
 @(private)
 location :: proc(gtx: ^ui.Ctx, m: ^Model, prog: ^query.Progress_Result) {
 	r, _ := ui.need(gtx, query.Rings{generation = m.generation, dir = m.dir}, query.Rings_Result)
+	if r != nil && r.generation == m.generation && r.gone {
+		leave_gone(m, r.up)
+		ui.request_frame(gtx)
+	}
 	if r != nil && r.generation == m.generation && len(r.crumbs) > 0 {
 		keep_trail(m, r.crumbs)
 	}
@@ -276,7 +280,7 @@ edit_location :: proc(m: ^Model, here: string) {
 	}
 	ui.text_set(&m.path, here)
 	ui.text_select(&m.path, 0, len(here))
-	m.editing, m.edit_focus = true, true
+	m.editing, m.edit_focus, m.path_long = true, true, false
 }
 
 // location_field is the bar as a field: Enter scans its path, Escape or a click
@@ -300,17 +304,27 @@ location_field :: proc(gtx: ^ui.Ctx, m: ^Model, have: bool) {
 	}
 	for e in ui.events(gtx, field.id) {
 		if e.kind == .Key && e.key == .Escape {
-			m.editing = false
+			m.editing, m.path_long = false, false
 		}
 	}
 	if field.submitted {
 		path := strings.trim_space(ui.text_string(&m.path))
-		if path != "" {
-			ui.command(gtx, command.Command(command.Scan{path = command.text_make(path)}))
+		req := command.Scan {
+			path = command.text_make(path),
 		}
-		m.editing = false
+		switch {
+		case req.path.cut:
+			// Sent cut, it would scan an ancestor of what was typed; the field
+			// stays so the path can be shortened.
+			m.path_long = true
+		case path != "":
+			ui.command(gtx, command.Command(req))
+			m.editing, m.path_long = false, false
+		case:
+			m.editing = false
+		}
 	}
 	if m.editing && !m.edit_focus && !field.focused && have {
-		m.editing = false // focus went elsewhere
+		m.editing, m.path_long = false, false // focus went elsewhere
 	}
 }

@@ -278,6 +278,7 @@ Msg :: enum u16 {
 	Name_Reserved,
 	Cannot_Scan,
 	Nothing_To_Scan,
+	Path_Too_Long,
 	Reader_Failed,
 	Monitoring,
 	Monitoring_Locked,

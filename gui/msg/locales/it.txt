@@ -325,6 +325,7 @@ name_nul = il nome non può contenere NUL
 name_reserved = il nome non può contenere \ : * ? " < > o |
 cannot_scan = impossibile scansionare {0}: {1}
 nothing_to_scan = qui non c'è nulla da scansionare
+path_too_long = quel percorso è troppo lungo per essere scansionato
 reader_failed = impossibile avviare il lettore
 
 monitoring = Monitoraggio

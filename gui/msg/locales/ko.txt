@@ -276,6 +276,7 @@ file_denied = 권한이 거부됨
 file_cross_device = 휴지통과 다른 파일 시스템에 있음
 file_bad_name = 파일에 사용할 수 없는 이름
 file_not_directory = 디렉터리가 아님
+file_partly = 일부를 삭제할 수 없음
 file_unsupported = 이 시스템에서 지원하지 않는 작업
 file_other = 시스템에서 거부함
 name_empty = 이름은 비워 둘 수 없음

@@ -330,8 +330,9 @@ newest_modification :: proc(path: string) -> (modified: i64, is_dir: bool) {
 	return modified, true
 }
 
-// clean deletes for good each entry of c that Reclaim offered, and takes it out of
-// the totals; anything else it was sent is refused.
+// clean deletes for good each entry of c that Reclaim offered, and takes what went
+// out of the totals; anything else it was sent is refused. An entry partly deleted
+// stays in the tree, and only the space it gave back is counted freed.
 clean :: proc(d: ^Desk, c: ^command.Clean, done: ^[dynamic]history.Action) {
 	s := d.scan
 	if s == nil || c.generation != d.generation || !s.grown {
@@ -346,30 +347,33 @@ clean :: proc(d: ^Desk, c: ^command.Clean, done: ^[dynamic]history.Action) {
 			refused += 1
 			continue
 		}
-		bytes := survey.total(&s.roll, node)
 		path := scan.path(&s.tree, node, context.temp_allocator)
-		left, err := files.delete_tree(path)
+		left, gave, err := files.delete_tree(path)
+		freed += gave
 		if err != .None {
-			note(done, .Delete, path, files.describe(err), bytes, true)
+			note(done, .Delete, path, why_left(err, left), gave, true)
 			failed += 1
 			continue
 		}
-		if left > 0 {
-			note(done, .Delete, path, fmt.tprintf("%d could not be deleted", left), bytes, true)
-			failed += 1
-		} else {
-			note(done, .Delete, path, "", bytes, false)
-		}
+		note(done, .Delete, path, "", gave, false)
 		survey.forget(&s.roll, &s.tree, node)
 		delete_key(&d.reclaimable, node)
 		deleted += 1
-		freed += bytes
 	}
 	if failed + refused > 0 {
 		tell(d, true, .Cleaned_Partly, deleted, human.bytes(freed), failed + refused)
 	} else {
 		tell(d, false, .Cleaned, deleted, human.bytes(freed))
 	}
+}
+
+// why_left is what the audit trail says of a tree delete_tree did not delete.
+@(private = "file")
+why_left :: proc(err: files.Error, left: int) -> string {
+	if err == .Partly {
+		return fmt.tprintf("%d could not be deleted", left)
+	}
+	return files.describe(err)
 }
 
 // empty_trash deletes what the Trash entry e holds, if Reclaim offered it as the
@@ -384,8 +388,8 @@ empty_trash :: proc(d: ^Desk, e: command.Entry, done: ^[dynamic]history.Action) 
 		tell(d, true, .Empty_Not_Trash)
 		return
 	}
-	bytes := survey.total(&s.roll, e.node)
 	failed := 0
+	freed: u64
 	it := survey.children(&s.roll, e.node)
 	children := make([dynamic]u32, context.temp_allocator)
 	for c in survey.next_child(&it) {
@@ -393,14 +397,15 @@ empty_trash :: proc(d: ^Desk, e: command.Entry, done: ^[dynamic]history.Action) 
 	}
 	for c in children {
 		path := scan.path(&s.tree, c, context.temp_allocator)
-		size := held(s, c)
 		if .Directory not_in scan.node_flags(scan.node(&s.tree, c)) {
 			// The freedesktop.org Trash keeps everything in its files and info
 			// directories; the Finder's holds what was trashed itself.
 			when ODIN_OS == .Darwin {
+				size := held(s, c)
 				if err := os.remove(path); err == nil {
 					note(done, .Empty_Trash, path, "", size, false)
 					survey.forget(&s.roll, &s.tree, c)
+					freed += size
 				} else {
 					note(done, .Empty_Trash, path, fmt.tprint(err), size, true)
 					failed += 1
@@ -408,28 +413,17 @@ empty_trash :: proc(d: ^Desk, e: command.Entry, done: ^[dynamic]history.Action) 
 			}
 			continue
 		}
-		left, err := files.delete_tree(path)
-		failed += left + (1 if err != .None else 0)
-		switch {
-		case err != .None:
-			note(done, .Empty_Trash, path, files.describe(err), size, true)
-		case left > 0:
-			note(
-				done,
-				.Empty_Trash,
-				path,
-				fmt.tprintf("%d could not be deleted", left),
-				size,
-				true,
-			)
-		case:
-			note(done, .Empty_Trash, path, "", size, false)
+		left, gave, err := files.delete_tree(path)
+		freed += gave
+		if err != .None {
+			// What was left is counted entry by entry; a tree refused whole is one.
+			failed += left if err == .Partly else 1
+			note(done, .Empty_Trash, path, why_left(err, left), gave, true)
+			continue
 		}
-		if err == .None {
-			survey.forget(&s.roll, &s.tree, c)
-		}
+		note(done, .Empty_Trash, path, "", gave, false)
+		survey.forget(&s.roll, &s.tree, c)
 	}
-	freed := bytes - survey.total(&s.roll, e.node)
 	if failed > 0 {
 		tell(d, true, .Emptied_Partly, human.bytes(freed), failed)
 	} else {

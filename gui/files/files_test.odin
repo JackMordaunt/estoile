@@ -115,14 +115,14 @@ delete_tree_is_careful_with_links_and_read_only_trees :: proc(t: ^testing.T) {
 	}
 
 	// A link to the tree is refused, and the tree is untouched.
-	_, refused := delete_tree(strings.concatenate({root, "/alias"}, context.temp_allocator))
+	_, _, refused := delete_tree(strings.concatenate({root, "/alias"}, context.temp_allocator))
 	testing.expect_value(t, refused, Error.Not_Directory)
 	testing.expect(
 		t,
 		os.exists(strings.concatenate({root, "/tree/locked/deep/f"}, context.temp_allocator)),
 	)
 
-	failed, err := delete_tree(strings.concatenate({root, "/tree"}, context.temp_allocator))
+	failed, _, err := delete_tree(strings.concatenate({root, "/tree"}, context.temp_allocator))
 	testing.expect_value(t, err, Error.None)
 	testing.expect_value(t, failed, 0)
 	testing.expect(

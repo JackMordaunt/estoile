@@ -316,14 +316,15 @@ clean_gone = Could not clean up: the scan it came from is gone
 # {0} how many folders, {1} the space freed
 cleaned.one = Deleted {0} folder and freed {1}
 cleaned = Deleted {0} folders and freed {1}
-# {0} how many folders, {1} the space freed, {2} how many could not be deleted
-cleaned_partly.one = Deleted {0} folder and freed {1}; {2} could not be deleted
-cleaned_partly = Deleted {0} folders and freed {1}; {2} could not be deleted
+# {0} how many folders, {1} the space freed, what was deleted of the rest included,
+# {2} how many folders are still there, whole or in part
+cleaned_partly.one = Deleted {0} folder and freed {1}; {2} could not be deleted in full
+cleaned_partly = Deleted {0} folders and freed {1}; {2} could not be deleted in full
 empty_gone = Could not empty the Trash: the scan it came from is gone
 empty_not_trash = Could not empty the Trash: it is not the Trash Reclaim found
 # {0} the space freed
 emptied = Emptied the Trash and freed {0}
-# {0} the space freed, {1} how many could not be deleted
+# {0} the space freed, {1} how many files and folders are still there
 emptied_partly = Emptied the Trash and freed {0}; {1} could not be deleted
 export_unfinished = Could not export a report: the scan is not finished
 export_no_folder = Could not export a report: there is no Documents folder or home to save it in
@@ -340,6 +341,7 @@ file_denied = permission was denied
 file_cross_device = it is on another filesystem than the Trash
 file_bad_name = that is not a name a file can have
 file_not_directory = it is not a directory
+file_partly = some of it could not be deleted
 file_unsupported = this system cannot do that
 file_other = the system refused
 name_empty = a name cannot be empty

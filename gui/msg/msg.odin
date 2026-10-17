@@ -269,6 +269,7 @@ Msg :: enum u16 {
 	File_Cross_Device,
 	File_Bad_Name,
 	File_Not_Directory,
+	File_Partly,
 	File_Unsupported,
 	File_Other,
 	Name_Empty,

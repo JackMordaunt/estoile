@@ -336,6 +336,7 @@ file_denied = доступ запрещён
 file_cross_device = объект находится в другой файловой системе, чем Корзина
 file_bad_name = недопустимое имя файла
 file_not_directory = это не папка
+file_partly = часть не удалось удалить
 file_unsupported = система не поддерживает это действие
 file_other = система отказала
 name_empty = имя не может быть пустым

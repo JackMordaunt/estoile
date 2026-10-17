@@ -31,6 +31,7 @@ Error :: enum u8 {
 	Cross_Device, // the Trash is on another filesystem
 	Bad_Name,
 	Not_Directory, // asked to delete a tree at something that is not a directory
+	Partly, // some of a tree could not be deleted, so the tree is still there
 	Unsupported,
 	Other,
 }
@@ -51,6 +52,8 @@ describe :: proc(e: Error) -> string {
 		return "that is not a name a file can have"
 	case .Not_Directory:
 		return "it is not a directory"
+	case .Partly:
+		return "some of it could not be deleted"
 	case .Unsupported:
 		return "this system cannot do that"
 	case .Other:
@@ -89,27 +92,31 @@ name_fault :: proc(name: string) -> Name_Fault {
 }
 
 /*
-delete_tree deletes the directory at path and everything in it, for good, and says
-how many entries it could not delete. It is for what Reclaim proved can be made
-again, and it is careful in the ways deletion has to be:
+delete_tree deletes the directory at path and everything in it, for good. It says
+how many entries it could not delete, not counting a folder kept only because it
+holds one, and how many bytes what it did delete gave back. Anything left is
+Partly: the tree is still there, and only freed is gone. It is for what Reclaim
+proved can be made again, and it is careful in the ways deletion has to be:
 
   - path must be a directory itself, not a link to one: a link is refused, so
     deleting never reaches through it to what it points at;
   - inside, a link is deleted as a link, never followed;
   - a directory is made writable by its owner before it is emptied, since some
-    caches (Go's module cache) are made read-only;
+    caches (Go's module cache) are made read-only, and given its mode back if it
+    could not be deleted after all;
   - an entry that cannot be deleted is counted and passed over, and the rest
     still go.
 */
-delete_tree :: proc(path: string) -> (failed: int, err: Error) {
+delete_tree :: proc(path: string) -> (failed: int, freed: u64, err: Error) {
 	info, serr := os.stat_do_not_follow_links(path, context.temp_allocator)
 	switch {
 	case serr != nil:
-		return 0, .Missing
+		return 0, 0, .Missing
 	case info.type != .Directory, is_link(path):
-		return 0, .Not_Directory
+		return 0, 0, .Not_Directory
 	}
-	return empty_tree(path) + (0 if os.remove(path) == nil else 1), .None
+	failed, freed = remove_tree(path)
+	return failed, freed, .Partly if failed > 0 else .None
 }
 
 when ODIN_OS != .Windows {
@@ -121,28 +128,49 @@ when ODIN_OS != .Windows {
 	}
 }
 
-// empty_tree deletes everything in the directory at path, counting what it could
-// not.
+/*
+remove_tree deletes the directory at path and everything in it: how many entries it could not delete, as delete_tree counts them, and the bytes
+the ones it did gave back. A directory that stays is given back the mode it had, so
+a failed delete does not leave a read-only cache writable.
+*/
 @(private)
-empty_tree :: proc(path: string) -> (failed: int) {
+remove_tree :: proc(path: string) -> (failed: int, freed: u64) {
 	runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
-	if info, err := os.stat_do_not_follow_links(path, context.temp_allocator); err == nil {
-		_ = os.change_mode(path, info.mode + {.Read_User, .Write_User, .Execute_User})
+	info, serr := os.stat_do_not_follow_links(path, context.temp_allocator)
+	if serr != nil {
+		return 1, 0
+	}
+	writable := info.mode + {.Read_User, .Write_User, .Execute_User}
+	opened := writable != info.mode && os.change_mode(path, writable) == nil
+	defer if opened && os.exists(path) {
+		_ = os.change_mode(path, info.mode)
 	}
 	entries, err := os.read_all_directory_by_path(path, context.temp_allocator)
 	if err != nil {
-		return 1
+		return 1, 0
 	}
 	for e in entries {
 		// The listing does not follow links, so a link is a link here.
 		if e.type == .Directory {
-			failed += empty_tree(e.fullpath)
+			f, b := remove_tree(e.fullpath)
+			failed, freed = failed + f, freed + b
+			continue
 		}
-		if os.remove(e.fullpath) != nil {
+		bytes := held_alone(e.fullpath)
+		if os.remove(e.fullpath) == nil {
+			freed += bytes
+		} else {
 			failed += 1
 		}
 	}
-	return
+	if failed > 0 {
+		// Kept because it holds what is counted already.
+		return
+	}
+	if os.remove(path) != nil {
+		return 1, freed
+	}
+	return 0, freed
 }
 
 // rename gives the entry at path the new name in the same folder, refusing with

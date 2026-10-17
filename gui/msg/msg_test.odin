@@ -52,7 +52,7 @@ counts_pick_the_form_and_group_their_digits :: proc(t: ^testing.T) {
 	testing.expect_value(
 		t,
 		trf(s, .Cleaned_Partly, 0, "0 B", 1),
-		"Deleted 0 folders and freed 0 B; 1 could not be deleted",
+		"Deleted 0 folders and freed 0 B; 1 could not be deleted in full",
 	)
 	testing.expect_value(t, tr(s, .Language), "Language")
 	use(s, .Chinese_Traditional)

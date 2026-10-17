@@ -79,6 +79,7 @@ FILE_ERRORS := [files.Error]msg.Msg {
 	.Cross_Device  = .File_Cross_Device,
 	.Bad_Name      = .File_Bad_Name,
 	.Not_Directory = .File_Not_Directory,
+	.Partly        = .File_Partly,
 	.Unsupported   = .File_Unsupported,
 	.Other         = .File_Other,
 }

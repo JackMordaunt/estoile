@@ -1,0 +1,92 @@
+# The .deb and the .rpm, built by `just package` with nfpm, which expands
+# the variables below from the environment the recipe sets: LEITA_PKGVER,
+# the version as both formats order it; LEITA_ARCH, Go's name for the
+# architecture, which nfpm turns into each format's own; LEITA_GLIBC, the
+# newest glibc symbol version the binaries need, read from them. Paths are
+# from the repository root, the binaries the release build's; nfpm expands
+# no variable in a source path.
+#
+# Both binaries go on PATH, the window as Leita beside leita, as in the
+# release archive. le, the short name `just install` adds, is left out: a
+# Debian package called le carries /usr/bin/le, and dpkg would refuse to
+# install over it. The recorder's unit and the copy of leita it runs are the
+# package's (journal.PACKAGE_UNIT_PATH and PACKAGE_BINARY_PATH), so leita
+# journal on only enables it; the copy is a link to /usr/bin/leita, which
+# root owns as the copy journal on makes would be.
+name: leita
+arch: ${LEITA_ARCH}
+platform: linux
+version: ${LEITA_PKGVER}
+version_schema: none
+release: "1"
+section: utils
+priority: optional
+maintainer: Librium LLC <security@mordaunt.dev>
+vendor: Librium LLC
+homepage: https://mordaunt.dev/leita
+license: Proprietary
+description: |-
+  See what is filling a drive, and report on it.
+  leita scans a drive or folder and shows what uses the space as it reads,
+  finds what can be deleted and made again, and writes a scan up as a CSV,
+  JSON, HTML or PDF report. Leita is the window; leita the command line.
+
+contents:
+  - src: build/release/leita
+    dst: /usr/bin/leita
+    file_info:
+      mode: 0755
+  - src: build/release/app/Leita
+    dst: /usr/bin/Leita
+    file_info:
+      mode: 0755
+  # Its own directory, so the .rpm owns it and removes it too.
+  - dst: /usr/libexec/leita
+    type: dir
+    file_info:
+      mode: 0755
+  - src: /usr/bin/leita
+    dst: /usr/libexec/leita/leita
+    type: symlink
+  - src: packaging/linux/leita-journal.service
+    dst: /usr/lib/systemd/system/leita-journal.service
+    file_info:
+      mode: 0644
+  - src: packaging/linux/dev.mordaunt.Leita.desktop
+    dst: /usr/share/applications/dev.mordaunt.Leita.desktop
+    file_info:
+      mode: 0644
+  - src: packaging/linux/dev.mordaunt.Leita.metainfo.xml
+    dst: /usr/share/metainfo/dev.mordaunt.Leita.metainfo.xml
+    file_info:
+      mode: 0644
+  - src: branding/mark-light.svg
+    dst: /usr/share/icons/hicolor/scalable/apps/dev.mordaunt.Leita.svg
+    file_info:
+      mode: 0644
+  - src: LICENSE.md
+    dst: /usr/share/doc/leita/LICENSE.md
+    file_info:
+      mode: 0644
+
+scripts:
+  postinstall: packaging/linux/postinstall.sh
+  preremove: packaging/linux/preremove.sh
+  postremove: packaging/linux/postremove.sh
+
+# glibc and libstdc++ are all the binaries load (ldd); libcurl only to
+# activate a licence, opened at run time under either Debian name, so it
+# is recommended, not required.
+overrides:
+  deb:
+    depends:
+      - libc6 (>= ${LEITA_GLIBC})
+      - libstdc++6
+    recommends:
+      - libcurl4t64 | libcurl3t64-gnutls | libcurl4 | libcurl3-gnutls
+  rpm:
+    depends:
+      - glibc >= ${LEITA_GLIBC}
+      - libstdc++
+    recommends:
+      - libcurl

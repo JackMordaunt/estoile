@@ -17,6 +17,11 @@
 #   leita-v1.2.0-darwin-universal.zip    leita and Leita cannot share a
 #                                        directory. Windows's carries the
 #                                        window's SDL3.dll and accesskit.dll.
+#   leita-v1.2.0-linux-amd64.AppImage    the window as one file to run
+#   leita-v1.2.0-linux-amd64.deb         both binaries for apt and dnf, with
+#   leita-v1.2.0-linux-amd64.rpm         the desktop entry, the icon and the
+#                                        recorder's unit (just package), and
+#                                        the same three for linux-arm64
 #   leita-<os>-<arch>[.exe]              each binary alone under a name no
 #   leita-window-<os>-<arch>[.exe]       release changes, which is what
 #                                        jm:selfupdate fetches from
@@ -253,6 +258,44 @@ jobs:
             tar -C pack --owner=0 --group=0 --numeric-owner -cf - "$root" | zstd -q -19 -T0 -o "dist/$root.tar.zst"
           fi
           ls -l dist
+
+      # The AppImage, .deb and .rpm, from the binaries built above, with
+      # the desktop entry and AppStream metadata checked first, by the tools
+      # the distributions check them with.
+      - name: linux packages
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y --no-install-recommends desktop-file-utils appstream
+          desktop-file-validate packaging/linux/dev.mordaunt.Leita.desktop
+          appstreamcli validate --no-net packaging/linux/dev.mordaunt.Leita.metainfo.xml
+          just package-built
+          cp build/package/* dist/
+          ls -l dist
+
+      # What a stock system makes of them, in its own container image,
+      # pinned by digest: the .deb on Ubuntu 24.04 and the .rpm on Fedora
+      # 42 install with nothing else, both binaries start (--version runs
+      # the window as leita, through the same loader and libraries), and
+      # removing the package removes the recorder's unit. Then the window
+      # itself, on this runner, which has no SDL3: it must still be
+      # running on a virtual X display after 10 seconds.
+      - name: linux packages on stock systems
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          deb=$(ls dist/*.deb) rpm=$(ls dist/*.rpm)
+          docker run --rm -v "$PWD/dist:/dist:ro" ubuntu@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac \
+            sh -euc "dpkg -i /dist/${deb#dist/}; leita --version; Leita --version; dpkg -r leita; test ! -e /usr/lib/systemd/system/leita-journal.service"
+          docker run --rm -v "$PWD/dist:/dist:ro" fedora@sha256:99e203b80b1c3d8f7e161ec10a68fd02b081ef83a3963553e513c82846b97814 \
+            sh -euc "rpm -i /dist/${rpm#dist/}; leita --version; Leita --version; rpm -e leita; test ! -e /usr/lib/systemd/system/leita-journal.service"
+          sudo apt-get install -y --no-install-recommends xvfb
+          status=0
+          xvfb-run -a timeout 10 build/release/app/Leita "$RUNNER_TEMP" || status=$?
+          if [ "$status" != 124 ]; then
+            echo "::error::the window exited with $status on X before 10 seconds were up"
+            exit 1
+          fi
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ${{ matrix.artifact }}

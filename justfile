@@ -21,6 +21,8 @@
 #   just hot [dir]            run's debug window without the sanitizer, the view reloaded
 #                             in place on every edit
 #   just gui-test             run the window's tests, the host's on a real directory
+#   just package              Linux: the release as an AppImage, a .deb and an .rpm
+#                             -> build/package/
 #
 # The debug allocator, flow, sqlite3, stream and ui come from the jm collection, pinned as
 # the jm submodule (https://mordaunt.dev/code/jm); JM=<path> builds against another
@@ -343,6 +345,102 @@ gui-test: deps
     {{odin}} test settings -debug {{san}} {{flags}} -out:build/test/app/{{gui}}-settings{{exe}}
     {{odin}} test licence -debug {{san}} {{flags}} -out:build/test/app/{{gui}}-licence{{exe}}
     {{odin}} test search -debug {{san}} {{flags}} -out:build/test/app/{{gui}}-search{{exe}}
+
+# The tools package fetches into build/tools, each pinned by its SHA-256 for
+# both architectures a release builds Linux on: nfpm builds the .deb and the
+# .rpm (the sums are those of nfpm's checksums.txt); appimagetool builds the
+# AppImage onto the type2 runtime pinned beside it, which it would otherwise
+# fetch, unpinned, itself.
+nfpm_ver           := "2.47.0"
+nfpm_sha_x86_64    := "0660ca602b2d2d2ae4781a06c692b3eeb9d437ffea05b831d76e41f4a3188783"
+nfpm_sha_aarch64   := "1c0f5f2999b9a974bfb04fdb0cc3306096de530ac5dbb25d739cc5f5219c919c"
+appimagetool_ver   := "1.9.1"
+appimagetool_sha_x86_64  := "ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0"
+appimagetool_sha_aarch64 := "f0837e7448a0c1e4e650a93bb3e85802546e60654ef287576f46c71c126a9158"
+runtime_ver        := "20251108"
+runtime_sha_x86_64  := "2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d"
+runtime_sha_aarch64 := "00cbdfcf917cc6c0ff6d3347d59e0ca1f7f45a6df1a428a0d6d8a78664d87444"
+
+# The release build as Linux packages, for this machine's architecture, named
+# as release.yml publishes them: an AppImage of the window, which runs from the
+# one file, and a .deb and an .rpm of both binaries, the desktop entry, the
+# icon, the AppStream metadata and the recorder's unit (packaging/linux). The
+# packages require the glibc the binaries were linked against, read from them;
+# a build on a newer system than the one it is for makes packages that system
+# refuses, rather than binaries that fail to start.
+#
+# Build the AppImage, .deb and .rpm -> build/package/: just package
+[linux]
+package: (build "release") package-built
+
+# package's work on the release build already there, which release.yml calls
+# after its own build, so the packages carry the very binaries it publishes.
+[private]
+[linux]
+package-built:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    m=$(uname -m)
+    case "$m" in
+    x86_64) arch=amd64 nfpm_sha={{nfpm_sha_x86_64}} tool_sha={{appimagetool_sha_x86_64}} runtime_sha={{runtime_sha_x86_64}} nfpm_m=x86_64 ;;
+    aarch64) arch=arm64 nfpm_sha={{nfpm_sha_aarch64}} tool_sha={{appimagetool_sha_aarch64}} runtime_sha={{runtime_sha_aarch64}} nfpm_m=arm64 ;;
+    *) echo "package: no tools are pinned for $m" >&2; exit 1 ;;
+    esac
+    tools=build/tools
+    mkdir -p "$tools"
+    # fetch URL FILE SHA256: FILE, downloaded unless it is there with that sum.
+    fetch() {
+        if [ -f "$2" ] && echo "$3  $2" | sha256sum -c --status; then return; fi
+        curl -sSfL --max-time 300 -o "$2.part" "$1"
+        if ! echo "$3  $2.part" | sha256sum -c --status; then
+            echo "package: $1 is not the build pinned at $3" >&2
+            rm -f "$2.part"
+            exit 1
+        fi
+        mv "$2.part" "$2"
+    }
+    fetch "https://github.com/goreleaser/nfpm/releases/download/v{{nfpm_ver}}/nfpm_{{nfpm_ver}}_Linux_$nfpm_m.tar.gz" "$tools/nfpm-{{nfpm_ver}}-$m.tar.gz" "$nfpm_sha"
+    fetch "https://github.com/AppImage/appimagetool/releases/download/{{appimagetool_ver}}/appimagetool-$m.AppImage" "$tools/appimagetool-{{appimagetool_ver}}-$m" "$tool_sha"
+    fetch "https://github.com/AppImage/type2-runtime/releases/download/{{runtime_ver}}/runtime-$m" "$tools/runtime-{{runtime_ver}}-$m" "$runtime_sha"
+    tar -xzf "$tools/nfpm-{{nfpm_ver}}-$m.tar.gz" -C "$tools" nfpm
+    chmod +x "$tools/appimagetool-{{appimagetool_ver}}-$m"
+
+    # The version as dpkg and rpm both order it: v1.2.0 is 1.2.0, a
+    # pre-release's dash a tilde so v1.2.0-rc1 sorts before 1.2.0, and a
+    # build from no tag 0.0.0~ and its name, dots for its dashes.
+    v="{{version}}"
+    case "$v" in
+    v[0-9]*) v=${v#v}; head=${v%%-*}; rest=${v#"$head"}; rest=${rest#-}; pkgver=$head${rest:+~${rest//-/.}} ;;
+    *) pkgver="0.0.0~${v//-/.}" ;;
+    esac
+    glibc=$(objdump -T build/release/leita build/release/app/Leita | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1)
+    out=build/package
+    rm -rf "$out"
+    mkdir -p "$out"
+    name="leita-{{version}}-linux-$arch"
+    export LEITA_PKGVER=$pkgver LEITA_ARCH=$arch LEITA_GLIBC=${glibc#GLIBC_}
+    SOURCE_DATE_EPOCH=$(git log -1 --format=%ct 2>/dev/null || date +%s)
+    export SOURCE_DATE_EPOCH
+    for format in deb rpm; do
+        "$tools/nfpm" package --config packaging/linux/nfpm.yaml --packager "$format" --target "$out/$name.$format"
+    done
+
+    # The AppImage's tree: the window as AppRun, and the desktop entry and
+    # icon at the top, where appimagetool and the desktop's AppImage
+    # integration look. APPIMAGE_EXTRACT_AND_RUN runs appimagetool without
+    # FUSE, which a CI runner lacks.
+    app="$out/AppDir"
+    mkdir -p "$app/usr/bin" "$app/usr/share/metainfo" "$app/usr/share/icons/hicolor/scalable/apps"
+    install -m 755 build/release/app/{{gui}} "$app/usr/bin/{{gui}}"
+    ln -s usr/bin/{{gui}} "$app/AppRun"
+    cp packaging/linux/dev.mordaunt.Leita.desktop "$app/"
+    cp branding/mark-light.svg "$app/dev.mordaunt.Leita.svg"
+    cp branding/mark-light.svg "$app/usr/share/icons/hicolor/scalable/apps/dev.mordaunt.Leita.svg"
+    cp packaging/linux/dev.mordaunt.Leita.metainfo.xml "$app/usr/share/metainfo/"
+    ARCH=$m APPIMAGE_EXTRACT_AND_RUN=1 "$tools/appimagetool-{{appimagetool_ver}}-$m" --no-appstream \
+        --runtime-file "$tools/runtime-{{runtime_ver}}-$m" "$app" "$out/$name.AppImage"
+    rm -rf "$app"
+    ls -l "$out"
 
 # Remove build/.
 clean:

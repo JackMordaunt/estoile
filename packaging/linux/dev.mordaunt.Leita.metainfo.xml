@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>dev.mordaunt.Leita</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>LicenseRef-proprietary</project_license>
+  <name>Leita</name>
+  <summary>See what is filling a drive, and report on it</summary>
+  <developer id="dev.mordaunt">
+    <name>Librium LLC</name>
+  </developer>
+  <description>
+    <p>
+      Leita shows what is using the disk as the scan finds it: the chart fills in
+      while it reads, as a sunburst, a treemap or an icicle, and any folder opens
+      to show what fills it.
+    </p>
+    <p>
+      It finds what can be deleted and made again, such as build output and
+      caches, and writes a scan up as a CSV, JSON, HTML or PDF report. Scanning
+      and cleaning up are free for personal use; reports need a licence. It
+      sends nothing anywhere but a licence key, once, to activate it.
+    </p>
+  </description>
+  <launchable type="desktop-id">dev.mordaunt.Leita.desktop</launchable>
+  <url type="homepage">https://mordaunt.dev/leita</url>
+  <provides>
+    <binary>Leita</binary>
+    <binary>leita</binary>
+  </provides>
+  <categories>
+    <category>System</category>
+    <category>Utility</category>
+  </categories>
+  <content_rating type="oars-1.1"/>
+</component>

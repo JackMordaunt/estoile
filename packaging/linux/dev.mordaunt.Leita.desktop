@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Leita
+GenericName=Disk Usage Analyser
+Comment=See what is filling a drive, and report on it
+Exec=Leita %f
+Icon=dev.mordaunt.Leita
+Terminal=false
+Categories=Utility;FileTools;
+Keywords=disk;space;usage;storage;du;report;
+StartupWMClass=Leita
